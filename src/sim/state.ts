@@ -1,0 +1,113 @@
+/** Central app state with a tiny event emitter — the single source of truth
+ *  that both the 3D scene and the DOM UI observe. */
+import { daysSinceJ2000 } from '../data/bodies';
+
+export type ScaleMode = 'explorer' | 'true';
+
+export interface SpeedPreset {
+  daysPerSec: number;
+  label: string;
+}
+
+export const SPEED_PRESETS: SpeedPreset[] = [
+  { daysPerSec: 1 / 86_400, label: 'Real time' },
+  { daysPerSec: 1 / 1_440, label: '1 min / s' },
+  { daysPerSec: 1 / 24, label: '1 hour / s' },
+  { daysPerSec: 1, label: '1 day / s' },
+  { daysPerSec: 7, label: '1 week / s' },
+  { daysPerSec: 30.44, label: '1 month / s' },
+  { daysPerSec: 365.25, label: '1 year / s' },
+];
+
+export const DEFAULT_SPEED_INDEX = 3;
+
+type Events = {
+  select: string | null;
+  speed: number; // preset index
+  pause: boolean;
+  scale: ScaleMode;
+  toggles: void;
+  timejump: void;
+  tour: number | null; // step index or null = tour ended
+};
+
+type Handler<T> = (payload: T) => void;
+
+export class AppState {
+  simDays = daysSinceJ2000(Date.now());
+  speedIndex = DEFAULT_SPEED_INDEX;
+  paused = false;
+  scaleMode: ScaleMode = 'explorer';
+  /** Animated 0→1 blend toward true scale; owned by the render loop. */
+  scaleT = 0;
+  selectedId: string | null = null;
+  showOrbits = true;
+  showLabels = true;
+  showHZ = false;
+  tourStep: number | null = null;
+
+  private handlers: { [K in keyof Events]?: Array<Handler<Events[K]>> } = {};
+
+  on<K extends keyof Events>(event: K, fn: Handler<Events[K]>): () => void {
+    const list = (this.handlers[event] ??= []) as Array<Handler<Events[K]>>;
+    list.push(fn);
+    return () => {
+      const i = list.indexOf(fn);
+      if (i >= 0) list.splice(i, 1);
+    };
+  }
+
+  private emit<K extends keyof Events>(event: K, payload: Events[K]): void {
+    this.handlers[event]?.slice().forEach((fn) => fn(payload));
+  }
+
+  get speed(): SpeedPreset {
+    return SPEED_PRESETS[this.speedIndex];
+  }
+
+  /** Advance simulation time by real elapsed seconds. */
+  tick(dtSec: number): void {
+    if (!this.paused) this.simDays += this.speed.daysPerSec * dtSec;
+  }
+
+  select(id: string | null): void {
+    if (this.selectedId === id) return;
+    this.selectedId = id;
+    this.emit('select', id);
+  }
+
+  setSpeedIndex(i: number): void {
+    const clamped = Math.min(SPEED_PRESETS.length - 1, Math.max(0, i));
+    if (clamped === this.speedIndex) return;
+    this.speedIndex = clamped;
+    this.emit('speed', clamped);
+  }
+
+  setPaused(p: boolean): void {
+    if (this.paused === p) return;
+    this.paused = p;
+    this.emit('pause', p);
+  }
+
+  setScaleMode(mode: ScaleMode): void {
+    if (this.scaleMode === mode) return;
+    this.scaleMode = mode;
+    this.emit('scale', mode);
+  }
+
+  setToggle(key: 'showOrbits' | 'showLabels' | 'showHZ', value: boolean): void {
+    if (this[key] === value) return;
+    this[key] = value;
+    this.emit('toggles', undefined);
+  }
+
+  jumpToNow(): void {
+    this.simDays = daysSinceJ2000(Date.now());
+    this.emit('timejump', undefined);
+  }
+
+  setTourStep(step: number | null): void {
+    this.tourStep = step;
+    this.emit('tour', step);
+  }
+}
