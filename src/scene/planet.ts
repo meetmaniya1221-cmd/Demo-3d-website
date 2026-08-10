@@ -78,6 +78,7 @@ export class Planet {
   private atmoMat?: THREE.ShaderMaterial;
   readonly hit: THREE.Mesh;
   private moonPivot?: THREE.Group;
+  private ringMesh?: THREE.Mesh;
   moonMesh?: THREE.Mesh;
   moonHit?: THREE.Mesh;
   private spinPhase: number;
@@ -153,6 +154,7 @@ export class Planet {
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.rotation.x = -Math.PI / 2; // into the equatorial plane
       ring.renderOrder = 1;
+      this.ringMesh = ring;
       this.tiltGroup.add(ring);
     }
 
@@ -191,6 +193,14 @@ export class Planet {
     const mat = this.surface.material as THREE.MeshStandardMaterial;
     mat.map = map;
     if (roughnessMap !== undefined) mat.roughnessMap = roughnessMap ?? null;
+    mat.needsUpdate = true;
+  }
+
+  /** Swap the ring's procedural strip for a photographic one (radial u-axis). */
+  setRingMap(map: THREE.Texture): void {
+    if (!this.ringMesh) return;
+    const mat = this.ringMesh.material as THREE.MeshStandardMaterial;
+    mat.map = map;
     mat.needsUpdate = true;
   }
 

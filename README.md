@@ -71,10 +71,16 @@ Notable implementation choices:
   times stay high; the camera's near plane tracks zoom depth to keep
   depth precision at every scale.
 
-## Data sources
+## Data sources & credits
 
 NASA Planetary Fact Sheet (nssdc.gsfc.nasa.gov) and JPL's approximate
 planetary elements. Orbits are Keplerian two-body approximations; moon
 counts are IAU-confirmed totals as of 2025. Explorer view exaggerates sizes
 and compresses distances for usability — the app says so on screen, and
 True scale shows the honest picture.
+
+Planet, Sun, Moon and Saturn-ring surface maps are from
+[Solar System Scope](https://www.solarsystemscope.com/textures/)
+(CC BY 4.0), based on NASA mission imagery (MESSENGER, Cassini, Voyager,
+LRO, MGS). Earth's map was generated with Higgsfield AI. Procedural
+fallback surfaces are generated in-browser if the maps fail to load.
