@@ -11,6 +11,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read
 
 concurrency:
   group: pages
@@ -41,5 +42,34 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Best effort: switch the Pages source to workflow deployments so the
+      # automatic "deploy from branch" build stops racing this workflow.
+      - name: Set Pages build type to workflow
+        run: |
+          curl -s -X PUT \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/pages \
+            -d '{"build_type":"workflow"}' \
+            -o /dev/null -w "pages config update: HTTP %{http_code}\n" || true
+
+      # Fallback guard: if a legacy branch build is still running for this
+      # push, let it finish first so our deployment is the one that sticks.
+      - name: Wait out any in-flight legacy Pages build
+        run: |
+          for i in $(seq 1 40); do
+            count=$(curl -s \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/runs?per_page=20" \
+              | jq '[.workflow_runs[] | select(.name == "pages build and deployment" and .status != "completed")] | length')
+            if [ "${count:-0}" = "0" ]; then
+              echo "no legacy pages build in flight"
+              break
+            fi
+            echo "legacy pages build still running ($count), waiting…"
+            sleep 10
+          done
+
       - id: deployment
         uses: actions/deploy-pages@v4
