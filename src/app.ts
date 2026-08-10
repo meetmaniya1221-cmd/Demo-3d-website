@@ -40,6 +40,7 @@ export class App implements TourHost {
   private toastTimer = 0;
   private frameTimeEma = 16;
   private goodFrames = 0;
+  private lastPrChange = 0;
   private clock = new THREE.Clock();
   private elapsed = 0;
   private scaleTarget = 0;
@@ -70,13 +71,11 @@ export class App implements TourHost {
     this.rig = new CameraRig(this.renderer.domElement);
     this.rig.camera.position.set(40, 320, 720);
 
-    const pr = this.renderer.getPixelRatio();
-    const msaaTarget = new THREE.WebGLRenderTarget(
-      window.innerWidth * pr,
-      window.innerHeight * pr,
-      { type: THREE.HalfFloatType, samples: 4 },
-    );
-    this.composer = new EffectComposer(this.renderer, msaaTarget);
+    // NOTE: no multisampled render target here. MSAA resolve of HalfFloat
+    // targets is glitchy on some ANGLE/D3D11 drivers (transient garbage values
+    // that the bloom pass amplifies into white flashes), so the composer uses
+    // its default single-sample HDR target.
+    this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.system.scene, this.rig.camera));
     this.bloom = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -296,20 +295,25 @@ export class App implements TourHost {
       }
     }
 
-    // adaptive resolution: EMA of frame time with two-way hysteresis
+    // adaptive resolution: EMA of frame time with two-way hysteresis. Changes
+    // recreate every post-processing target, so they are rate-limited — some
+    // drivers show a garbage frame when targets churn mid-session.
     this.frameTimeEma += (rawDt * 1000 - this.frameTimeEma) * 0.05;
     const pr = this.renderer.getPixelRatio();
     const maxPr = Math.min(window.devicePixelRatio || 1, 2);
+    const cooledDown = this.elapsed - this.lastPrChange > 8;
     if (this.frameTimeEma > 34 && pr > 1) {
-      if (++this.slowFrames > 45) {
+      if (++this.slowFrames > 45 && cooledDown) {
         this.setPixelRatio(Math.max(1, pr - 0.25));
+        this.lastPrChange = this.elapsed;
         this.slowFrames = 0;
         this.goodFrames = 0;
       }
     } else if (this.frameTimeEma < 20 && pr < maxPr) {
       this.slowFrames = 0;
-      if (++this.goodFrames > 300) {
+      if (++this.goodFrames > 600 && cooledDown) {
         this.setPixelRatio(Math.min(maxPr, pr + 0.25));
+        this.lastPrChange = this.elapsed;
         this.goodFrames = 0;
       }
     } else {

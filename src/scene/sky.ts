@@ -20,14 +20,14 @@ const STAR_VERT = /* glsl */ `
 `;
 
 const STAR_FRAG = /* glsl */ `
-  precision mediump float;
+  precision highp float;
   varying vec3 vColor;
   varying float vTwinkle;
   void main() {
     vec2 p = gl_PointCoord - 0.5;
     float d = length(p) * 2.0;
     float a = smoothstep(1.0, 0.25, d);
-    gl_FragColor = vec4(vColor * vTwinkle, a);
+    gl_FragColor = vec4(clamp(vColor * vTwinkle, 0.0, 1.5), a);
   }
 `;
 

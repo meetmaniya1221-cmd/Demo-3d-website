@@ -15,7 +15,7 @@ const ATMO_VERT = /* glsl */ `
 `;
 
 const ATMO_FRAG = /* glsl */ `
-  precision mediump float;
+  precision highp float;
   varying vec3 vNormal;
   varying vec3 vWorldNormal;
   uniform vec3 uColor;
@@ -23,10 +23,15 @@ const ATMO_FRAG = /* glsl */ `
   uniform float uPower;
   uniform float uStrength;
   void main() {
-    float rim = pow(max(0.62 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 0.0), uPower);
+    float facing = dot(vNormal, vec3(0.0, 0.0, 1.0));
+    // clamp the base into (0, 1]: the epsilon floor avoids driver pow(0, y)
+    // NaNs and the cap bounds the hidden far hemisphere, whose fragments leak
+    // through when a distant planet rasterises to less than a pixel
+    float rim = pow(clamp(0.62 - facing, 1e-4, 1.0), uPower);
     // the glow belongs to the day side; fade it through the terminator
     float day = 0.15 + 0.85 * smoothstep(-0.35, 0.45, dot(vWorldNormal, uSunDir));
-    gl_FragColor = vec4(uColor, 1.0) * rim * uStrength * day;
+    vec3 col = uColor * rim * uStrength * day;
+    gl_FragColor = vec4(min(col, vec3(2.0)), 1.0);
   }
 `;
 

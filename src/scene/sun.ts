@@ -83,10 +83,11 @@ const SUN_FRAG = /* glsl */ `
     vec3 hot  = vec3(1.0, 0.94, 0.78);
     vec3 col = mix(deep, mid, smoothstep(0.15, 0.6, n));
     col = mix(col, hot, smoothstep(0.62, 0.95, n));
-    // limb darkening
-    float facing = clamp(dot(vNormal, vec3(0.0, 0.0, 1.0)), 0.0, 1.0);
+    // limb darkening (epsilon floor guards against driver pow(0, y) NaNs)
+    float facing = clamp(dot(vNormal, vec3(0.0, 0.0, 1.0)), 1e-4, 1.0);
     col *= 0.55 + 0.45 * pow(facing, 0.6);
-    gl_FragColor = vec4(col * 2.1, 1.0); // HDR-ish, feeds bloom
+    // HDR-ish, feeds bloom — bounded so a bad texel can never blow up the mips
+    gl_FragColor = vec4(min(col * 2.1, vec3(6.0)), 1.0);
   }
 `;
 

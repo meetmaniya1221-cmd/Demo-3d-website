@@ -67,7 +67,7 @@ const HZ_VERT = /* glsl */ `
 `;
 
 const HZ_FRAG = /* glsl */ `
-  precision mediump float;
+  precision highp float;
   varying float vRad;
   varying vec3 vWorld;
   uniform vec3 uCamPos;

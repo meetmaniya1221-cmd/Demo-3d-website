@@ -24,21 +24,21 @@ const BELT_VERT = /* glsl */ `
     vec3 pos = ecl * (mapped / r);
     // ecliptic → scene axes (y up)
     vec4 mv = modelViewMatrix * vec4(pos.x, pos.z, -pos.y, 1.0);
-    gl_PointSize = clamp(uSize * 140.0 / -mv.z, 0.5, 2.6);
+    gl_PointSize = clamp(uSize * 140.0 / max(-mv.z, 0.1), 0.5, 2.6);
     gl_Position = projectionMatrix * mv;
     vShade = aShade;
   }
 `;
 
 const BELT_FRAG = /* glsl */ `
-  precision mediump float;
+  precision highp float;
   varying float vShade;
   uniform vec3 uColor;
   uniform float uOpacity;
   void main() {
     vec2 p = gl_PointCoord - 0.5;
     float a = smoothstep(0.5, 0.15, length(p));
-    gl_FragColor = vec4(uColor * vShade, a * uOpacity);
+    gl_FragColor = vec4(uColor * clamp(vShade, 0.0, 1.0), a * uOpacity);
   }
 `;
 
