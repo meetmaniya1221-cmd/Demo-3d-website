@@ -184,7 +184,6 @@ export class App implements TourHost {
   // ------------------------------------------------------------ tour host --
 
   focusBody(id: string, distanceFactor?: number): void {
-    sound.play('whoosh', 0.28);
     const factor = distanceFactor ?? (id === 'sun' ? 4.2 : 5.5);
     this.rig.flyTo(
       () => ({
@@ -196,7 +195,6 @@ export class App implements TourHost {
   }
 
   focusOverview(): void {
-    sound.play('whoosh', 0.22, 0.85);
     this.rig.flyTo(
       () => {
         const dist = 265 * (1 - this.state.scaleT) + 5600 * this.state.scaleT;
