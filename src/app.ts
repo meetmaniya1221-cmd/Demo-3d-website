@@ -230,7 +230,7 @@ export class App implements TourHost {
       this.state.scaleT = this.scaleTarget;
     }
 
-    this.system.update(this.state.simDays, this.state.scaleT, this.elapsed);
+    this.system.update(this.state.simDays, this.state.scaleT, this.elapsed, this.rig.camera.position);
     // camera flights advance on wall-clock time so they finish on schedule
     // even when the GPU is struggling
     this.rig.update(Math.min(rawDt, 0.5));

@@ -59,8 +59,10 @@ export class SolarSystem {
     this.scene.add(new THREE.AmbientLight(0x36495e, 0.7));
   }
 
-  update(simDays: number, scaleT: number, elapsed: number): void {
+  update(simDays: number, scaleT: number, elapsed: number, cameraPos?: THREE.Vector3): void {
     this.sun.update(elapsed, scaleT);
+    // pin the sky to the camera so the stars stay at optical infinity
+    if (cameraPos) this.sky.group.position.copy(cameraPos);
 
     for (const [id, planet] of this.planets) {
       const def = planet.def;
