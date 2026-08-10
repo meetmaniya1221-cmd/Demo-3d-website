@@ -57,9 +57,11 @@ const NOISE_GLSL = /* glsl */ `
 const SUN_VERT = /* glsl */ `
   varying vec3 vPos;
   varying vec3 vNormal;
+  varying vec2 vUv;
   void main() {
     vPos = position;
     vNormal = normalize(normalMatrix * normal);
+    vUv = uv;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -68,7 +70,10 @@ const SUN_FRAG = /* glsl */ `
   precision highp float;
   varying vec3 vPos;
   varying vec3 vNormal;
+  varying vec2 vUv;
   uniform float uTime;
+  uniform sampler2D uMap;
+  uniform float uHasMap;
   ${NOISE_GLSL}
   void main() {
     vec3 p = normalize(vPos);
@@ -83,6 +88,13 @@ const SUN_FRAG = /* glsl */ `
     vec3 hot  = vec3(1.0, 0.94, 0.78);
     vec3 col = mix(deep, mid, smoothstep(0.15, 0.6, n));
     col = mix(col, hot, smoothstep(0.62, 0.95, n));
+    // photographic solar surface, kept alive by noise-warped UVs and modulated
+    // by the animated granulation so the plasma still visibly churns
+    if (uHasMap > 0.5) {
+      vec2 warp = vec2(snoise(p * 5.0 + vec3(t, 0.0, t)), snoise(p * 5.0 - vec3(0.0, t, t))) * 0.006;
+      vec3 tex = texture2D(uMap, vUv + warp).rgb;
+      col = tex * (0.72 + 0.55 * n);
+    }
     // limb darkening (epsilon floor guards against driver pow(0, y) NaNs)
     float facing = clamp(dot(vNormal, vec3(0.0, 0.0, 1.0)), 1e-4, 1.0);
     col *= 0.55 + 0.45 * pow(facing, 0.6);
@@ -103,7 +115,11 @@ export class Sun {
     this.mat = new THREE.ShaderMaterial({
       vertexShader: SUN_VERT,
       fragmentShader: SUN_FRAG,
-      uniforms: { uTime: { value: 0 } },
+      uniforms: {
+        uTime: { value: 0 },
+        uMap: { value: null },
+        uHasMap: { value: 0 },
+      },
     });
     this.mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32), this.mat);
     this.mesh.name = 'sun';
@@ -154,5 +170,11 @@ export class Sun {
 
   get radius(): number {
     return this.mesh.scale.x;
+  }
+
+  /** Swap in the photographic solar surface (progressive enhancement). */
+  setSurfaceMap(map: THREE.Texture): void {
+    this.mat.uniforms.uMap.value = map;
+    this.mat.uniforms.uHasMap.value = 1;
   }
 }

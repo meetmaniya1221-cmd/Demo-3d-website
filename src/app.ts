@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 import { SolarSystem } from './scene/system';
+import { enhanceSurfaces } from './scene/surfaces';
 import { CameraRig } from './scene/camera';
 import type { GeneratedTextures } from './scene/textures';
 import { AppState } from './sim/state';
@@ -163,6 +164,9 @@ export class App implements TourHost {
 
     this.hud.updateClock();
     this.renderer.setAnimationLoop(() => this.frame());
+
+    // stream in the photographic AI surface maps over the procedural ones
+    enhanceSurfaces(this.system);
   }
 
   // ------------------------------------------------------------ tour host --

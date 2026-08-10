@@ -186,6 +186,14 @@ export class Planet {
     }
   }
 
+  /** Swap in a higher-quality surface map (progressive enhancement). */
+  setSurfaceMap(map: THREE.Texture, roughnessMap?: THREE.Texture | null): void {
+    const mat = this.surface.material as THREE.MeshStandardMaterial;
+    mat.map = map;
+    if (roughnessMap !== undefined) mat.roughnessMap = roughnessMap ?? null;
+    mat.needsUpdate = true;
+  }
+
   update(simDays: number, scaleT: number): void {
     const r = displayRadius(this.def.id, this.def.facts.diameterKm, scaleT);
     this.currentRadius = r;
