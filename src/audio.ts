@@ -6,7 +6,7 @@
  * silent, sound is an enhancement, never a dependency.
  */
 
-const FILES = ['click', 'select', 'back', 'open', 'ambient'] as const;
+const FILES = ['click', 'select', 'back', 'ambient'] as const;
 type SoundName = (typeof FILES)[number];
 
 const MUTE_KEY = 'orrery-muted';

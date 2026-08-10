@@ -65,7 +65,6 @@ abstract class Overlay {
   open(): void {
     window.clearTimeout(this.hideTimer);
     this.root.hidden = false;
-    sound.play('open', 0.4);
     // next frame so the opacity transition runs
     requestAnimationFrame(() => this.root.classList.add('open'));
     this.restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
