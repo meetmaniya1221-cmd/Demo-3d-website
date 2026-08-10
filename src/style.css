@@ -41,7 +41,7 @@
   src: url('./fonts/rajdhani-700.woff2') format('woff2');
 }
 
-/* ORRERY — design system. Deep-space minimal: thin lines, quiet type, one accent. */
+/* ORRERY - design system. Deep-space minimal: thin lines, quiet type, one accent. */
 
 :root {
   --bg: #04060d;
@@ -1317,7 +1317,7 @@ input[type='range']::-moz-range-thumb {
 }
 
 /* ==================================================================== */
-/* FUTURISTIC THEME LAYER — sci-fi HUD restyle applied over the base    */
+/* FUTURISTIC THEME LAYER - sci-fi HUD restyle applied over the base    */
 /* ==================================================================== */
 
 :root {
@@ -1336,7 +1336,7 @@ body {
   font-size: 15px;
 }
 
-/* viewport corner brackets — the HUD frame */
+/* viewport corner brackets - the HUD frame */
 #app::before,
 #app::after,
 body::before,

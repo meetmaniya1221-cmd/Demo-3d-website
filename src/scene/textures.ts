@@ -1,6 +1,6 @@
 /**
  * Procedural texture painter. Every surface in the app is generated here at
- * load time on 2D canvases — no downloaded assets. Each painter writes an
+ * load time on 2D canvases - no downloaded assets. Each painter writes an
  * equirectangular map (seamless on the x axis via periodic noise).
  */
 import * as THREE from 'three';
@@ -241,7 +241,7 @@ function paintMars(): HTMLCanvasElement {
     return col;
   });
   craters(c, 11, 110, 16, 0.8);
-  // Valles Marineris — a dark canyon streak just south of the equator
+  // Valles Marineris - a dark canyon streak just south of the equator
   const ctx = c.getContext('2d')!;
   ctx.strokeStyle = 'rgba(40,18,10,0.5)';
   ctx.lineCap = 'round';
@@ -426,8 +426,8 @@ export function makeRingTexture(kind: 'saturn' | 'uranus'): THREE.CanvasTexture 
     let alpha = 0;
     let col: RGB = hex(0xcbb695);
     if (kind === 'saturn') {
-      if (r < 0.14) alpha = 0.12 + 0.1 * r; // C ring — translucent
-      else if (r < 0.45) alpha = 0.75 + 0.2 * Math.sin(r * 40); // B ring — bright
+      if (r < 0.14) alpha = 0.12 + 0.1 * r; // C ring - translucent
+      else if (r < 0.45) alpha = 0.75 + 0.2 * Math.sin(r * 40); // B ring - bright
       else if (r < 0.5) alpha = 0.06; // Cassini division
       else if (r < 0.86) alpha = r > 0.76 && r < 0.784 ? 0.08 : 0.5; // A ring + Encke gap
       else if (r < 0.9) alpha = 0.05;
@@ -435,7 +435,7 @@ export function makeRingTexture(kind: 'saturn' | 'uranus'): THREE.CanvasTexture 
       alpha *= 0.62 + 0.38 * n.noise2(r * 160, 0.5);
       col = lerpRGB(hex(0xb49f80), hex(0xe8dcc2), n.noise2(r * 24, 3.5));
     } else {
-      // Uranus — a few narrow charcoal ringlets
+      // Uranus - a few narrow charcoal ringlets
       const lines = [0.18, 0.34, 0.52, 0.66, 0.8, 0.94];
       for (const L of lines) alpha += 0.5 * Math.exp(-Math.pow((r - L) * 140, 2));
       alpha = Math.min(0.55, alpha);

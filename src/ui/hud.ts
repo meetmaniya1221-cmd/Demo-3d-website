@@ -2,6 +2,7 @@
 import { SUN, PLANETS } from '../data/bodies';
 import { AppState, SPEED_PRESETS } from '../sim/state';
 import { fmtSimDate } from './format';
+import { sound } from '../audio';
 
 const PLAY_ICON =
   '<svg width="11" height="12" viewBox="0 0 11 12" fill="currentColor" aria-hidden="true"><path d="M0 0l11 6-11 6z"/></svg>';
@@ -58,7 +59,22 @@ export class Hud {
       explorer: mkScale('Explorer', 'explorer'),
       true: mkScale('True scale', 'true'),
     };
-    actions.append(tourBtn, compareBtn, gravityBtn, scaleSwitch);
+
+    const muteBtn = document.createElement('button');
+    muteBtn.className = 'chip';
+    const syncMute = () => {
+      muteBtn.textContent = sound.muted ? '🔇' : '🔊';
+      muteBtn.setAttribute('aria-label', sound.muted ? 'Unmute sound' : 'Mute sound');
+      muteBtn.setAttribute('aria-pressed', String(!sound.muted));
+    };
+    muteBtn.addEventListener('click', () => {
+      sound.init();
+      sound.setMuted(!sound.muted);
+      syncMute();
+    });
+    syncMute();
+
+    actions.append(tourBtn, compareBtn, gravityBtn, scaleSwitch, muteBtn);
     parent.appendChild(actions);
 
     // planet rail

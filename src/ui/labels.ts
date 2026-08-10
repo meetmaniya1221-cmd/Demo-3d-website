@@ -1,4 +1,4 @@
-/** Screen-space body labels, projected every frame. Clickable — they are the
+/** Screen-space body labels, projected every frame. Clickable - they are the
  *  main way to find planets in true-scale mode, where bodies shrink to dots. */
 import * as THREE from 'three';
 import { SUN, PLANETS, MOON } from '../data/bodies';

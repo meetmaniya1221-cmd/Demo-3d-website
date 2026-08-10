@@ -4,7 +4,7 @@
  * Explorer view (t = 0): distances compressed with a power law and planet
  * sizes exaggerated so the whole system is browsable at once.
  * True scale (t = 1): 1 AU = 100 scene units and every body has its real
- * proportional size — which makes planets nearly invisible. That emptiness
+ * proportional size - which makes planets nearly invisible. That emptiness
  * is deliberate and is called out in the UI.
  */
 import { AU_KM } from '../data/bodies';

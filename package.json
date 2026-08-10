@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Orrery — an interactive 3D Solar System educational experience",
+  "description": "Orrery - an interactive 3D Solar System educational experience",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

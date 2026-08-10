@@ -8,6 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SolarSystem } from './scene/system';
 import { enhanceSurfaces } from './scene/surfaces';
 import { CameraRig } from './scene/camera';
+import { sound } from './audio';
 import type { GeneratedTextures } from './scene/textures';
 import { AppState } from './sim/state';
 import { mapDistanceAU } from './sim/scale';
@@ -117,9 +118,11 @@ export class App implements TourHost {
       if (id) {
         // choosing a destination mid-tour means leaving the tour
         if (this.tour.active) this.tour.dismiss();
+        sound.play('select', 0.45);
         this.focusBody(id);
-        this.announce(`${this.system.bodyDef(id)?.name ?? 'Sun'} selected — details panel opened.`);
+        this.announce(`${this.system.bodyDef(id)?.name ?? 'Sun'} selected, details panel opened.`);
       } else {
+        sound.play('back', 0.4);
         this.focusOverview();
       }
     });
@@ -131,7 +134,7 @@ export class App implements TourHost {
         if (!this.state.showLabels) this.state.setToggle('showLabels', true);
         this.toast(
           'True scale',
-          'Sizes and distances are now physically proportional. The emptiness you see is real — use the labels to find the planets.',
+          'Sizes and distances are now physically proportional. The emptiness you see is real - use the labels to find the planets.',
         );
       } else {
         this.toast(
@@ -148,7 +151,16 @@ export class App implements TourHost {
     // ---- input ----
     const canvas = this.renderer.domElement;
     canvas.addEventListener('pointerdown', (e) => {
+      sound.init();
       this.downPos = { x: e.clientX, y: e.clientY, t: performance.now() };
+    });
+    // soft tick for generic UI buttons (bodies get their own select sound)
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLElement)) return;
+      const btn = t.closest('button');
+      if (!btn || btn.closest('.body-label') || btn.closest('.rail')) return;
+      sound.play('click', 0.22);
     });
     canvas.addEventListener('pointerup', (e) => {
       if (!this.downPos) return;
@@ -172,6 +184,7 @@ export class App implements TourHost {
   // ------------------------------------------------------------ tour host --
 
   focusBody(id: string, distanceFactor?: number): void {
+    sound.play('whoosh', 0.28);
     const factor = distanceFactor ?? (id === 'sun' ? 4.2 : 5.5);
     this.rig.flyTo(
       () => ({
@@ -183,6 +196,7 @@ export class App implements TourHost {
   }
 
   focusOverview(): void {
+    sound.play('whoosh', 0.22, 0.85);
     this.rig.flyTo(
       () => {
         const dist = 265 * (1 - this.state.scaleT) + 5600 * this.state.scaleT;
@@ -218,7 +232,7 @@ export class App implements TourHost {
     this.raycaster.setFromCamera(this.pointer, this.rig.camera);
     const hits = this.raycaster.intersectObjects(this.system.pickables, false);
     if (hits.length > 0) {
-      // at true scale the Moon's pick proxy sits inside Earth's — prefer the
+      // at true scale the Moon's pick proxy sits inside Earth's - prefer the
       // Moon when the ray passes through both at nearly the same depth
       let name = hits[0].object.name;
       if (name === 'earth') {
@@ -300,7 +314,7 @@ export class App implements TourHost {
     }
 
     // adaptive resolution: EMA of frame time with two-way hysteresis. Changes
-    // recreate every post-processing target, so they are rate-limited — some
+    // recreate every post-processing target, so they are rate-limited - some
     // drivers show a garbage frame when targets churn mid-session.
     this.frameTimeEma += (rawDt * 1000 - this.frameTimeEma) * 0.05;
     const pr = this.renderer.getPixelRatio();
@@ -371,6 +385,7 @@ export class App implements TourHost {
 
   /** Landing-screen entry: sweep from the far establishing shot to overview. */
   enter(withTour: boolean): void {
+    sound.init();
     document.body.classList.remove('pre-entry');
     if (withTour) this.tour.start();
     else this.focusOverview();

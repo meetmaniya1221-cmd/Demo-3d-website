@@ -1,5 +1,6 @@
 /** Modal overlays: size/distance comparison and the gravity lab. */
 import { SUN, PLANETS, MOON, EARTH_GRAVITY, type BodyDef } from '../data/bodies';
+import { sound } from '../audio';
 
 function colorOf(def: BodyDef): string {
   return `#${def.color.toString(16).padStart(6, '0')}`;
@@ -64,6 +65,7 @@ abstract class Overlay {
   open(): void {
     window.clearTimeout(this.hideTimer);
     this.root.hidden = false;
+    sound.play('open', 0.4);
     // next frame so the opacity transition runs
     requestAnimationFrame(() => this.root.classList.add('open'));
     this.restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -72,6 +74,7 @@ abstract class Overlay {
   }
 
   close(): void {
+    if (this.isOpen) sound.play('back', 0.3);
     this.root.classList.remove('open');
     this.hideTimer = window.setTimeout(() => {
       this.root.hidden = true;
@@ -160,7 +163,7 @@ export class CompareOverlay extends Overlay {
     const note = document.createElement('p');
     note.className = 'overlay-note';
     note.innerHTML =
-      'Every diameter below shares one scale. The Sun is so large that only its edge fits — ' +
+      'Every diameter below shares one scale. The Sun is so large that only its edge fits - ' +
       '<b>1.3 million Earths</b> would fit inside it. Numbers show each world’s diameter and how many Earths would span it.';
     this.bodyEl.appendChild(note);
 
@@ -249,7 +252,7 @@ export class CompareOverlay extends Overlay {
     note.className = 'overlay-note';
     note.innerHTML =
       'The Solar System is mostly <b>empty space</b>. Below, distance is to scale (sizes are not). ' +
-      'Scroll right and watch how far apart the outer planets really are — sunlight itself needs ' +
+      'Scroll right and watch how far apart the outer planets really are - sunlight itself needs ' +
       '<b>4 hours</b> to reach Neptune.';
     this.bodyEl.appendChild(note);
 
@@ -374,9 +377,9 @@ export class GravityOverlay extends Overlay {
     super(parent, 'Gravity lab', 'gravity-title');
     this.bodyEl.innerHTML = `
       <p class="overlay-note">
-        Your <b>mass</b> never changes — it is the amount of matter in you. Your <b>weight</b> is the
+        Your <b>mass</b> never changes - it is the amount of matter in you. Your <b>weight</b> is the
         pull of gravity on that mass, so it depends on which world you stand on. Set your Earth
-        weight and see what a bathroom scale would read elsewhere — and how high the same jump
+        weight and see what a bathroom scale would read elsewhere - and how high the same jump
         would carry you.
       </p>
       <div class="gravity-controls">
@@ -389,7 +392,7 @@ export class GravityOverlay extends Overlay {
       <div class="gravity-grid"></div>
       <p class="overlay-note" style="margin-top:14px;margin-bottom:0">
         Bars show each world's surface gravity relative to Earth (the Sun's is off the
-        scale — its gravity is 28× ours, which is why you could not stand there).
+        scale - its gravity is 28× ours, which is why you could not stand there).
       </p>
     `;
     this.grid = this.bodyEl.querySelector('.gravity-grid')!;

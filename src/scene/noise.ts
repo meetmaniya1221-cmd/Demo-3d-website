@@ -68,7 +68,7 @@ export class ValueNoise {
     return sum / norm;
   }
 
-  /** Ridged fBm in [0,1] — good for mountains / turbulent bands. */
+  /** Ridged fBm in [0,1] - good for mountains / turbulent bands. */
   ridged(x: number, y: number, octaves = 5, periodX = 0): number {
     let amp = 0.5;
     let freq = 1;

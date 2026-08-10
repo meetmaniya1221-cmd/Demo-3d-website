@@ -4,7 +4,7 @@
  * surfaces. Planet, Sun, Moon and ring maps are real mission imagery from
  * Solar System Scope (CC BY 4.0, based on NASA data); Earth's map is
  * AI-generated with Higgsfield. If any file fails to load, the procedural
- * painter's texture simply stays — nothing breaks offline.
+ * painter's texture simply stays - nothing breaks offline.
  */
 import * as THREE from 'three';
 import type { SolarSystem } from './system';
@@ -82,7 +82,7 @@ export function enhanceSurfaces(system: SolarSystem): void {
       },
       undefined,
       () => {
-        // procedural surface stays — enhancement only
+        // procedural surface stays - enhancement only
       },
     );
   }

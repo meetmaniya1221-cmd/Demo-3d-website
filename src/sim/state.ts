@@ -1,4 +1,4 @@
-/** Central app state with a tiny event emitter — the single source of truth
+/** Central app state with a tiny event emitter - the single source of truth
  *  that both the 3D scene and the DOM UI observe. */
 import { daysSinceJ2000 } from '../data/bodies';
 

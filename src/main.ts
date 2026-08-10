@@ -36,7 +36,7 @@ function buildLanding(root: HTMLElement, app: App): void {
   landing.innerHTML = `
     <div class="landing-kicker">An interactive journey</div>
     <h1 class="landing-title">ORRERY</h1>
-    <p class="landing-sub">Fly between the planets, bend time, and discover how big — and how empty — the Solar System really is.</p>
+    <p class="landing-sub">Fly between the planets, bend time, and discover how big - and how empty - the Solar System really is.</p>
     <div class="landing-actions">
       <button class="btn primary" data-act="explore">Explore freely</button>
       <button class="btn" data-act="tour">Take the guided tour</button>

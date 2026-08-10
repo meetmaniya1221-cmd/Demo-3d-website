@@ -98,7 +98,7 @@ const SUN_FRAG = /* glsl */ `
     // limb darkening (epsilon floor guards against driver pow(0, y) NaNs)
     float facing = clamp(dot(vNormal, vec3(0.0, 0.0, 1.0)), 1e-4, 1.0);
     col *= 0.55 + 0.45 * pow(facing, 0.6);
-    // HDR-ish, feeds bloom — bounded so a bad texel can never blow up the mips
+    // HDR-ish, feeds bloom - bounded so a bad texel can never blow up the mips
     gl_FragColor = vec4(min(col * 2.1, vec3(6.0)), 1.0);
   }
 `;
