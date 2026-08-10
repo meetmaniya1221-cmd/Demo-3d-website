@@ -15,7 +15,7 @@ import { InfoPanel } from './ui/infopanel';
 import { Labels } from './ui/labels';
 import { CompareOverlay, GravityOverlay } from './ui/overlays';
 import { Tour, type TourHost } from './ui/tour';
-import { SUN, PLANETS } from './data/bodies';
+import { PLANETS } from './data/bodies';
 
 const CYCLE_IDS = ['sun', ...PLANETS.map((p) => p.id)];
 
@@ -378,7 +378,6 @@ export class App implements TourHost {
       renderer: this.renderer,
       camera: this.rig.camera,
       isFlying: () => this.rig.isFlying,
-      sun: SUN.name,
     };
   }
 }
