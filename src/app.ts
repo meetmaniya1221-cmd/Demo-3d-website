@@ -19,6 +19,9 @@ import { SUN, PLANETS } from './data/bodies';
 
 const CYCLE_IDS = ['sun', ...PLANETS.map((p) => p.id)];
 
+const REDUCED_MOTION =
+  typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 export class App implements TourHost {
   readonly state = new AppState();
   private renderer: THREE.WebGLRenderer;
@@ -33,7 +36,10 @@ export class App implements TourHost {
   private gravity: GravityOverlay;
   private tour: Tour;
   private toastEl: HTMLElement;
+  private liveRegion!: HTMLElement;
   private toastTimer = 0;
+  private frameTimeEma = 16;
+  private goodFrames = 0;
   private clock = new THREE.Clock();
   private elapsed = 0;
   private scaleTarget = 0;
@@ -45,20 +51,32 @@ export class App implements TourHost {
   private tmpV = new THREE.Vector3();
 
   constructor(root: HTMLElement, textures: GeneratedTextures) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // MSAA happens on the composer's render target, so the default framebuffer
+    // does not need (and would waste) its own antialiasing
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.domElement.className = 'scene';
-    this.renderer.domElement.setAttribute('aria-label', '3D view of the Solar System');
+    this.renderer.domElement.setAttribute('role', 'img');
+    this.renderer.domElement.setAttribute(
+      'aria-label',
+      '3D view of the Solar System. Use the Bodies list or arrow keys to move between worlds.',
+    );
     root.appendChild(this.renderer.domElement);
 
     this.system = new SolarSystem(textures);
     this.rig = new CameraRig(this.renderer.domElement);
     this.rig.camera.position.set(40, 320, 720);
 
-    this.composer = new EffectComposer(this.renderer);
+    const pr = this.renderer.getPixelRatio();
+    const msaaTarget = new THREE.WebGLRenderTarget(
+      window.innerWidth * pr,
+      window.innerHeight * pr,
+      { type: THREE.HalfFloatType, samples: 4 },
+    );
+    this.composer = new EffectComposer(this.renderer, msaaTarget);
     this.composer.addPass(new RenderPass(this.system.scene, this.rig.camera));
     this.bloom = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
@@ -86,17 +104,31 @@ export class App implements TourHost {
     this.toastEl.setAttribute('role', 'status');
     root.appendChild(this.toastEl);
 
+    this.liveRegion = document.createElement('div');
+    this.liveRegion.setAttribute('aria-live', 'polite');
+    this.liveRegion.style.cssText =
+      'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap';
+    root.appendChild(this.liveRegion);
+
     // ---- state wiring ----
     this.state.on('select', (id) => {
       this.system.setHighlightedOrbit(id);
       this.updateViewOffset();
-      if (id) this.focusBody(id);
-      else this.focusOverview();
+      if (id) {
+        // choosing a destination mid-tour means leaving the tour
+        if (this.tour.active) this.tour.dismiss();
+        this.focusBody(id);
+        this.announce(`${this.system.bodyDef(id)?.name ?? 'Sun'} selected — details panel opened.`);
+      } else {
+        this.focusOverview();
+      }
     });
     this.state.on('tour', () => this.updateViewOffset());
     this.state.on('scale', (mode) => {
       this.scaleTarget = mode === 'true' ? 1 : 0;
       if (mode === 'true') {
+        // labels are the only way to find planets at true scale
+        if (!this.state.showLabels) this.state.setToggle('showLabels', true);
         this.toast(
           'True scale',
           'Sizes and distances are now physically proportional. The emptiness you see is real — use the labels to find the planets.',
@@ -183,24 +215,38 @@ export class App implements TourHost {
     this.raycaster.setFromCamera(this.pointer, this.rig.camera);
     const hits = this.raycaster.intersectObjects(this.system.pickables, false);
     if (hits.length > 0) {
-      this.state.select(hits[0].object.name);
+      // at true scale the Moon's pick proxy sits inside Earth's — prefer the
+      // Moon when the ray passes through both at nearly the same depth
+      let name = hits[0].object.name;
+      if (name === 'earth') {
+        const moonHit = hits.find((hit) => hit.object.name === 'moon');
+        if (moonHit && moonHit.distance < hits[0].distance + 0.4) name = 'moon';
+      }
+      this.state.select(name);
     } else if (this.state.selectedId) {
       this.state.select(null);
     }
   }
 
   private onKey(e: KeyboardEvent): void {
-    if (e.target instanceof HTMLInputElement) return;
+    // Escape always works, even from inside inputs/sliders
+    if (e.key === 'Escape') {
+      if (this.compare.isOpen) this.compare.close();
+      else if (this.gravity.isOpen) this.gravity.close();
+      else if (this.tour.active) this.tour.end();
+      else if (this.state.selectedId) this.state.select(null);
+      return;
+    }
+    // don't steal keys from focused interactive elements (Space activates
+    // buttons, arrows drive sliders)
+    const t = e.target;
+    if (t instanceof HTMLElement && t.closest('button, input, select, textarea, a, [contenteditable]')) {
+      return;
+    }
     switch (e.key) {
       case ' ':
         e.preventDefault();
         this.state.setPaused(!this.state.paused);
-        break;
-      case 'Escape':
-        if (this.compare.isOpen) this.compare.close();
-        else if (this.gravity.isOpen) this.gravity.close();
-        else if (this.tour.active) this.tour.end();
-        else if (this.state.selectedId) this.state.select(null);
         break;
       case 'ArrowRight':
       case 'ArrowLeft': {
@@ -222,9 +268,11 @@ export class App implements TourHost {
     this.elapsed += dt;
     this.state.tick(dt);
 
-    // animate the explorer ↔ true-scale morph
+    // animate the explorer ↔ true-scale morph (snap under reduced motion)
     const diff = this.scaleTarget - this.state.scaleT;
-    if (Math.abs(diff) > 0.0005) {
+    if (REDUCED_MOTION) {
+      this.state.scaleT = this.scaleTarget;
+    } else if (Math.abs(diff) > 0.0005) {
       this.state.scaleT += diff * Math.min(1, dt * 1.6);
     } else if (this.state.scaleT !== this.scaleTarget) {
       this.state.scaleT = this.scaleTarget;
@@ -234,7 +282,8 @@ export class App implements TourHost {
     // camera flights advance on wall-clock time so they finish on schedule
     // even when the GPU is struggling
     this.rig.update(Math.min(rawDt, 0.5));
-    this.labels.update(this.system, this.rig.camera, this.state);
+    const panelInset = this.state.selectedId && window.innerWidth > 720 ? 372 : 0;
+    this.labels.update(this.system, this.rig.camera, this.state, panelInset);
 
     this.liveTimer += dt;
     if (this.liveTimer > 1) {
@@ -247,41 +296,63 @@ export class App implements TourHost {
       }
     }
 
-    // adaptive resolution: back off pixel ratio if frames stay slow
-    if (dt > 0.034) {
-      if (++this.slowFrames > 90) {
-        const pr = this.renderer.getPixelRatio();
-        if (pr > 1) {
-          this.renderer.setPixelRatio(Math.max(1, pr - 0.25));
-          this.composer.setPixelRatio(this.renderer.getPixelRatio());
-        }
+    // adaptive resolution: EMA of frame time with two-way hysteresis
+    this.frameTimeEma += (rawDt * 1000 - this.frameTimeEma) * 0.05;
+    const pr = this.renderer.getPixelRatio();
+    const maxPr = Math.min(window.devicePixelRatio || 1, 2);
+    if (this.frameTimeEma > 34 && pr > 1) {
+      if (++this.slowFrames > 45) {
+        this.setPixelRatio(Math.max(1, pr - 0.25));
         this.slowFrames = 0;
+        this.goodFrames = 0;
       }
-    } else if (this.slowFrames > 0) {
-      this.slowFrames--;
+    } else if (this.frameTimeEma < 20 && pr < maxPr) {
+      this.slowFrames = 0;
+      if (++this.goodFrames > 300) {
+        this.setPixelRatio(Math.min(maxPr, pr + 0.25));
+        this.goodFrames = 0;
+      }
+    } else {
+      this.slowFrames = 0;
+      this.goodFrames = 0;
     }
 
     this.composer.render();
+  }
+
+  private setPixelRatio(value: number): void {
+    this.renderer.setPixelRatio(value);
+    this.composer.setPixelRatio(value);
   }
 
   private resize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
     this.renderer.setSize(w, h);
+    // composer.setSize resizes every pass (including bloom) in device pixels
     this.composer.setSize(w, h);
-    this.bloom.setSize(w, h);
     this.rig.resize(w, h);
     this.updateViewOffset();
   }
 
-  /** On small screens the info panel / tour card covers the lower half, so
-   *  shift the projection centre to keep the focused body visible above it. */
+  private announce(text: string): void {
+    this.liveRegion.textContent = text;
+  }
+
+  /** Panels cover part of the viewport, so shift the projection centre to keep
+   *  the focused body inside the uncovered area: bottom sheet on small screens,
+   *  right-hand info panel on large ones. */
   private updateViewOffset(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const covered = w <= 720 && (this.state.selectedId !== null || this.state.tourStep !== null);
-    if (covered) this.rig.camera.setViewOffset(w, h, 0, h * 0.16, w, h);
-    else this.rig.camera.clearViewOffset();
+    const mobile = w <= 720;
+    if (mobile && (this.state.selectedId !== null || this.state.tourStep !== null)) {
+      this.rig.camera.setViewOffset(w, h, 0, h * 0.16, w, h);
+    } else if (!mobile && this.state.selectedId !== null) {
+      this.rig.camera.setViewOffset(w, h, 150, 0, w, h);
+    } else {
+      this.rig.camera.clearViewOffset();
+    }
   }
 
   private toast(title: string, text: string): void {

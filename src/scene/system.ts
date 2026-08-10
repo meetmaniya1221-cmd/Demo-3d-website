@@ -55,8 +55,9 @@ export class SolarSystem {
     this.hz.mesh.visible = false;
     this.scene.add(this.hz.mesh);
 
-    // faint fill so night sides stay readable without flattening the lighting
-    this.scene.add(new THREE.AmbientLight(0x36495e, 0.7));
+    // fill so night sides read as dim spheres, not black cutouts, while the
+    // lit side keeps a clear terminator
+    this.scene.add(new THREE.AmbientLight(0x445870, 1.7));
   }
 
   update(simDays: number, scaleT: number, elapsed: number, cameraPos?: THREE.Vector3): void {
@@ -82,6 +83,7 @@ export class SolarSystem {
       for (const orbit of this.orbitLines.values()) orbit.rebuild(scaleT);
       this.hz.update(scaleT);
     }
+    if (cameraPos) this.hz.updateViewFade(cameraPos);
   }
 
   setOrbitsVisible(v: boolean): void {
@@ -93,7 +95,8 @@ export class SolarSystem {
   }
 
   setHighlightedOrbit(id: string | null): void {
-    for (const [pid, o] of this.orbitLines) o.setHighlight(pid === id);
+    // while a body is focused, other orbits recede so they don't slice the shot
+    for (const [pid, o] of this.orbitLines) o.setHighlight(pid === id, id !== null);
   }
 
   bodyDef(id: string): BodyDef | undefined {

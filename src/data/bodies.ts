@@ -46,7 +46,7 @@ export interface BodyDef {
 
 export const AU_KM = 149_597_870.7;
 export const LIGHT_KM_PER_S = 299_792.458;
-export const EARTH_GRAVITY = 9.81;
+export const EARTH_GRAVITY = 9.8;
 
 export const SUN: BodyDef = {
   id: 'sun',
@@ -198,7 +198,7 @@ export const PLANETS: BodyDef[] = [
     },
     quickFacts: [
       'Olympus Mons is ~22 km tall — two and a half times Mount Everest.',
-      'A Mars day is 24 h 37 m — rover teams call it a “sol”.',
+      'A Mars day (sol) is 24 h 40 m — just slightly longer than ours.',
       'Its red colour is iron oxide: the planet is literally rusty.',
     ],
   },
@@ -217,7 +217,7 @@ export const PLANETS: BodyDef[] = [
       orbitDays: 4331,
       distanceAU: 5.204,
       tempMeanC: -110,
-      moons: 95,
+      moons: 101,
       axialTiltDeg: 3.1,
     },
     overview:
@@ -244,10 +244,10 @@ export const PLANETS: BodyDef[] = [
       gravity: 9.0,
       rotationHours: 10.656,
       dayLengthHours: 10.7,
-      orbitDays: 10_747,
+      orbitDays: 10_759,
       distanceAU: 9.573,
       tempMeanC: -140,
-      moons: 274,
+      moons: 285,
       axialTiltDeg: 26.7,
     },
     overview:
@@ -257,7 +257,7 @@ export const PLANETS: BodyDef[] = [
       text: 'Every ring particle is a tiny moon on its own orbit. Inner particles orbit faster than outer ones, and small shepherd moons sculpt the gaps — the rings are gravity made visible.',
     },
     quickFacts: [
-      'With 274 known moons, Saturn has more than every other planet combined.',
+      'With 285 known moons, Saturn has more than every other planet combined.',
       'Its average density is less than water’s.',
       'The rings may be young — perhaps only a few hundred million years old.',
     ],
@@ -274,10 +274,10 @@ export const PLANETS: BodyDef[] = [
       gravity: 8.7,
       rotationHours: -17.24,
       dayLengthHours: 17.2,
-      orbitDays: 30_589,
+      orbitDays: 30_685,
       distanceAU: 19.191,
       tempMeanC: -195,
-      moons: 28,
+      moons: 29,
       axialTiltDeg: 97.8,
     },
     overview:
@@ -304,7 +304,7 @@ export const PLANETS: BodyDef[] = [
       gravity: 11.0,
       rotationHours: 16.11,
       dayLengthHours: 16.1,
-      orbitDays: 59_800,
+      orbitDays: 60_190,
       distanceAU: 30.07,
       tempMeanC: -200,
       moons: 16,
@@ -359,7 +359,7 @@ export const MOON: BodyDef = {
 export const MOON_DIST_KM = 384_400;
 export const MOON_PERIOD_DAYS = 27.322;
 
-/** Conservative-to-optimistic habitable zone bounds, AU. */
+/** Conservative habitable-zone bounds (Kasting 1993 / Kopparapu et al. 2013), AU. */
 export const HZ_INNER_AU = 0.95;
 export const HZ_OUTER_AU = 1.67;
 

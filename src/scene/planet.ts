@@ -185,7 +185,14 @@ export class Planet {
     const r = displayRadius(this.def.id, this.def.facts.diameterKm, scaleT);
     this.currentRadius = r;
     this.sizeGroup.scale.setScalar(r);
-    this.hit.scale.setScalar(Math.max(r * 1.6, this.def.id === 'moon' ? 0.3 : 1.0));
+    // pick-proxy floor: generous, but for Earth capped below the Moon's orbit
+    // so the Moon stays clickable at true scale
+    let hitFloor = 1.0;
+    if (this.def.id === 'earth') {
+      const moonDist = MOON_EXPLORER_DIST * (1 - scaleT) + (MOON_DIST_KM / AU_KM) * TRUE_UNITS_PER_AU * scaleT;
+      hitFloor = Math.min(1.0, moonDist * 0.55);
+    }
+    this.hit.scale.setScalar(Math.max(r * 1.6, hitFloor));
 
     // keep the atmosphere's day side pointed at the Sun (which sits at origin)
     if (this.atmoMat) {
@@ -210,7 +217,7 @@ export class Planet {
       // tidal lock: same face always toward Earth
       this.moonMesh.rotation.y = ang + Math.PI;
       this.moonHit.position.copy(this.moonMesh.position);
-      this.moonHit.scale.setScalar(Math.max(moonR * 1.6, 0.3));
+      this.moonHit.scale.setScalar(Math.max(moonR * 1.6, 0.3 * (1 - scaleT) + 0.1 * scaleT));
     }
   }
 

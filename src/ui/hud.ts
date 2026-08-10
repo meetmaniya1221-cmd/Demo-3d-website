@@ -116,6 +116,7 @@ export class Hud {
     this.speedSlider.step = '1';
     this.speedSlider.value = String(state.speedIndex);
     this.speedSlider.setAttribute('aria-label', 'Simulation speed');
+    this.speedSlider.setAttribute('aria-valuetext', SPEED_PRESETS[state.speedIndex].label);
     this.speedSlider.addEventListener('input', () =>
       state.setSpeedIndex(Number(this.speedSlider.value)),
     );
@@ -140,6 +141,7 @@ export class Hud {
     });
     state.on('speed', (i) => {
       this.speedSlider.value = String(i);
+      this.speedSlider.setAttribute('aria-valuetext', SPEED_PRESETS[i].label);
       this.speedLabel.textContent = SPEED_PRESETS[i].label;
     });
     state.on('select', (id) => this.syncSelection(id));
@@ -160,13 +162,20 @@ export class Hud {
   }
 
   private syncSelection(id: string | null): void {
-    for (const [bid, btn] of this.railButtons) btn.classList.toggle('active', bid === id);
+    for (const [bid, btn] of this.railButtons) {
+      const active = bid === id;
+      btn.classList.toggle('active', active);
+      if (active) btn.setAttribute('aria-current', 'true');
+      else btn.removeAttribute('aria-current');
+    }
   }
 
   private syncScale(): void {
     const mode = this.state.scaleMode;
     this.scaleButtons.explorer.classList.toggle('active', mode === 'explorer');
+    this.scaleButtons.explorer.setAttribute('aria-pressed', String(mode === 'explorer'));
     this.scaleButtons.true.classList.toggle('active', mode === 'true');
+    this.scaleButtons.true.setAttribute('aria-pressed', String(mode === 'true'));
   }
 
   private syncToggles(): void {

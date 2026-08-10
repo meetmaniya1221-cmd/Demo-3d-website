@@ -8,7 +8,7 @@
   --line-strong: rgba(158, 189, 255, 0.3);
   --text: #dde6f4;
   --text-dim: #8494b0;
-  --text-faint: #5a6a86;
+  --text-faint: #76869f;
   --accent: #7fd4ff;
   --accent-soft: rgba(127, 212, 255, 0.12);
   --warm: #ffc46b;
@@ -56,6 +56,15 @@ button {
   background: none;
   border: none;
   cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.scale-switch button:focus-visible {
+  outline-offset: -2px;
 }
 
 ::-webkit-scrollbar {
@@ -140,7 +149,9 @@ button {
   justify-content: center;
   gap: 26px;
   text-align: center;
-  background: radial-gradient(ellipse at 50% 65%, rgba(4, 6, 13, 0) 0%, rgba(4, 6, 13, 0.72) 100%);
+  background:
+    radial-gradient(ellipse 680px 460px at 50% 48%, rgba(4, 6, 13, 0.55), transparent 72%),
+    radial-gradient(ellipse at 50% 65%, rgba(4, 6, 13, 0) 0%, rgba(4, 6, 13, 0.72) 100%);
   transition: opacity 0.9s ease;
   padding: 24px;
 }
@@ -168,9 +179,10 @@ button {
 
 .landing-sub {
   max-width: 420px;
-  color: var(--text-dim);
+  color: var(--text);
   font-size: 15px;
   font-weight: 300;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
 }
 
 .landing-actions {
@@ -215,9 +227,14 @@ button {
 .landing-hint {
   position: absolute;
   bottom: 28px;
+  left: 24px;
+  right: 24px;
+  text-align: center;
   font-size: 11px;
   letter-spacing: 0.1em;
-  color: var(--text-faint);
+  line-height: 1.8;
+  color: var(--text-dim);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
 }
 
 /* ----------------------------------------------------- pre-entry state --- */
@@ -228,7 +245,7 @@ button {
 .view-toggles,
 .timebar,
 #labels {
-  transition: opacity 0.8s ease;
+  transition: opacity 0.8s ease, visibility 0s;
 }
 
 .pre-entry .brand,
@@ -239,12 +256,7 @@ button {
 .pre-entry #labels {
   opacity: 0;
   pointer-events: none;
-}
-
-.pre-entry .rail button,
-.pre-entry .chip,
-.pre-entry .timebar button {
-  pointer-events: none;
+  visibility: hidden;
 }
 
 /* --------------------------------------------------------------- brand --- */
@@ -263,6 +275,7 @@ button {
   font-weight: 300;
   letter-spacing: 0.42em;
   color: #eef3fb;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
 }
 
 .brand-tag {
@@ -271,6 +284,7 @@ button {
   text-transform: uppercase;
   color: var(--text-faint);
   margin-top: 2px;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
 }
 
 /* --------------------------------------------------------- top actions --- */
@@ -549,13 +563,14 @@ input[type='range']::-moz-range-thumb {
   cursor: pointer;
   white-space: nowrap;
   border-radius: 999px;
+  background: rgba(9, 14, 26, 0.45);
   transition: color 0.15s, background 0.15s;
   will-change: transform, opacity;
 }
 
 .body-label:hover {
   color: #fff;
-  background: rgba(9, 14, 26, 0.7);
+  background: rgba(9, 14, 26, 0.8);
 }
 
 .body-label .mark {
@@ -586,12 +601,15 @@ input[type='range']::-moz-range-thumb {
   backdrop-filter: blur(14px);
   box-shadow: var(--shadow);
   transform: translateX(calc(100% + 26px));
-  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  visibility: hidden;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s 0.45s;
   overflow: hidden;
 }
 
 .infopanel.open {
   transform: translateX(0);
+  visibility: visible;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .infopanel-head {
@@ -651,6 +669,17 @@ input[type='range']::-moz-range-thumb {
 
 .infopanel-body > * {
   flex: none;
+}
+
+.infopanel-body::after {
+  content: '';
+  flex: none;
+  position: sticky;
+  bottom: -20px;
+  height: 26px;
+  margin-top: -26px;
+  background: linear-gradient(to bottom, transparent, rgba(9, 14, 26, 0.9));
+  pointer-events: none;
 }
 
 .infopanel-overview {
@@ -770,6 +799,10 @@ input[type='range']::-moz-range-thumb {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease;
+}
+
+.overlay[hidden] {
+  display: none;
 }
 
 .overlay.open {
@@ -936,6 +969,14 @@ input[type='range']::-moz-range-thumb {
   border-radius: 2px;
 }
 
+.gravity-card .bar.over i {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--warm) 0 4px,
+    rgba(255, 196, 107, 0.35) 4px 8px
+  );
+}
+
 /* ----------------------------------------------------------------- tour --- */
 
 .tour-card {
@@ -953,13 +994,15 @@ input[type='range']::-moz-range-thumb {
   padding: 16px 18px 14px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  visibility: hidden;
+  transition: opacity 0.35s ease, transform 0.35s ease, visibility 0s 0.35s;
 }
 
 .tour-card.open {
   opacity: 1;
   pointer-events: auto;
-  transform: translate(-50%, 0);
+  visibility: visible;
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
 .tour-step {
@@ -1131,7 +1174,9 @@ input[type='range']::-moz-range-thumb {
   }
 
   .rail button {
-    padding: 6px 9px;
+    padding: 11px 10px;
+    min-width: 34px;
+    justify-content: center;
     flex: none;
   }
 
@@ -1169,11 +1214,16 @@ input[type='range']::-moz-range-thumb {
     top: auto;
     left: 10px;
     right: 10px;
-    bottom: 10px;
+    bottom: 64px;
     width: auto;
-    max-height: 58vh;
-    transform: translateY(calc(100% + 20px));
+    max-height: 52vh;
+    transform: translateY(calc(100% + 84px));
     z-index: 45;
+  }
+
+  body:has(.infopanel.open) .rail {
+    opacity: 0;
+    pointer-events: none;
   }
 
   .infopanel.open {

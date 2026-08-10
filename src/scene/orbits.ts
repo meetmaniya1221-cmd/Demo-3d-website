@@ -44,23 +44,24 @@ export class OrbitLine {
       arr[i * 3 + 2] = out.z;
     }
     attr.needsUpdate = true;
-    this.line.geometry.computeBoundingSphere();
   }
 
-  setHighlight(on: boolean): void {
-    this.mat.opacity = on ? 0.75 : 0.32;
+  setHighlight(on: boolean, someoneFocused: boolean): void {
+    this.mat.opacity = on ? 0.75 : someoneFocused ? 0.14 : 0.32;
   }
 }
 
 const HZ_VERT = /* glsl */ `
   attribute float aRad; // 0 = inner edge, 1 = outer edge
   varying float vRad;
+  varying vec3 vWorld;
   uniform float uInner;
   uniform float uOuter;
   void main() {
     vRad = aRad;
     float r = mix(uInner, uOuter, aRad);
     vec3 pos = vec3(position.x * r, 0.0, position.z * r);
+    vWorld = (modelMatrix * vec4(pos, 1.0)).xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
   }
 `;
@@ -68,8 +69,15 @@ const HZ_VERT = /* glsl */ `
 const HZ_FRAG = /* glsl */ `
   precision mediump float;
   varying float vRad;
+  varying vec3 vWorld;
+  uniform vec3 uCamPos;
   void main() {
     float a = sin(vRad * 3.14159) * 0.14;
+    // fade fragments seen at grazing angles so the far rim never hardens
+    // into a straight edge across the frame
+    vec3 view = vWorld - uCamPos;
+    float slope = abs(view.y) / max(length(view), 1e-4);
+    a *= smoothstep(0.05, 0.2, slope);
     gl_FragColor = vec4(0.22, 0.85, 0.59, a);
   }
 `;
@@ -107,7 +115,11 @@ export class HabitableZone {
     this.mat = new THREE.ShaderMaterial({
       vertexShader: HZ_VERT,
       fragmentShader: HZ_FRAG,
-      uniforms: { uInner: { value: 1 }, uOuter: { value: 2 } },
+      uniforms: {
+        uInner: { value: 1 },
+        uOuter: { value: 2 },
+        uCamPos: { value: new THREE.Vector3() },
+      },
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -122,5 +134,9 @@ export class HabitableZone {
   update(scaleT: number): void {
     this.mat.uniforms.uInner.value = mapDistanceAU(HZ_INNER_AU, scaleT);
     this.mat.uniforms.uOuter.value = mapDistanceAU(HZ_OUTER_AU, scaleT);
+  }
+
+  updateViewFade(cameraPos: THREE.Vector3): void {
+    (this.mat.uniforms.uCamPos.value as THREE.Vector3).copy(cameraPos);
   }
 }

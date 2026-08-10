@@ -109,10 +109,13 @@ export class Tour {
     this.root = document.createElement('section');
     this.root.className = 'tour-card';
     this.root.setAttribute('aria-label', 'Guided tour');
+    this.root.inert = true;
     this.root.innerHTML = `
-      <div class="tour-step"></div>
-      <h3 class="tour-title"></h3>
-      <p class="tour-text"></p>
+      <div aria-live="polite" aria-atomic="true">
+        <div class="tour-step"></div>
+        <h3 class="tour-title"></h3>
+        <p class="tour-text"></p>
+      </div>
       <div class="tour-nav">
         <div class="tour-progress" aria-hidden="true"></div>
         <div class="group">
@@ -144,21 +147,30 @@ export class Tour {
     this.host.state.select(null);
     this.host.state.setTourStep(0);
     this.apply(0);
+    this.root.inert = false;
     this.root.classList.add('open');
   }
 
-  end(): void {
+  /** Close the tour and restore defaults, without moving the camera. */
+  dismiss(): void {
     const st = this.host.state;
     st.setTourStep(null);
     this.root.classList.remove('open');
-    // restore a sensible default view
+    this.root.inert = true;
     st.setToggle('showHZ', false);
     st.setScaleMode('explorer');
     st.setSpeedIndex(3);
-    this.host.focusOverview();
+  }
+
+  end(): void {
+    const hadSelection = this.host.state.selectedId !== null;
+    this.dismiss();
+    if (hadSelection) this.host.state.select(null); // its handler flies to overview
+    else this.host.focusOverview();
   }
 
   private go(dir: 1 | -1): void {
+    if (!this.active) return;
     const cur = this.host.state.tourStep ?? 0;
     const next = cur + dir;
     if (next < 0) return;
@@ -175,15 +187,28 @@ export class Tour {
     this.stepEl.textContent = `Stop ${index + 1} of ${STEPS.length}`;
     this.titleEl.textContent = step.title;
     this.textEl.textContent = step.text;
-    this.backBtn.style.visibility = index === 0 ? 'hidden' : 'visible';
+    const hideBack = index === 0;
+    if (hideBack && document.activeElement === this.backBtn) this.nextBtn.focus();
+    this.backBtn.style.visibility = hideBack ? 'hidden' : 'visible';
     this.nextBtn.textContent = index === STEPS.length - 1 ? 'Finish' : 'Next';
     const dots = this.progressEl.children;
     for (let i = 0; i < dots.length; i++) dots[i].classList.toggle('done', i <= index);
 
+    // fold every step up to this one over the defaults, so navigating Back
+    // undoes later steps' one-shot side effects (true scale, HZ, speed)
     const st = this.host.state;
-    if (step.hz !== undefined) st.setToggle('showHZ', step.hz);
-    if (step.scale) st.setScaleMode(step.scale);
-    if (step.speedIndex !== undefined) st.setSpeedIndex(step.speedIndex);
+    let hz = false;
+    let scale: 'explorer' | 'true' = 'explorer';
+    let speedIndex = 3;
+    for (let i = 0; i <= index; i++) {
+      const s = STEPS[i];
+      if (s.hz !== undefined) hz = s.hz;
+      if (s.scale) scale = s.scale;
+      if (s.speedIndex !== undefined) speedIndex = s.speedIndex;
+    }
+    st.setToggle('showHZ', hz);
+    st.setScaleMode(scale);
+    st.setSpeedIndex(speedIndex);
 
     if (step.focus.kind === 'overview') this.host.focusOverview();
     else if (step.focus.kind === 'belt') this.host.focusBelt();

@@ -8,10 +8,14 @@ function colorOf(def: BodyDef): string {
 abstract class Overlay {
   protected root: HTMLElement;
   protected bodyEl: HTMLElement;
+  private closeBtn: HTMLButtonElement;
+  private restoreFocus: HTMLElement | null = null;
+  private hideTimer: number | undefined;
 
   constructor(parent: HTMLElement, title: string, titleId: string) {
     this.root = document.createElement('div');
     this.root.className = 'overlay';
+    this.root.hidden = true;
     this.root.setAttribute('role', 'dialog');
     this.root.setAttribute('aria-modal', 'true');
     this.root.setAttribute('aria-labelledby', titleId);
@@ -28,9 +32,27 @@ abstract class Overlay {
       </div>
     `;
     this.bodyEl = this.root.querySelector('.overlay-body')!;
-    this.root.querySelector('.close')!.addEventListener('click', () => this.close());
+    this.closeBtn = this.root.querySelector('.close')!;
+    this.closeBtn.addEventListener('click', () => this.close());
     this.root.addEventListener('click', (e) => {
       if (e.target === this.root) this.close();
+    });
+    // keep Tab cycling inside the dialog while it is open
+    this.root.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      const focusables = Array.from(
+        this.root.querySelectorAll<HTMLElement>('button, input, [tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => el.offsetParent !== null);
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     });
     parent.appendChild(this.root);
   }
@@ -40,12 +62,22 @@ abstract class Overlay {
   }
 
   open(): void {
-    this.root.classList.add('open');
+    window.clearTimeout(this.hideTimer);
+    this.root.hidden = false;
+    // next frame so the opacity transition runs
+    requestAnimationFrame(() => this.root.classList.add('open'));
+    this.restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.onOpen();
+    this.closeBtn.focus();
   }
 
   close(): void {
     this.root.classList.remove('open');
+    this.hideTimer = window.setTimeout(() => {
+      this.root.hidden = true;
+    }, 320);
+    this.restoreFocus?.focus();
+    this.restoreFocus = null;
   }
 
   protected abstract onOpen(): void;
@@ -90,16 +122,38 @@ export class CompareOverlay extends Overlay {
     else this.renderDistance();
   }
 
-  private makeCanvas(cssW: number, cssH: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+  private makeCanvas(
+    cssW: number,
+    cssH: number,
+    ariaLabel: string,
+  ): [HTMLCanvasElement, CanvasRenderingContext2D] {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const c = document.createElement('canvas');
     c.width = Math.round(cssW * dpr);
     c.height = Math.round(cssH * dpr);
     c.style.width = `${cssW}px`;
     c.style.height = `${cssH}px`;
+    c.setAttribute('role', 'img');
+    c.setAttribute('aria-label', ariaLabel);
     const ctx = c.getContext('2d')!;
     ctx.scale(dpr, dpr);
     return [c, ctx];
+  }
+
+  /** Visually-hidden data table so the canvas charts have a text alternative. */
+  private appendDataTable(): void {
+    const rows = [...PLANETS, MOON]
+      .map(
+        (b) =>
+          `<tr><th scope="row">${b.name}</th><td>${Math.round(b.facts.diameterKm).toLocaleString()} km</td>` +
+          `<td>${(b.facts.diameterKm / 12_756).toFixed(2)}× Earth</td><td>${b.facts.distanceAU.toFixed(2)} AU</td></tr>`,
+      )
+      .join('');
+    const wrap = document.createElement('div');
+    wrap.style.cssText =
+      'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap';
+    wrap.innerHTML = `<table><caption>Planet sizes and distances</caption><thead><tr><th>Body</th><th>Diameter</th><th>Relative to Earth</th><th>Distance from Sun</th></tr></thead><tbody>${rows}</tbody></table>`;
+    this.bodyEl.appendChild(wrap);
   }
 
   private renderSize(): void {
@@ -123,7 +177,11 @@ export class CompareOverlay extends Overlay {
 
     const wrap = document.createElement('div');
     wrap.className = 'scroll-x';
-    const [canvas, ctx] = this.makeCanvas(Math.max(width, 720), H);
+    const [canvas, ctx] = this.makeCanvas(
+      Math.max(width, 720),
+      H,
+      'All planets and the Moon drawn to one diameter scale, next to the edge of the Sun',
+    );
     wrap.appendChild(canvas);
     this.bodyEl.appendChild(wrap);
 
@@ -138,11 +196,16 @@ export class CompareOverlay extends Overlay {
     ctx.beginPath();
     ctx.arc(-sunR + 96, cy, sunR * 1.012, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'rgba(223,230,244,0.85)';
+    // dark chip so the caption survives the bright slab
+    ctx.fillStyle = 'rgba(5,8,15,0.72)';
+    ctx.beginPath();
+    ctx.roundRect(6, H - 58, 104, 50, 6);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(240,246,255,0.95)';
     ctx.font = '600 10px -apple-system, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText('SUN (edge)', 12, H - 44);
-    ctx.fillStyle = 'rgba(132,148,176,0.9)';
+    ctx.fillStyle = 'rgba(190,204,228,0.95)';
     ctx.font = '10px ui-monospace, monospace';
     ctx.fillText('1,391,400 km', 12, H - 30);
     ctx.fillText('109 × Earth', 12, H - 16);
@@ -172,6 +235,13 @@ export class CompareOverlay extends Overlay {
       ctx.fillText(`${rel >= 1 ? rel.toFixed(1) : rel.toFixed(2)} × Earth`, cx, H - 16);
       x += col + gap;
     }
+
+    const hint = document.createElement('p');
+    hint.className = 'overlay-note';
+    hint.style.marginTop = '10px';
+    hint.textContent = 'Scroll → to reach the ice giants and the Moon';
+    this.bodyEl.appendChild(hint);
+    this.appendDataTable();
   }
 
   private renderDistance(): void {
@@ -185,27 +255,40 @@ export class CompareOverlay extends Overlay {
 
     const pxPerAU = 150;
     const W = Math.ceil(60 + 31.2 * pxPerAU);
-    const H = 240;
+    const H = 236;
     const wrap = document.createElement('div');
     wrap.className = 'scroll-x';
-    const [canvas, ctx] = this.makeCanvas(W, H);
+    const [canvas, ctx] = this.makeCanvas(
+      W,
+      H,
+      'Planet distances from the Sun drawn to scale, with light travel times',
+    );
     wrap.appendChild(canvas);
     this.bodyEl.appendChild(wrap);
 
-    const y = H / 2 - 18;
+    const y = H / 2 - 2;
     const x0 = 26;
 
-    // habitable zone + asteroid belt bands
+    // habitable zone band + scattered asteroid belt
     ctx.fillStyle = 'rgba(56,217,150,0.08)';
     ctx.fillRect(x0 + 0.95 * pxPerAU, y - 34, (1.67 - 0.95) * pxPerAU, 68);
-    ctx.fillStyle = 'rgba(184,165,142,0.08)';
-    ctx.fillRect(x0 + 2.1 * pxPerAU, y - 30, (3.3 - 2.1) * pxPerAU, 60);
+    let beltSeed = 12;
+    const beltRnd = () => {
+      beltSeed = (beltSeed * 16807) % 2147483647;
+      return beltSeed / 2147483647;
+    };
+    ctx.fillStyle = 'rgba(184,165,142,0.55)';
+    for (let i = 0; i < 130; i++) {
+      const bx = x0 + (2.1 + beltRnd() * 1.2) * pxPerAU;
+      const by = y + (beltRnd() - 0.5) * 56;
+      ctx.fillRect(bx, by, 1.4, 1.4);
+    }
     ctx.font = '600 9px -apple-system, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(56,217,150,0.7)';
-    ctx.fillText('HABITABLE ZONE', x0 + 0.95 * pxPerAU, y + 62);
+    ctx.fillText('HABITABLE ZONE', x0 + 0.95 * pxPerAU, y + 76);
     ctx.fillStyle = 'rgba(184,165,142,0.8)';
-    ctx.fillText('ASTEROID BELT', x0 + 2.35 * pxPerAU, y + 62);
+    ctx.fillText('ASTEROID BELT', x0 + 2.35 * pxPerAU, y + 76);
 
     // baseline
     ctx.strokeStyle = 'rgba(158,189,255,0.2)';
@@ -260,9 +343,9 @@ export class CompareOverlay extends Overlay {
     const hint = document.createElement('p');
     hint.className = 'overlay-note';
     hint.style.marginTop = '10px';
-    hint.innerHTML = `Scroll → · 1 pixel ≈ ${Math.round(149_597_871 / pxPerAU).toLocaleString()} km`;
+    hint.textContent = `Scroll → · 1 pixel ≈ ${Math.round(149_597_871 / pxPerAU).toLocaleString()} km`;
     this.bodyEl.appendChild(hint);
-    void hint.offsetWidth;
+    this.appendDataTable();
   }
 
   private lightLabel(au: number): string {
@@ -298,10 +381,16 @@ export class GravityOverlay extends Overlay {
       </p>
       <div class="gravity-controls">
         <span class="u-label">Your weight on Earth</span>
+        <span class="u-label" style="opacity:0.7">20</span>
         <input type="range" min="20" max="150" step="1" value="70" aria-label="Your weight on Earth in kilograms" />
+        <span class="u-label" style="opacity:0.7">150 kg</span>
         <span class="value">70 kg</span>
       </div>
       <div class="gravity-grid"></div>
+      <p class="overlay-note" style="margin-top:14px;margin-bottom:0">
+        Bars show each world's surface gravity relative to Earth (the Sun's is off the
+        scale — its gravity is 28× ours, which is why you could not stand there).
+      </p>
     `;
     this.grid = this.bodyEl.querySelector('.gravity-grid')!;
     this.valueEl = this.bodyEl.querySelector('.value')!;
@@ -324,6 +413,7 @@ export class GravityOverlay extends Overlay {
         const w = (this.massKg * b.facts.gravity) / EARTH_GRAVITY;
         const jump = 50 * (EARTH_GRAVITY / b.facts.gravity); // cm, from a 50 cm Earth jump
         const bar = Math.min(1, b.facts.gravity / 25);
+        const offScale = b.facts.gravity > 25;
         const weightLabel = w >= 200 ? `${Math.round(w).toLocaleString()} kg` : `${w.toFixed(1)} kg`;
         const jumpLabel =
           b.id === 'sun'
@@ -336,7 +426,7 @@ export class GravityOverlay extends Overlay {
             <div class="name"><i style="background:${colorOf(b)}"></i>${b.name}</div>
             <div class="weight">${weightLabel}</div>
             <div class="jump">${jumpLabel}</div>
-            <div class="bar"><i style="width:${(bar * 100).toFixed(0)}%"></i></div>
+            <div class="bar${offScale ? ' over' : ''}"><i style="width:${(bar * 100).toFixed(0)}%"></i></div>
           </div>
         `;
       })

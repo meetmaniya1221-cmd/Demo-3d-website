@@ -41,10 +41,17 @@ export class Labels {
     }
   }
 
-  update(system: SolarSystem, camera: THREE.PerspectiveCamera, state: AppState): void {
+  /** @param rightInset pixels on the right edge covered by an open panel */
+  update(
+    system: SolarSystem,
+    camera: THREE.PerspectiveCamera,
+    state: AppState,
+    rightInset = 0,
+  ): void {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     const camPos = camera.position;
+    const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
 
     interface Placed {
       entry: LabelEntry;
@@ -75,15 +82,25 @@ export class Labels {
         }
       }
 
-      // hide the label when the camera is close enough that the body fills the view
+      // apparent size of the body in pixels
       const radius = system.bodyRadius(entry.id, state.scaleT);
-      if (distToBody < radius * 8 && state.selectedId === entry.id) {
+      const projR = distToBody > 1e-9 ? (radius / (distToBody * halfTan)) * (h / 2) : h;
+      // when the body dominates the view its label is just noise
+      if (projR > h * 0.25) {
         el.style.display = 'none';
         continue;
       }
 
       this.v.copy(entry.world).project(camera);
-      if (this.v.z > 1 || this.v.x < -1.05 || this.v.x > 1.05 || this.v.y < -1.05 || this.v.y > 1.05) {
+      if (this.v.z > 1) {
+        el.style.display = 'none';
+        continue;
+      }
+      const x = (this.v.x * 0.5 + 0.5) * w;
+      // anchor above the body's limb, not its centre
+      const y = (-this.v.y * 0.5 + 0.5) * h - Math.min(projR, h * 0.3);
+      // never draw a partially clipped label at screen or panel edges
+      if (x < 54 || x > w - rightInset - 54 || y < 34 || y > h - 16) {
         el.style.display = 'none';
         continue;
       }
@@ -91,27 +108,24 @@ export class Labels {
         (state.selectedId === entry.id ? 40000 : 0) +
         (entry.id === 'sun' ? 20000 : 0) -
         distToBody;
-      candidates.push({
-        entry,
-        x: (this.v.x * 0.5 + 0.5) * w,
-        y: (-this.v.y * 0.5 + 0.5) * h,
-        priority,
-      });
+      candidates.push({ entry, x, y, priority });
     }
 
     // greedy declutter: strongest labels claim space, overlapping ones hide
     candidates.sort((a, b) => b.priority - a.priority);
     const kept: Placed[] = [];
     for (const c of candidates) {
-      const overlaps = kept.some((k) => Math.abs(k.x - c.x) < 74 && Math.abs(k.y - c.y) < 20);
       const { el } = c.entry;
+      const focused = document.activeElement === el;
+      const overlaps =
+        !focused && kept.some((k) => Math.abs(k.x - c.x) < 74 && Math.abs(k.y - c.y) < 20);
       if (overlaps) {
         el.style.display = 'none';
         continue;
       }
       kept.push(c);
       el.style.display = 'flex';
-      el.style.transform = `translate(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px) translate(-50%, -140%)`;
+      el.style.transform = `translate(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px) translate(-50%, -100%)`;
       el.classList.toggle('selected', state.selectedId === c.entry.id);
     }
   }

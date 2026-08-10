@@ -1,5 +1,5 @@
 /** The right-hand (bottom sheet on mobile) planet information panel. */
-import { bodyById, heliocentricDistance, SUN, type BodyDef } from '../data/bodies';
+import { bodyById, heliocentricDistance, SUN, EARTH_GRAVITY, type BodyDef } from '../data/bodies';
 import type { AppState } from '../sim/state';
 import {
   fmtAU,
@@ -73,7 +73,7 @@ export class InfoPanel {
     const cells: string[] = [
       this.cell('Diameter', fmtKm(f.diameterKm)),
       this.cell('Mass', fmtMass(f.massKg)),
-      this.cell('Surface gravity', `${f.gravity.toFixed(1)} m/s² <small>(${(f.gravity / 9.81).toFixed(2)}×⊕)</small>`),
+      this.cell('Surface gravity', `${f.gravity.toFixed(1)} m/s² <small>(${(f.gravity / EARTH_GRAVITY).toFixed(2)}×⊕)</small>`),
       this.cell(isSun ? 'Rotation period' : 'Day length', fmtHours(f.dayLengthHours)),
     ];
     if (!isSun) {
@@ -91,7 +91,7 @@ export class InfoPanel {
       ),
       isSun
         ? this.cell('Planets', '8')
-        : this.cell('Moons', fmtInt(f.moons)),
+        : this.cell('Known moons', fmtInt(f.moons)),
     );
     if (!isSun && !isMoon) {
       cells.push(

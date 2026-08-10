@@ -41,7 +41,7 @@ function buildLanding(root: HTMLElement, app: App): void {
       <button class="btn primary" data-act="explore">Explore freely</button>
       <button class="btn" data-act="tour">Take the guided tour</button>
     </div>
-    <div class="landing-hint">Drag to orbit &nbsp;·&nbsp; Scroll or pinch to zoom &nbsp;·&nbsp; Click any world to visit it</div>
+    <div class="landing-hint">Drag to orbit &nbsp;·&nbsp; Scroll or pinch to zoom &nbsp;·&nbsp; Tap any world to visit it<br />← → switch worlds &nbsp;·&nbsp; Space pauses time &nbsp;·&nbsp; Esc goes back</div>
   `;
   root.appendChild(landing);
 

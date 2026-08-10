@@ -127,7 +127,7 @@ function paintVenus(): HTMLCanvasElement {
     const q = n.fbm(u * s, v * s, 4, 2, 0.5, s);
     // chevron-like cloud sweep away from the equator
     const sweep = (v - 0.5) * (v - 0.5) * 14;
-    const m = n.fbm(u * s * 1.6 + sweep + q * 1.5, v * s + q, 5, 2, 0.5, 0);
+    const m = n.fbm(u * 5 + sweep + q * 1.5, v * s + q, 5, 2, 0.5, 5);
     const pole = Math.pow(Math.abs(v - 0.5) * 2, 6) * 0.35;
     return ramp(stops, 0.25 + m * 0.68 - pole);
   });
@@ -149,7 +149,9 @@ function paintEarth(): { surface: HTMLCanvasElement; rough: HTMLCanvasElement } 
   const surface = paint(w, h, (u, v) => {
     const s = 4;
     const q = n.fbm(u * s, v * s * 0.9, 4, 2, 0.5, s);
-    const cont = n.fbm(u * s + q * 2.2, v * s * 0.9 + q * 2.2, 6, 2, 0.52, 0);
+    // the warp offset q is itself periodic in u, so keeping periodX = s here
+    // keeps the equirect wrap seamless at u = 0
+    const cont = n.fbm(u * s + q * 2.2, v * s * 0.9 + q * 2.2, 6, 2, 0.52, s);
     const lat = Math.abs(v - 0.5) * 2; // 0 equator → 1 pole
     const iceEdge = 0.86 + n.noise2(u * 24, 7, 24) * 0.06;
     const x = Math.round(u * w) % w;
@@ -201,9 +203,9 @@ function paintEarthClouds(): HTMLCanvasElement {
     const v = y / (h - 1);
     for (let x = 0; x < w; x++) {
       const u = x / w;
-      const s = 6.5;
+      const s = 6;
       const q = n.fbm(u * s, v * s, 3, 2, 0.5, s);
-      const m = n.fbm(u * s * 1.4 + q * 1.2 + 9, v * s * 1.1 + q * 1.2, 5, 2, 0.52, 0);
+      const m = n.fbm(u * 9 + q * 1.2 + 9, v * s * 1.1 + q * 1.2, 5, 2, 0.52, 9);
       const band = 0.92 + 0.08 * Math.sin(v * Math.PI * 5 + q * 3);
       const a = Math.pow(Math.max(0, (m * band - 0.5) / 0.5), 1.7);
       const i = (y * w + x) * 4;
@@ -226,7 +228,7 @@ function paintMars(): HTMLCanvasElement {
   const c = paint(512, 256, (u, v) => {
     const s = 5;
     const q = n.fbm(u * s, v * s * 0.6, 4, 2, 0.5, s);
-    const m = n.fbm(u * s + q * 1.6, v * s * 0.6 + q * 1.6, 5, 2, 0.5, 0);
+    const m = n.fbm(u * s + q * 1.6, v * s * 0.6 + q * 1.6, 5, 2, 0.5, s);
     let col = ramp(stops, m);
     // dark volcanic provinces
     const dark = n.fbm(u * 2.4 + 40, v * 1.6 + 40, 4, 2, 0.5, 2.4);
@@ -260,9 +262,10 @@ function paintBanded(
   bands: number,
   turbulence: number,
   contrast: number,
+  w = 1024,
 ): HTMLCanvasElement {
   const n = new ValueNoise(seed);
-  return paint(1024, 512, (u, v) => {
+  return paint(w, w / 2, (u, v) => {
     const s = 5;
     const q = n.fbm(u * s, v * s * 2, 4, 2, 0.5, s);
     const wob = (q - 0.5) * turbulence;
@@ -287,25 +290,34 @@ function paintJupiter(): HTMLCanvasElement {
     12,
     2.0,
     1.0,
+    2048,
   );
-  // Great Red Spot
+  // Great Red Spot with a darker storm rim
   const ctx = c.getContext('2d')!;
-  const cx = 700;
-  const cy = 330;
-  const rx = 56;
-  const ry = 30;
-  const spot = ctx.createRadialGradient(cx, cy, 4, cx, cy, rx);
-  spot.addColorStop(0, 'rgba(196,90,58,0.95)');
-  spot.addColorStop(0.55, 'rgba(178,74,46,0.9)');
-  spot.addColorStop(0.8, 'rgba(150,62,40,0.55)');
-  spot.addColorStop(1, 'rgba(150,62,40,0)');
+  const cx = 1400;
+  const cy = 660;
+  const rx = 112;
+  const ry = 60;
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(1, ry / rx);
   ctx.translate(-cx, -cy);
+  const rim = ctx.createRadialGradient(cx, cy, rx * 0.7, cx, cy, rx * 1.08);
+  rim.addColorStop(0, 'rgba(110,48,28,0)');
+  rim.addColorStop(0.55, 'rgba(110,48,28,0.55)');
+  rim.addColorStop(1, 'rgba(110,48,28,0)');
+  ctx.fillStyle = rim;
+  ctx.beginPath();
+  ctx.arc(cx, cy, rx * 1.08, 0, Math.PI * 2);
+  ctx.fill();
+  const spot = ctx.createRadialGradient(cx, cy, 8, cx, cy, rx * 0.82);
+  spot.addColorStop(0, 'rgba(198,92,58,0.95)');
+  spot.addColorStop(0.55, 'rgba(178,74,46,0.9)');
+  spot.addColorStop(0.85, 'rgba(150,62,40,0.5)');
+  spot.addColorStop(1, 'rgba(150,62,40,0)');
   ctx.fillStyle = spot;
   ctx.beginPath();
-  ctx.arc(cx, cy, rx, 0, Math.PI * 2);
+  ctx.arc(cx, cy, rx * 0.82, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
   return c;
@@ -461,15 +473,15 @@ export function makeMilkyWayTexture(): THREE.CanvasTexture {
       const band = Math.exp(-dist * dist * 260);
       const clump = n.fbm(u * 10, v * 10, 5, 2, 0.55, 10);
       const dust = n.ridged(u * 7 + 30, v * 14 + 30, 4, 7);
-      let bright = band * (0.35 + clump * 0.85) * (1 - Math.min(0.8, dust * band * 0.9));
+      let bright = band * (0.3 + clump * 0.9) * (1 - Math.min(0.92, dust * band * 1.3));
       const core = Math.exp(-Math.pow((u - 0.5) * 4.5, 2)) * band * 0.5;
-      bright = Math.min(1, bright + core * clump);
+      bright = Math.min(1, bright + core * clump * 0.8);
       const warm = core * 1.6;
       const i = (y * w + x) * 4;
       d[i] = Math.round(180 + warm * 60);
       d[i + 1] = Math.round(190 + warm * 30);
       d[i + 2] = 235;
-      d[i + 3] = Math.round(Math.min(1, bright) * 110);
+      d[i + 3] = Math.round(Math.min(1, bright) * 62);
     }
   }
   ctx.putImageData(img, 0, 0);
