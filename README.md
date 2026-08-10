@@ -86,5 +86,8 @@ LRO, MGS). Earth's map was generated with Higgsfield AI. Procedural
 fallback surfaces are generated in-browser if the maps fail to load.
 
 Sound effects are from [Kenney](https://kenney.nl)'s "Interface Sounds"
-and "Sci-Fi Sounds" packs (CC0 / public domain). Audio starts after the
-first interaction and can be muted from the top bar.
+and "Sci-Fi Sounds" packs (CC0 / public domain), with the UI click tone
+from [Mixkit](https://mixkit.co) (Mixkit Free License). Background music:
+"Floating Cities" by Kevin MacLeod ([incompetech.com](https://incompetech.com)),
+licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Audio starts after the first interaction and can be muted from the top bar.

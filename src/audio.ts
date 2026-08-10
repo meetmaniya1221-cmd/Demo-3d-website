@@ -1,7 +1,8 @@
 /**
- * Sound effects, from Kenney's CC0 "Interface Sounds" and "Sci-Fi Sounds"
- * packs (kenney.nl, free/public domain). WebAudio starts only after the
- * first user gesture, as browsers require; failure to load any file is
+ * Audio. UI effects come from Kenney's CC0 packs (kenney.nl) plus a
+ * user-supplied Mixkit click tone; the background track is Kevin MacLeod's
+ * "Floating Cities" (incompetech.com, CC BY 4.0). WebAudio starts only after
+ * the first user gesture, as browsers require; failure to load any file is
  * silent, sound is an enhancement, never a dependency.
  */
 
@@ -54,7 +55,7 @@ class SoundFX {
     }
   }
 
-  /** Quiet looping engine hum under everything. */
+  /** Looping background music, kept well under the interface sounds. */
   private startAmbient(): void {
     if (!this.ctx || !this.master || this.ambientGain) return;
     const buffer = this.buffers.get('ambient');
@@ -64,7 +65,7 @@ class SoundFX {
     src.loop = true;
     this.ambientGain = this.ctx.createGain();
     this.ambientGain.gain.value = 0;
-    this.ambientGain.gain.linearRampToValueAtTime(0.055, this.ctx.currentTime + 4);
+    this.ambientGain.gain.linearRampToValueAtTime(0.35, this.ctx.currentTime + 5);
     src.connect(this.ambientGain).connect(this.master);
     src.start();
   }
