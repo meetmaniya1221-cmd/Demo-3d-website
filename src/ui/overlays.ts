@@ -50,7 +50,7 @@ export abstract class Overlay {
       if (e.key !== 'Tab') return;
       const focusables = Array.from(
         this.root.querySelectorAll<HTMLElement>(
-          'button, input, a[href], [tabindex]:not([tabindex="-1"])',
+          'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])',
         ),
       ).filter((el) => el.offsetParent !== null);
       if (focusables.length === 0) return;
@@ -167,6 +167,10 @@ export class CompareOverlay extends Overlay {
         if (side === 'A') this.duelA = sel.value;
         else this.duelB = sel.value;
         this.render();
+        // re-rendering replaced the DOM - hand focus back to this picker so
+        // keyboard users are not dropped out of the dialog mid-selection
+        const fresh = this.bodyEl.querySelectorAll<HTMLSelectElement>('.duel-select');
+        fresh[side === 'A' ? 0 : 1]?.focus();
       });
       return sel;
     };
@@ -275,7 +279,7 @@ export class CompareOverlay extends Overlay {
                 : null,
       ],
       ['Mean temperature', (o) => (o.physical.tempMeanC !== undefined ? fmtTempC(o.physical.tempMeanC) : null)],
-      ['Albedo', (o) => (o.physical.albedo !== undefined ? `${o.physical.albedo} (reflects ${Math.round(o.physical.albedo * 100)}%)` : null)],
+      ['Albedo', (o) => (o.physical.albedo !== undefined ? `${o.physical.albedo} (geometric)` : null)],
       ['Known moons', (o) => (o.physical.moons !== undefined ? String(o.physical.moons) : null)],
       ['Atmosphere', (o) => o.atmosphere ?? null],
     ];

@@ -38,6 +38,8 @@ export class EarthMoonOverlay extends Overlay {
   private ctx!: CanvasRenderingContext2D;
   private readouts!: HTMLElement;
   private raf = 0;
+  private lastReadout = '';
+  private lastAria = '';
 
   constructor(parent: HTMLElement, state: AppState) {
     super(parent, 'Earth & Moon lab', 'earthmoon-title');
@@ -109,10 +111,11 @@ export class EarthMoonOverlay extends Overlay {
       this.canvas.style.height = `${cssH}px`;
       this.canvas.setAttribute('role', 'img');
     }
-    this.canvas.setAttribute(
-      'aria-label',
-      `Top-down diagram: the Moon at ${phaseName(elong)}, ${Math.round(illum * 100)} percent illuminated`,
-    );
+    const aria = `Top-down diagram: the Moon at ${phaseName(elong)}, ${Math.round(illum * 100)} percent illuminated`;
+    if (aria !== this.lastAria) {
+      this.lastAria = aria;
+      this.canvas.setAttribute('aria-label', aria);
+    }
     const ctx = this.ctx;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
@@ -225,7 +228,7 @@ export class EarthMoonOverlay extends Overlay {
       elong < 45 || elong > 315 || Math.abs(elong - 180) < 45
         ? 'spring tides (Sun + Moon aligned)'
         : 'neap tides (Sun and Moon at right angles)';
-    this.readouts.innerHTML = `
+    const readout = `
       <div class="em-phase-name">${phaseName(elong)}</div>
       <div class="em-grid">
         <span>${fmtSimDate(d)}</span>
@@ -235,5 +238,10 @@ export class EarthMoonOverlay extends Overlay {
         <span class="em-tide">Now favouring ${tide}</span>
       </div>
     `;
+    // rebuilding this DOM 60x/s would churn layout for no reason
+    if (readout !== this.lastReadout) {
+      this.lastReadout = readout;
+      this.readouts.innerHTML = readout;
+    }
   }
 }

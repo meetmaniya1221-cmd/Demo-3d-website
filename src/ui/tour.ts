@@ -215,12 +215,15 @@ export class Tour {
     const dots = this.progressEl.children;
     for (let i = 0; i < dots.length; i++) dots[i].classList.toggle('done', i <= index);
 
-    // fold every step up to this one over the pre-tour snapshot, so
-    // navigating Back undoes later steps' one-shot side effects
+    // fold every step up to this one over the tour's scripted baseline
+    // (explorer view, HZ off, 1 day/s) so navigating Back undoes later
+    // steps' one-shot side effects and the narration always matches what is
+    // on screen; the user's own settings come back from the snapshot when
+    // the tour ends
     const st = this.host.state;
-    let hz = this.snapshot.hz;
-    let scale: 'explorer' | 'true' = this.snapshot.scale;
-    let speedIndex = this.snapshot.speedIndex;
+    let hz = false;
+    let scale: 'explorer' | 'true' = 'explorer';
+    let speedIndex = 3;
     for (let i = 0; i <= index; i++) {
       const s = STEPS[i];
       if (s.hz !== undefined) hz = s.hz;

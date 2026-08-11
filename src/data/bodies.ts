@@ -37,11 +37,13 @@ export interface BodyFacts {
   moons: number;
   axialTiltDeg: number;
   /**
-   * Prime-meridian angle W at J2000 in degrees (IAU WGCCRE 2015 report).
-   * Ties the rendered spin phase to the real epoch so the time machine shows
-   * approximately correct planet orientations (Earth: W ≈ GMST, so day/night
-   * tracks UTC). Approximate: we measure it in the ecliptic rather than each
-   * body's true equator of date.
+   * Spin-phase angle at J2000 in degrees, measured from the vernal equinox
+   * (the scene's +x axis). For Earth this is GMST at J2000 (280.46°), which
+   * makes the rendered day/night track UTC. Other planets store the IAU
+   * WGCCRE 2015 prime-meridian angle W0, which is referenced to the ICRF
+   * node rather than the equinox - a constant per-planet meridian offset
+   * that is unobservable at this app's fidelity and disclosed as
+   * approximate.
    */
   w0Deg?: number;
   /** Cloud-deck rotation period in hours when it differs dramatically from
@@ -177,7 +179,9 @@ export const PLANETS: BodyDef[] = [
       diameterKm: 12_756,
       massKg: 5.97e24,
       gravity: 9.8,
-      rotationHours: 23.934,
+      // full-precision sidereal day: the derived spin rate must match the
+      // GMST rate (360.9856°/day) or the terminator drifts ~2.6°/year
+      rotationHours: 23.93447,
       dayLengthHours: 24.0,
       orbitDays: 365.25,
       distanceAU: 1.0,
@@ -185,7 +189,9 @@ export const PLANETS: BodyDef[] = [
       tempRangeC: [-89, 57],
       moons: 1,
       axialTiltDeg: 23.4,
-      w0Deg: 190.147,
+      // GMST at J2000 (equinox-referenced), NOT the node-referenced IAU W0:
+      // this is what makes the rendered day/night follow UTC
+      w0Deg: 280.4606,
       density: 5.514,
       albedo: 0.434,
     },

@@ -174,7 +174,7 @@ export class InfoPanel {
       cells.push(this.cell('Axial tilt', `${f.axialTiltDeg.toFixed(1)}°`));
     }
     if (f.albedo !== undefined) {
-      cells.push(this.cell('Albedo', `${f.albedo}<small> (reflects ${Math.round(f.albedo * 100)}% of light)</small>`));
+      cells.push(this.cell('Albedo', `${f.albedo}<small> geometric</small>`));
     }
     return cells;
   }

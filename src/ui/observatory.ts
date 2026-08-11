@@ -110,6 +110,7 @@ export class Observatory extends Overlay {
   private raf = 0;
   private selectedStar: string | null = 'proxima';
   private highlightDso: string | null = null;
+  private lastNightReadout = '';
 
   constructor(parent: HTMLElement, state: AppState) {
     super(parent, 'Observatory', 'observatory-title');
@@ -385,18 +386,25 @@ export class Observatory extends Overlay {
       ctx.fillText(spec.label.toUpperCase(), pp[0], pp[1] - 7);
     }
 
-    // readout line
+    // readout line (cached - no per-frame DOM churn)
     const readout = this.bodyEl.querySelector('.obs-night-readout');
     if (readout) {
-      readout.innerHTML = `<b>${fmtSimDate(d)} · ${fmtSimTime(d)}</b> · ${
+      const html = `<b>${fmtSimDate(d)} · ${fmtSimTime(d)}</b> · ${
         daylight ? 'daytime - the atmosphere would wash these stars out' : 'night sky'
       }`;
+      if (html !== this.lastNightReadout) {
+        this.lastNightReadout = html;
+        readout.innerHTML = html;
+      }
     }
     const legend = this.bodyEl.querySelector('.obs-planets-legend');
     if (legend) {
-      legend.textContent = visible.length
-        ? `Above the horizon now: the Moon and ${visible.join(', ')} (naked-eye planets only).`
-        : 'No naked-eye planets above this horizon right now - try another time of day.';
+      const text = visible.length
+        ? `Above the horizon now: ${pm ? 'the Moon and ' : ''}${visible.join(', ')} (naked-eye planets only).`
+        : pm
+          ? 'The Moon is up, but no naked-eye planets are above this horizon right now.'
+          : 'No naked-eye planets above this horizon right now - try another time of day.';
+      if (legend.textContent !== text) legend.textContent = text;
     }
   }
 
@@ -429,6 +437,8 @@ export class Observatory extends Overlay {
       row.addEventListener('click', () => {
         this.selectedStar = s.id;
         this.renderStars();
+        // re-render replaced the list - restore focus to the chosen row
+        this.bodyEl.querySelector<HTMLButtonElement>('.obs-star-row.active')?.focus();
       });
       if (s.id === this.selectedStar) row.classList.add('active');
       list.appendChild(row);

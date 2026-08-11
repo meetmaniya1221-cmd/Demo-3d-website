@@ -85,9 +85,9 @@ export class Planet {
 
   constructor(def: BodyDef, surface: BodySurface, ringTexture?: THREE.Texture) {
     this.def = def;
-    // epoch-tied spin phase: the IAU prime-meridian angle at J2000 when we
-    // have it (Earth's W tracks GMST, so day/night matches UTC), a stable
-    // hash otherwise
+    // epoch-tied spin phase (see w0Deg's doc in data/bodies.ts: GMST for
+    // Earth so day/night follows UTC, IAU W0 for the rest), a stable hash
+    // otherwise
     this.spinPhase =
       def.facts.w0Deg !== undefined
         ? THREE.MathUtils.degToRad(def.facts.w0Deg)

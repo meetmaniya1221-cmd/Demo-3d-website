@@ -60,7 +60,7 @@ export class StructureOverlay extends Overlay {
     if (!def || !interior) return;
 
     this.bodyEl.innerHTML = `
-      <div class="structure-picker chip-row" role="tablist" aria-label="Choose a body"></div>
+      <div class="structure-picker chip-row" role="group" aria-label="Choose a body"></div>
       <div class="structure-main">
         <div class="structure-canvas-wrap"><canvas></canvas></div>
         <div class="structure-side">
@@ -79,12 +79,15 @@ export class StructureOverlay extends Overlay {
       const chip = document.createElement('button');
       chip.className = 'chip';
       chip.textContent = b.name;
-      chip.setAttribute('role', 'tab');
-      chip.setAttribute('aria-selected', String(b.id === this.currentId));
+      chip.setAttribute('aria-pressed', String(b.id === this.currentId));
       if (b.id === this.currentId) chip.classList.add('active');
       chip.addEventListener('click', () => {
         this.currentId = b.id;
         this.render();
+        // the re-render replaced every chip - keep focus on the chosen one
+        this.bodyEl
+          .querySelectorAll<HTMLButtonElement>('.structure-picker .chip.active')[0]
+          ?.focus();
       });
       this.pickerEl.appendChild(chip);
     }
@@ -99,7 +102,8 @@ export class StructureOverlay extends Overlay {
         const i = layers.length - 1 - ri;
         const innerFrac = i === 0 ? 0 : layers[i - 1].outerRadiusFraction;
         const outerKm = l.outerRadiusFraction * radiusKm;
-        const thickKm = (l.outerRadiusFraction - innerFrac) * radiusKm;
+        // thin shells are drawn exaggerated; the legend reports the true value
+        const thickKm = l.thicknessKm ?? (l.outerRadiusFraction - innerFrac) * radiusKm;
         const extent =
           i === 0
             ? `centre → ${fmtKm(Math.round(outerKm))}`

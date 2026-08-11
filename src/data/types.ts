@@ -74,6 +74,9 @@ export interface InteriorLayer {
   name: string;
   /** Outer edge of this layer as a fraction of the body's radius (0..1]. */
   outerRadiusFraction: number;
+  /** True thickness in km for the legend, when the drawn fraction is
+   *  exaggerated so a thin shell stays visible in the diagram. */
+  thicknessKm?: number;
   color: number;
   note: string;
   /**

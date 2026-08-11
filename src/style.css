@@ -3015,6 +3015,7 @@ button.sim-date:hover {
 
 .duel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 14px;
@@ -3373,7 +3374,7 @@ button.sim-date:hover {
 /* On phones the date button stays (it is the time machine's entry point) -
    only the redundant weekday spacing tightens. Override the legacy hide. */
 @media (max-width: 720px) {
-  .sim-date {
+  button.sim-date {
     display: block;
     font-size: 11px;
     min-width: 0;
@@ -3383,5 +3384,39 @@ button.sim-date:hover {
   .timebar .play.rewind {
     width: 28px;
     height: 28px;
+  }
+}
+
+/* five controls cannot share one narrow row - let the bar wrap into two */
+@media (max-width: 480px) {
+  .timebar {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .speed-group {
+    flex: 1 1 120px;
+    min-width: 120px;
+  }
+
+  button.sim-date {
+    order: 4;
+  }
+
+  .now-btn {
+    order: 5;
+  }
+}
+
+/* Very narrow phones: drop the clock segment's breathing room by hiding the
+   speed label text; the slider keeps working and the date stays reachable. */
+@media (max-width: 400px) {
+  .speed-label span {
+    display: none;
+  }
+
+  button.sim-date {
+    font-size: 10px;
+    letter-spacing: 0;
   }
 }

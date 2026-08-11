@@ -130,7 +130,14 @@ export class App implements TourHost {
     this.search = new Search(root, {
       selectObject: (id) => this.state.select(id),
       openMission: (id) => this.missions.openAt(id),
-      openSky: (id) => this.observatory.openFor(id),
+      openSky: (id) => {
+        // search can fire over an already-open modal - close the stack so
+        // the Observatory is the only dialog and Escape unwinds correctly
+        for (const o of [this.compare, this.gravity, this.structure, this.earthMoon]) {
+          if (o.isOpen) o.close();
+        }
+        this.observatory.openFor(id);
+      },
     });
     this.atlas = new Atlas(root, this.state);
     this.journey = new Journey(root, {

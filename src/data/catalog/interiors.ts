@@ -38,6 +38,7 @@ export const INTERIORS: Record<string, Interior> = {
       {
         name: 'Photosphere',
         outerRadiusFraction: 1,
+        thicknessKm: 400, // drawn thicker than true scale so it stays visible
         color: 0xffe9b8,
         note: 'The visible "surface": a ~400 km-thin layer at 5,500 °C.',
         knowledge: 'observed',
@@ -392,6 +393,7 @@ export const INTERIORS: Record<string, Interior> = {
       {
         name: 'Ice shell',
         outerRadiusFraction: 1,
+        thicknessKm: 20, // midpoint of the 15-25 km estimate; drawing exaggerates
         color: 0xcfe0ea,
         note: '15-25 km of cracked, shifting ice.',
         knowledge: 'modelled',

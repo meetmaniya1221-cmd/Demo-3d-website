@@ -179,7 +179,12 @@ export class Hud {
       const v = this.dateInput.value;
       if (!v) return;
       const [y, m, d] = v.split('-').map(Number);
-      state.setSimDate(Date.UTC(y, m - 1, d, 12));
+      // clamp typed years to the picker's advertised range; Date.UTC would
+      // otherwise remap 0-99 to 1900-1999 silently
+      const year = Math.min(2100, Math.max(1900, y));
+      const ms = Date.UTC(year, (m || 1) - 1, d || 1, 12);
+      state.setSimDate(ms);
+      if (year !== y) this.dateInput.value = new Date(ms).toISOString().slice(0, 10);
     });
 
     const nowBtn = document.createElement('button');
@@ -240,8 +245,14 @@ export class Hud {
     // at sub-day speeds the date alone would look frozen - show the clock too
     const showTime = Math.abs(this.state.speed.daysPerSec) < 1;
     const date = fmtSimDate(this.state.simDays);
-    this.dateEl.textContent = showTime
-      ? `${date} · ${fmtSimTime(this.state.simDays)}`
-      : date;
+    const text = showTime ? `${date} · ${fmtSimTime(this.state.simDays)}` : date;
+    if (this.dateEl.textContent !== text) {
+      this.dateEl.textContent = text;
+      // keep the live date in the accessible name, not just the visual text
+      this.dateEl.setAttribute(
+        'aria-label',
+        `Simulation date: ${text}. Activate to pick another date`,
+      );
+    }
   }
 }

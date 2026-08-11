@@ -125,6 +125,7 @@ export class Search {
   private host: SearchHost;
   private restoreFocus: HTMLElement | null = null;
   private hideTimer: number | undefined;
+  private openFlag = false;
 
   constructor(parent: HTMLElement, host: SearchHost) {
     this.host = host;
@@ -189,12 +190,13 @@ export class Search {
   }
 
   get isOpen(): boolean {
-    return !this.root.hidden;
+    return this.openFlag;
   }
 
   open(): void {
     this.items ??= buildIndex();
     window.clearTimeout(this.hideTimer);
+    this.openFlag = true;
     this.restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.root.hidden = false;
     requestAnimationFrame(() => this.root.classList.add('open'));
@@ -205,6 +207,8 @@ export class Search {
   }
 
   close(): void {
+    // logically closed NOW - only the visual fade lags behind
+    this.openFlag = false;
     this.root.classList.remove('open');
     // let the exit transition play before display:none kicks in
     window.clearTimeout(this.hideTimer);
