@@ -169,6 +169,7 @@ export class Planet {
   /** Swap in a higher-quality surface map (progressive enhancement). */
   setSurfaceMap(map: THREE.Texture, roughnessMap?: THREE.Texture | null): void {
     const mat = this.surface.material as THREE.MeshStandardMaterial;
+    mat.map?.dispose(); // free the procedural canvas texture on the GPU
     mat.map = map;
     if (roughnessMap !== undefined) mat.roughnessMap = roughnessMap ?? null;
     mat.needsUpdate = true;
@@ -178,6 +179,7 @@ export class Planet {
   setRingMap(map: THREE.Texture): void {
     if (!this.ringMesh) return;
     const mat = this.ringMesh.material as THREE.MeshStandardMaterial;
+    mat.map?.dispose();
     mat.map = map;
     mat.needsUpdate = true;
   }

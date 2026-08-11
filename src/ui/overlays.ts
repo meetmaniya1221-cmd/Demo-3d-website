@@ -150,13 +150,15 @@ export class CompareOverlay extends Overlay {
       .map(
         (b) =>
           `<tr><th scope="row">${b.name}</th><td>${Math.round(b.facts.diameterKm).toLocaleString()} km</td>` +
-          `<td>${(b.facts.diameterKm / 12_756).toFixed(2)}× Earth</td><td>${b.facts.distanceAU.toFixed(2)} AU</td></tr>`,
+          `<td>${(b.facts.diameterKm / 12_756).toFixed(2)}× Earth</td>` +
+          // the Moon's catalog distance is measured from EARTH, not the Sun
+          `<td>${b.id === 'moon' ? '384,400 km from Earth' : `${b.facts.distanceAU.toFixed(2)} AU from the Sun`}</td></tr>`,
       )
       .join('');
     const wrap = document.createElement('div');
     wrap.style.cssText =
       'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap';
-    wrap.innerHTML = `<table><caption>Planet sizes and distances</caption><thead><tr><th>Body</th><th>Diameter</th><th>Relative to Earth</th><th>Distance from Sun</th></tr></thead><tbody>${rows}</tbody></table>`;
+    wrap.innerHTML = `<table><caption>Planet sizes and distances</caption><thead><tr><th>Body</th><th>Diameter</th><th>Relative to Earth</th><th>Distance</th></tr></thead><tbody>${rows}</tbody></table>`;
     this.bodyEl.appendChild(wrap);
   }
 

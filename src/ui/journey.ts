@@ -17,6 +17,8 @@ interface Milestone {
   r: number;
   title: string;
   text: string;
+  /** region entries span a band, so they get no point tick on the bar */
+  noTick?: boolean;
 }
 
 const MILESTONES: Milestone[] = [
@@ -24,12 +26,12 @@ const MILESTONES: Milestone[] = [
   { r: 0.72, title: 'Venus’s orbit - 0.72 AU', text: 'Sunlight is still twice as strong here as at Earth.' },
   { r: 1.0, title: 'Earth’s orbit - 1 AU', text: 'One astronomical unit: 149.6 million km. Everything you have ever known happened this close to the Sun.' },
   { r: 1.52, title: 'Mars’s orbit - 1.5 AU', text: 'The current rockets take about seven months to get here from Earth.' },
-  { r: 2.5, title: 'The asteroid belt - 2.1 to 3.3 AU', text: 'Millions of rocks, yet so spread out that spacecraft fly through without aiming.' },
+  { r: 2.5, title: 'The asteroid belt - 2.1 to 3.3 AU', text: 'Millions of rocks, yet so spread out that spacecraft fly through without aiming.', noTick: true },
   { r: 5.2, title: 'Jupiter’s orbit - 5.2 AU', text: 'Sunlight here is 27× weaker than at Earth. Solar panels start to struggle.' },
   { r: 9.57, title: 'Saturn’s orbit - 9.6 AU', text: 'Cassini needed almost seven years to get here.' },
   { r: 19.2, title: 'Uranus’s orbit - 19.2 AU', text: 'Only one spacecraft has ever passed this way: Voyager 2, in 1986.' },
   { r: 30.1, title: 'Neptune’s orbit - 30 AU', text: 'Sunlight takes over four hours to reach this far. It is 900× dimmer than at Earth.' },
-  { r: 39.5, title: 'The Kuiper belt - 30 to 50 AU', text: 'Pluto and thousands of icy worlds drift here in the deep cold.' },
+  { r: 39.5, title: 'The Kuiper belt - 30 to 50 AU', text: 'Pluto and thousands of icy worlds drift here in the deep cold.', noTick: true },
 ];
 
 export interface JourneyHost {
@@ -55,6 +57,8 @@ export class Journey {
   private calloutTimer = 0;
   private ended = false;
   private prevScale: 'explorer' | 'true' = 'explorer';
+  private prevOrbits = true;
+  private prevLabels = true;
 
   constructor(parent: HTMLElement, host: JourneyHost) {
     this.host = host;
@@ -62,7 +66,7 @@ export class Journey {
     this.root.className = 'journey-hud';
     this.root.inert = true;
     this.root.setAttribute('aria-label', 'Distance journey');
-    const ticks = MILESTONES.filter((m) => ![2.5, 39.5].includes(m.r))
+    const ticks = MILESTONES.filter((m) => !m.noTick)
       .map((m) => {
         const p = Math.log(m.r / R_START) / Math.log(R_END / R_START);
         return `<i style="left:${(p * 100).toFixed(1)}%"></i>`;
@@ -104,6 +108,8 @@ export class Journey {
     // journey, and mid-start that would leave the HUD half-initialised
     st.select(null);
     this.active = true;
+    this.prevOrbits = st.showOrbits;
+    this.prevLabels = st.showLabels;
     st.setScaleMode('true');
     if (!st.showOrbits) st.setToggle('showOrbits', true);
     if (!st.showLabels) st.setToggle('showLabels', true);
@@ -125,7 +131,11 @@ export class Journey {
     this.root.inert = true;
     document.body.classList.remove('journey-active');
     this.host.setControlsEnabled(true);
-    this.host.state.setScaleMode(this.prevScale);
+    const st = this.host.state;
+    st.setScaleMode(this.prevScale);
+    // hand the user back exactly the view settings they had before the ride
+    if (st.showOrbits !== this.prevOrbits) st.setToggle('showOrbits', this.prevOrbits);
+    if (st.showLabels !== this.prevLabels) st.setToggle('showLabels', this.prevLabels);
     this.host.onEnd();
   }
 
@@ -185,8 +195,8 @@ export class Journey {
     if (this.t >= DURATION && !this.ended) {
       this.ended = true;
       this.showCallout(
-        '55 AU - beyond the Kuiper belt’s main band',
-        'Voyager 1, our fastest outbound craft, took about 16 years to get this far. Light does it in 7.6 hours. Press End journey to fly back.',
+        '55 AU - and this is still the doorstep',
+        'Voyager 1 took 16 years to get this far; light does it in 7.6 hours. Beyond here the Oort cloud is thought to begin ~2,000 AU out, and the nearest star, Proxima Centauri, waits at 268,000 AU - a light journey of 4.2 YEARS. Press End journey to fly back.',
       );
     }
   }

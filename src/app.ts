@@ -384,12 +384,15 @@ export class App implements TourHost {
     this.elapsed += dt;
     this.state.tick(dt);
 
-    // animate the explorer ↔ true-scale morph (snap under reduced motion)
+    // animate the explorer ↔ true-scale morph (snap under reduced motion).
+    // The easing factor is time-normalized so the morph takes the same wall
+    // time at any frame rate, and the asymptotic tail snaps early so orbit
+    // geometry stops rebuilding as soon as the change is invisible.
     const diff = this.scaleTarget - this.state.scaleT;
     if (REDUCED_MOTION) {
       this.state.scaleT = this.scaleTarget;
-    } else if (Math.abs(diff) > 0.0005) {
-      this.state.scaleT += diff * Math.min(1, dt * 1.6);
+    } else if (Math.abs(diff) > 0.002) {
+      this.state.scaleT += diff * (1 - Math.exp(-dt * 1.6));
     } else if (this.state.scaleT !== this.scaleTarget) {
       this.state.scaleT = this.scaleTarget;
     }
@@ -429,6 +432,9 @@ export class App implements TourHost {
       this.rig.camera.far = wantFar;
       this.rig.camera.updateProjectionMatrix();
     }
+    // zoom-out limit follows the scale mode: true scale needs to reach the
+    // outermost aphelia (~940 AU = 94,000 units), explorer stays tight
+    this.rig.controls.maxDistance = 12000 * (1 - this.state.scaleT) + 150000 * this.state.scaleT;
 
     this.liveTimer += dt;
     if (this.liveTimer > 1) {
@@ -476,6 +482,7 @@ export class App implements TourHost {
     this.composer.setPixelRatio(value);
     this.system.markers.setPixelRatio(value);
     this.system.constellations.setPixelRatio(value);
+    this.system.setPixelRatio(value);
   }
 
   private resize(): void {

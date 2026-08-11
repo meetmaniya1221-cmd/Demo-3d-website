@@ -22,6 +22,7 @@ import { CometFX } from './comet';
 import { Markers, projectedPx, markerFade } from './markers';
 
 const sphereGeo = new THREE.SphereGeometry(1, 48, 24);
+const textureLoader = new THREE.TextureLoader();
 
 /** Paint recipe for bodies without photographic maps. */
 const PAINT: Record<string, MinorPaintKind> = {
@@ -150,7 +151,7 @@ export class SmallBodies {
         activated: false,
         enabled: true,
         orbitOnSelectOnly,
-        spinPhase: (def.id.charCodeAt(1) * 0.9) % (Math.PI * 2),
+        spinPhase: ((def.id.charCodeAt(0) * 3.1 + (def.id.charCodeAt(1) || 17) * 0.9)) % (Math.PI * 2),
       });
       if (orbitOnSelectOnly) orbit.line.visible = false;
     }
@@ -168,12 +169,13 @@ export class SmallBodies {
     };
     const file = b.def.texture?.file;
     if (file) {
-      new THREE.TextureLoader().load(
+      textureLoader.load(
         `${this.textureBase}textures/${file}`,
         (tex) => {
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.wrapS = THREE.RepeatWrapping;
           tex.anisotropy = 4;
+          mat.map?.dispose();
           mat.map = tex;
           mat.color.set(0xffffff);
           mat.needsUpdate = true;
@@ -229,7 +231,7 @@ export class SmallBodies {
   update(
     simDays: number,
     scaleT: number,
-    elapsed: number,
+    _elapsed: number,
     camera: THREE.Vector3,
     halfTanFov: number,
     viewH: number,
@@ -283,7 +285,10 @@ export class SmallBodies {
           .sub(b.root.position);
         if (vel.lengthSq() < 1e-12) vel.set(0, 0, 1);
         vel.normalize();
-        b.fx.update(b.rAU, antiSun, vel, r, scaleT, elapsed);
+        // tail turbulence rides sim time (not the wall clock) so pausing the
+        // simulation freezes the comet too; ~day-scale churn reads right at
+        // typical time speeds
+        b.fx.update(b.rAU, antiSun, vel, r, scaleT, simDays * 0.35);
         // LOD gates: the coma sprite needs real screen coverage to earn its
         // bloom; tails may linger longer (a distant active comet reads as a
         // marker dot with a faint streak - exactly right)
@@ -326,5 +331,9 @@ export class SmallBodies {
 
   cometActivity(id: string): number {
     return this.bodies.get(id)?.fx?.activity ?? 0;
+  }
+
+  setPixelRatio(pr: number): void {
+    for (const b of this.bodies.values()) b.fx?.setPixelRatio(pr);
   }
 }

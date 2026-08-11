@@ -5,12 +5,25 @@ import * as THREE from 'three';
 import { EXPLORER_A, EXPLORER_GAMMA, TRUE_UNITS_PER_AU } from '../sim/scale';
 import { fmtDistanceAuto } from './format';
 
-/** Scene-space heliocentric radius → AU, honouring the current scale blend. */
+/** Scene-space heliocentric radius → AU, honouring the current scale blend.
+ *  The forward map is mapped(r) = (1-t)·A·r^γ + t·r·U; blending the two
+ *  inverses is NOT its inverse, so mid-morph we solve the monotonic forward
+ *  map by bisection (exact at the endpoints, ~1e-6 AU elsewhere). */
 function invMapRadius(sceneR: number, t: number): number {
   if (sceneR <= 0) return 0;
-  const explorer = Math.pow(sceneR / EXPLORER_A, 1 / EXPLORER_GAMMA);
-  const trueScale = sceneR / TRUE_UNITS_PER_AU;
-  return explorer * (1 - t) + trueScale * t;
+  if (t <= 0) return Math.pow(sceneR / EXPLORER_A, 1 / EXPLORER_GAMMA);
+  if (t >= 1) return sceneR / TRUE_UNITS_PER_AU;
+  const fwd = (r: number) =>
+    (1 - t) * EXPLORER_A * Math.pow(r, EXPLORER_GAMMA) + t * r * TRUE_UNITS_PER_AU;
+  let lo = 0;
+  let hi = 4000;
+  if (fwd(hi) < sceneR) return sceneR / TRUE_UNITS_PER_AU; // beyond the map
+  for (let i = 0; i < 48; i++) {
+    const mid = (lo + hi) / 2;
+    if (fwd(mid) < sceneR) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
 }
 
 export class DistanceReadout {

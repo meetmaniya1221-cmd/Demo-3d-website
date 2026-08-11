@@ -62,13 +62,30 @@ export function fmtLightTime(au: number): string {
   if (sec < 90) return `${sec.toFixed(0)} s`;
   const min = sec / 60;
   if (min < 90) return `${min.toFixed(1)} min`;
-  return `${(min / 60).toFixed(1)} h`;
+  const h = min / 60;
+  if (h < 48) return `${h.toFixed(1)} h`;
+  const days = h / 24;
+  if (days < 500) return `${days.toFixed(days < 10 ? 1 : 0)} days`;
+  return `${(days / 365.25).toFixed(1)} years`;
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Milliseconds since the Unix epoch for a J2000-relative day count. */
+export function simDateMs(daysSinceJ2000: number): number {
+  return Date.UTC(2000, 0, 1, 12) + daysSinceJ2000 * 86_400_000;
 }
 
 /** Simulation date line, e.g. "10 Aug 2026". */
 export function fmtSimDate(daysSinceJ2000: number): string {
-  const ms = Date.UTC(2000, 0, 1, 12) + daysSinceJ2000 * 86_400_000;
-  const d = new Date(ms);
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  const d = new Date(simDateMs(daysSinceJ2000));
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/** Time-of-day line for slow time speeds, e.g. "14:03 UTC". */
+export function fmtSimTime(daysSinceJ2000: number): string {
+  const d = new Date(simDateMs(daysSinceJ2000));
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${hh}:${mm} UTC`;
 }

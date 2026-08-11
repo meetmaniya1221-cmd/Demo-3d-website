@@ -94,6 +94,7 @@ export class Search {
   private cursor = 0;
   private host: SearchHost;
   private restoreFocus: HTMLElement | null = null;
+  private hideTimer: number | undefined;
 
   constructor(parent: HTMLElement, host: SearchHost) {
     this.host = host;
@@ -163,6 +164,7 @@ export class Search {
 
   open(): void {
     this.items ??= buildIndex();
+    window.clearTimeout(this.hideTimer);
     this.restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.root.hidden = false;
     requestAnimationFrame(() => this.root.classList.add('open'));
@@ -174,7 +176,11 @@ export class Search {
 
   close(): void {
     this.root.classList.remove('open');
-    this.root.hidden = true;
+    // let the exit transition play before display:none kicks in
+    window.clearTimeout(this.hideTimer);
+    this.hideTimer = window.setTimeout(() => {
+      this.root.hidden = true;
+    }, 240);
     this.restoreFocus?.focus();
     this.restoreFocus = null;
   }

@@ -158,14 +158,15 @@ export class Sun {
     this.group.add(this.light);
   }
 
-  update(elapsed: number, scaleT: number): void {
+  update(elapsed: number, scaleT: number, simDays = 0): void {
     this.mat.uniforms.uTime.value = elapsed;
     const r = displayRadius('sun', SUN.facts.diameterKm, scaleT);
     this.mesh.scale.setScalar(r);
     this.coronaInner.scale.setScalar(r * 5.2);
     this.coronaOuter.scale.setScalar(r * 11);
-    // slow solar rotation for the granulation pattern
-    this.mesh.rotation.y = elapsed * 0.008;
+    // solar rotation follows simulation time (sidereal Carrington rate,
+    // ~25.4 days at the equator) so pause/rewind/fast-forward all apply
+    this.mesh.rotation.y = (simDays / 25.38) * Math.PI * 2;
   }
 
   get radius(): number {
@@ -174,6 +175,7 @@ export class Sun {
 
   /** Swap in the photographic solar surface (progressive enhancement). */
   setSurfaceMap(map: THREE.Texture): void {
+    (this.mat.uniforms.uMap.value as THREE.Texture | null)?.dispose();
     this.mat.uniforms.uMap.value = map;
     this.mat.uniforms.uHasMap.value = 1;
   }

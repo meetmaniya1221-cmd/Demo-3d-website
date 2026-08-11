@@ -13,6 +13,7 @@ const BELT_VERT = /* glsl */ `
   uniform float uDays;       // sim days since J2000
   uniform float uScaleT;     // explorer(0) → true(1)
   uniform float uSize;
+  uniform float uPr;
 
   void main() {
     // Kepler's third law: angular speed ∝ a^(-3/2)
@@ -20,11 +21,11 @@ const BELT_VERT = /* glsl */ `
     vec3 ecl = vec3(cos(ang) * aRadius, sin(ang) * aRadius, 0.0);
     ecl.z = sin(ang + aNode) * sin(aIncl) * aRadius;
     float r = length(ecl);
-    float mapped = mix(${EXPLORER_A.toFixed(1)} * pow(r, ${EXPLORER_GAMMA}), r * ${TRUE_UNITS_PER_AU.toFixed(1)}, uScaleT);
+    float mapped = mix(${EXPLORER_A.toFixed(4)} * pow(r, ${EXPLORER_GAMMA.toFixed(4)}), r * ${TRUE_UNITS_PER_AU.toFixed(4)}, uScaleT);
     vec3 pos = ecl * (mapped / r);
     // ecliptic → scene axes (y up)
     vec4 mv = modelViewMatrix * vec4(pos.x, pos.z, -pos.y, 1.0);
-    gl_PointSize = clamp(uSize * 140.0 / max(-mv.z, 0.1), 0.5, 2.6);
+    gl_PointSize = clamp(uSize * 140.0 / max(-mv.z, 0.1), 0.5, 2.6) * uPr;
     gl_Position = projectionMatrix * mv;
     vShade = aShade;
   }
@@ -111,6 +112,7 @@ export class Belt {
         uDays: { value: 0 },
         uScaleT: { value: 0 },
         uSize: { value: spec.size },
+        uPr: { value: Math.min(2, window.devicePixelRatio || 1) },
         uColor: { value: new THREE.Color(spec.color) },
         uOpacity: { value: spec.opacity },
       },
@@ -124,5 +126,9 @@ export class Belt {
   update(simDays: number, scaleT: number): void {
     this.mat.uniforms.uDays.value = simDays;
     this.mat.uniforms.uScaleT.value = scaleT;
+  }
+
+  setPixelRatio(pr: number): void {
+    this.mat.uniforms.uPr.value = pr;
   }
 }

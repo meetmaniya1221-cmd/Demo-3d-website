@@ -33,6 +33,7 @@ export class SolarSystem {
   private mainBelt: Belt;
   private kuiperBelt: Belt;
   private lastOrbitScaleT = -1;
+  private lastSimDays = 0;
   private selectedId: string | null = null;
   private layers: Layers = { ...DEFAULT_LAYERS };
   private tmp = { x: 0, y: 0, z: 0 };
@@ -120,7 +121,8 @@ export class SolarSystem {
   }
 
   update(simDays: number, scaleT: number, elapsed: number, camera: THREE.PerspectiveCamera): void {
-    this.sun.update(elapsed, scaleT);
+    this.lastSimDays = simDays;
+    this.sun.update(elapsed, scaleT, simDays);
     const cameraPos = camera.position;
     const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     const viewH = window.innerHeight;
@@ -265,6 +267,22 @@ export class SolarSystem {
 
   /** Heliocentric distance in AU for the info panel, when known. */
   heliocentricAU(id: string): number | null {
-    return this.smallBodies.heliocentricAU(id);
+    if (id === 'sun') return 0;
+    const small = this.smallBodies.heliocentricAU(id);
+    if (small !== null) return small;
+    const planet = this.planets.get(id);
+    if (planet?.def.orbit) {
+      const [x, y, z] = keplerPosition(planet.def.orbit, this.lastSimDays);
+      return Math.hypot(x, y, z);
+    }
+    return null;
+  }
+
+  /** Forward render-resolution changes to every DPR-aware point shader. */
+  setPixelRatio(pr: number): void {
+    this.sky.setPixelRatio(pr);
+    this.mainBelt.setPixelRatio(pr);
+    this.kuiperBelt.setPixelRatio(pr);
+    this.smallBodies.setPixelRatio(pr);
   }
 }

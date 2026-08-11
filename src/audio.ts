@@ -64,7 +64,9 @@ class SoundFX {
     src.buffer = buffer;
     src.loop = true;
     this.ambientGain = this.ctx.createGain();
-    this.ambientGain.gain.value = 0;
+    // anchor the automation timeline first: without setValueAtTime the ramp
+    // has no starting event and some engines jump straight to the target
+    this.ambientGain.gain.setValueAtTime(0, this.ctx.currentTime);
     this.ambientGain.gain.linearRampToValueAtTime(0.35, this.ctx.currentTime + 5);
     src.connect(this.ambientGain).connect(this.master);
     src.start();
@@ -91,6 +93,7 @@ class SoundFX {
       // storage may be unavailable; the in-session state still applies
     }
     if (this.master && this.ctx) {
+      this.master.gain.setValueAtTime(this.master.gain.value, this.ctx.currentTime);
       this.master.gain.linearRampToValueAtTime(muted ? 0 : 1, this.ctx.currentTime + 0.15);
     }
   }

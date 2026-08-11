@@ -30,7 +30,12 @@ const TEXTURE_BADGE: Record<string, string> = {
 };
 
 function esc(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  // quote-escaping matters too: some values are interpolated into attributes
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 const EARTH_ORBIT = PLANETS.find((p) => p.id === 'earth')!.orbit!;

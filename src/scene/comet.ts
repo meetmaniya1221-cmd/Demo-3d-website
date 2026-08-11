@@ -26,6 +26,7 @@ const TAIL_VERT = /* glsl */ `
   uniform float uCurve;    // 0 = straight ion tail, >0 = curved dust tail
   uniform float uTime;
   uniform float uSize;
+  uniform float uPr;
   void main() {
     float t = aT;
     vT = t;
@@ -39,7 +40,7 @@ const TAIL_VERT = /* glsl */ `
     vec3 jit = aJitter + vec3(sin(swirl), cos(swirl * 0.7), sin(swirl * 1.3)) * 0.35;
     p += jit * w;
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
-    gl_PointSize = clamp(uSize * (1.0 - t * 0.55) * 240.0 / max(-mv.z, 0.1), 1.0, 10.0);
+    gl_PointSize = clamp(uSize * (1.0 - t * 0.55) * 240.0 / max(-mv.z, 0.1), 1.0, 10.0) * uPr;
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -103,6 +104,7 @@ function tailPoints(
       uCurve: { value: curve },
       uTime: { value: 0 },
       uSize: { value: size },
+      uPr: { value: Math.min(2, window.devicePixelRatio || 1) },
       uColor: { value: color },
       uOpacity: { value: opacity },
     },
@@ -131,6 +133,11 @@ export class CometFX {
   setLOD(coma: number, tails: number): void {
     this.comaLOD = coma;
     this.tailLOD = tails;
+  }
+
+  setPixelRatio(pr: number): void {
+    this.ion.mat.uniforms.uPr.value = pr;
+    this.dust.mat.uniforms.uPr.value = pr;
   }
 
   constructor(seed: number) {

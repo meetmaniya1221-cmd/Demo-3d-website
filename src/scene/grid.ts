@@ -15,7 +15,7 @@
  * computed here and projected by SkyNotes.
  */
 import * as THREE from 'three';
-import { mapDistanceAU } from '../sim/scale';
+import { EXPLORER_A, EXPLORER_GAMMA, TRUE_UNITS_PER_AU, mapDistanceAU } from '../sim/scale';
 
 /** Full ring ladder; "major" rings can carry labels. */
 interface RingSpec {
@@ -105,6 +105,13 @@ export class ReferenceGrid {
   private scaleT = 0;
   private focusAU = 12;
   private labelPool: GridLabelState[] = [];
+  /** Pre-allocated label states (one per possible label) - no per-frame GC. */
+  private labelStatesPool: GridLabelState[] = Array.from({ length: RINGS.length + 4 }, () => ({
+    kind: 'au' as const,
+    text: '',
+    world: new THREE.Vector3(),
+    alpha: 0,
+  }));
 
   constructor() {
     // ---- rings: one geometry, per-vertex AU + strength
@@ -224,8 +231,8 @@ export class ReferenceGrid {
     // converted to AU through the current mapping (approximate but smooth)
     const horiz = Math.hypot(camPos.x, camPos.z);
     const sceneR = Math.max(Math.abs(camPos.y) * 1.2, horiz * 0.5, 4);
-    const explorer = Math.pow(sceneR / 26, 1 / 0.55);
-    const trueScale = sceneR / 100;
+    const explorer = Math.pow(sceneR / EXPLORER_A, 1 / EXPLORER_GAMMA);
+    const trueScale = sceneR / TRUE_UNITS_PER_AU;
     const f = THREE.MathUtils.clamp(
       explorer * (1 - this.scaleT) + trueScale * this.scaleT,
       0.08,
@@ -245,18 +252,22 @@ export class ReferenceGrid {
    */
   labelStates(): GridLabelState[] {
     this.labelPool.length = 0;
+    let poolIdx = 0;
+    const take = (): GridLabelState => this.labelStatesPool[poolIdx++];
     let outermost: number | null = null;
     for (const spec of RINGS) {
       if (!spec.major) continue;
       const w = ringWeight(spec.rAU, this.focusAU);
       if (w < 0.25) continue;
       const r = mapDistanceAU(spec.rAU, this.scaleT);
-      this.labelPool.push({
-        kind: 'au',
-        text: spec.rAU < 1 ? `${spec.rAU} AU` : `${spec.rAU} AU`,
-        world: new THREE.Vector3(r, PLANE_Y, 0),
-        alpha: Math.min(1, w * 1.4),
-      });
+      const label = take();
+      label.kind = 'au';
+      // inner rings read better in million km; 1 AU and out stay in AU
+      label.text =
+        spec.rAU < 1 ? `${Math.round(spec.rAU * 149.6)} M km` : `${spec.rAU} AU`;
+      label.world.set(r, PLANE_Y, 0);
+      label.alpha = Math.min(1, w * 1.4);
+      this.labelPool.push(label);
       if (w > 0.55) outermost = spec.rAU;
     }
     if (outermost !== null) {
@@ -268,12 +279,12 @@ export class ReferenceGrid {
         ['270°', (3 * Math.PI) / 2],
       ];
       for (const [text, ang] of marks) {
-        this.labelPool.push({
-          kind: 'deg',
-          text,
-          world: new THREE.Vector3(Math.cos(ang) * r, PLANE_Y, -Math.sin(ang) * r),
-          alpha: 0.8,
-        });
+        const label = take();
+        label.kind = 'deg';
+        label.text = text;
+        label.world.set(Math.cos(ang) * r, PLANE_Y, -Math.sin(ang) * r);
+        label.alpha = 0.8;
+        this.labelPool.push(label);
       }
     }
     return this.labelPool;

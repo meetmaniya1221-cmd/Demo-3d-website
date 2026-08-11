@@ -59,7 +59,7 @@ export class Markers {
   private capacity: number;
   private ids = new Map<string, number>();
 
-  constructor(capacity = 96) {
+  constructor(capacity = 192) {
     this.capacity = capacity;
     this.pos = new Float32Array(capacity * 3);
     this.fade = new Float32Array(capacity);
@@ -91,7 +91,10 @@ export class Markers {
   register(id: string, color: number): number {
     let idx = this.ids.get(id);
     if (idx !== undefined) return idx;
-    if (this.count >= this.capacity) return -1;
+    if (this.count >= this.capacity) {
+      console.warn(`Markers: capacity ${this.capacity} exhausted, "${id}" gets no marker`);
+      return -1;
+    }
     idx = this.count++;
     this.ids.set(id, idx);
     const c = new THREE.Color(color);

@@ -10,11 +10,12 @@ const STAR_VERT = /* glsl */ `
   varying vec3 vColor;
   varying float vTwinkle;
   uniform float uTime;
+  uniform float uPr;
   void main() {
     vColor = aColor;
     vTwinkle = 0.82 + 0.18 * sin(uTime * 0.9 + position.x * 0.02 + position.y * 0.013);
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = aSize;
+    gl_PointSize = aSize * uPr;
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -84,7 +85,7 @@ export class Sky {
     this.starMat = new THREE.ShaderMaterial({
       vertexShader: STAR_VERT,
       fragmentShader: STAR_FRAG,
-      uniforms: { uTime: { value: 0 } },
+      uniforms: { uTime: { value: 0 }, uPr: { value: Math.min(2, window.devicePixelRatio || 1) } },
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -92,6 +93,9 @@ export class Sky {
     const stars = new THREE.Points(geo, this.starMat);
     stars.frustumCulled = false;
     stars.renderOrder = -10;
+    // the dense star band was generated around y=0; tilt it with the Milky Way
+    // sphere so the extra density actually lies along the visible galactic band
+    stars.rotation.set(0.45, 0.2, 0.35);
     this.group.add(stars);
 
     const mwGeo = new THREE.SphereGeometry(SKY_RADIUS * 0.98, 48, 32);
@@ -109,5 +113,9 @@ export class Sky {
 
   update(elapsed: number): void {
     this.starMat.uniforms.uTime.value = elapsed;
+  }
+
+  setPixelRatio(pr: number): void {
+    this.starMat.uniforms.uPr.value = pr;
   }
 }

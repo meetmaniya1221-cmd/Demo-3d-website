@@ -13,6 +13,7 @@ import { minorTexture, irregularGeometry, type MinorPaintKind } from './minortex
 import { Markers, projectedPx, markerFade } from './markers';
 
 const sphereGeo = new THREE.SphereGeometry(1, 48, 24);
+const satTextureLoader = new THREE.TextureLoader();
 
 /** Moons with a visible gas envelope get a soft additive rim shell. */
 const MOON_HAZE: Record<string, { color: number; strength: number }> = {
@@ -175,12 +176,13 @@ export class SatelliteSystem {
       mat.needsUpdate = true;
     };
     if (file) {
-      new THREE.TextureLoader().load(
+      satTextureLoader.load(
         `${this.textureBase}textures/${file}`,
         (tex) => {
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.wrapS = THREE.RepeatWrapping;
           tex.anisotropy = 4;
+          mat.map?.dispose();
           mat.map = tex;
           mat.color.set(0xffffff);
           mat.needsUpdate = true;

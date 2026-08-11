@@ -115,6 +115,11 @@ export class Tour {
   private backBtn: HTMLButtonElement;
   private nextBtn: HTMLButtonElement;
   private host: TourHost;
+  private snapshot: { hz: boolean; scale: 'explorer' | 'true'; speedIndex: number } = {
+    hz: false,
+    scale: 'explorer',
+    speedIndex: 3,
+  };
 
   constructor(parent: HTMLElement, host: TourHost) {
     this.host = host;
@@ -156,22 +161,26 @@ export class Tour {
   }
 
   start(): void {
-    this.host.state.select(null);
-    this.host.state.setTourStep(0);
+    const st = this.host.state;
+    // snapshot the user's settings so ending the tour hands them back,
+    // rather than stomping them with hard-coded defaults
+    this.snapshot = { hz: st.showHZ, scale: st.scaleMode, speedIndex: st.speedIndex };
+    st.select(null);
+    st.setTourStep(0);
     this.apply(0);
     this.root.inert = false;
     this.root.classList.add('open');
   }
 
-  /** Close the tour and restore defaults, without moving the camera. */
+  /** Close the tour and restore the pre-tour settings, without moving the camera. */
   dismiss(): void {
     const st = this.host.state;
     st.setTourStep(null);
     this.root.classList.remove('open');
     this.root.inert = true;
-    st.setToggle('showHZ', false);
-    st.setScaleMode('explorer');
-    st.setSpeedIndex(3);
+    st.setToggle('showHZ', this.snapshot.hz);
+    st.setScaleMode(this.snapshot.scale);
+    st.setSpeedIndex(this.snapshot.speedIndex);
   }
 
   end(): void {
@@ -206,12 +215,12 @@ export class Tour {
     const dots = this.progressEl.children;
     for (let i = 0; i < dots.length; i++) dots[i].classList.toggle('done', i <= index);
 
-    // fold every step up to this one over the defaults, so navigating Back
-    // undoes later steps' one-shot side effects (true scale, HZ, speed)
+    // fold every step up to this one over the pre-tour snapshot, so
+    // navigating Back undoes later steps' one-shot side effects
     const st = this.host.state;
-    let hz = false;
-    let scale: 'explorer' | 'true' = 'explorer';
-    let speedIndex = 3;
+    let hz = this.snapshot.hz;
+    let scale: 'explorer' | 'true' = this.snapshot.scale;
+    let speedIndex = this.snapshot.speedIndex;
     for (let i = 0; i <= index; i++) {
       const s = STEPS[i];
       if (s.hz !== undefined) hz = s.hz;

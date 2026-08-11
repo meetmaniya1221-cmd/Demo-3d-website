@@ -82,6 +82,16 @@ async function boot(): Promise<void> {
 
 boot().catch((err) => {
   console.error('Orrery failed to start:', err);
-  const msg = document.getElementById('boot-msg');
-  if (msg) msg.textContent = 'Something went wrong while starting. Please reload.';
+  // the boot screen may already have been dismissed by the time a late
+  // failure lands - rebuild a minimal message layer so the error is visible
+  let msg = document.getElementById('boot-msg');
+  if (!msg || !document.body.contains(msg)) {
+    const shade = document.createElement('div');
+    shade.style.cssText =
+      'position:fixed;inset:0;display:grid;place-items:center;background:rgba(2,3,8,0.92);z-index:99;color:#dfe6f4;font:500 15px system-ui,sans-serif;text-align:center;padding:24px';
+    msg = document.createElement('div');
+    shade.appendChild(msg);
+    document.body.appendChild(shade);
+  }
+  msg.textContent = 'Something went wrong while starting. Please reload.';
 });
