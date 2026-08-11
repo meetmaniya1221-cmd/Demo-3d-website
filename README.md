@@ -21,8 +21,9 @@ npm run preview  # serve the production build
 (the Galileans, nine Saturnian moons, the five round Uranian moons, Triton,
 Charon, Phobos, Deimos and our Moon), the five IAU dwarf planets, four
 dwarf-planet candidates beyond Neptune (Quaoar, Sedna, Gonggong, Orcus),
-seven landmark asteroids (Vesta, Pallas, Hygiea, Psyche, Eros, Bennu,
-Ryugu), six periodic comets with their real orbits, the asteroid belt,
+eight landmark asteroids (Vesta, Pallas, Hygiea, Psyche, Eros, Bennu,
+Ryugu, and DART’s binary target Didymos), six periodic comets with their
+real orbits, the asteroid belt,
 Kuiper belt and Oort cloud - each with structured scientific data, mission
 history, sources and honest uncertainty notes.
 

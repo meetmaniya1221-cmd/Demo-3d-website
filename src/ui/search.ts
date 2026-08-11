@@ -135,6 +135,9 @@ export class Search {
         this.commit(this.cursor);
       } else if (e.key === 'Escape') {
         e.preventDefault();
+        // don't let the global Escape handler also fire (it would deselect
+        // the current body or end a journey underneath the palette)
+        e.stopPropagation();
         this.close();
       }
     });

@@ -42,7 +42,9 @@ export abstract class Overlay {
     this.root.addEventListener('keydown', (e) => {
       if (e.key !== 'Tab') return;
       const focusables = Array.from(
-        this.root.querySelectorAll<HTMLElement>('button, input, [tabindex]:not([tabindex="-1"])'),
+        this.root.querySelectorAll<HTMLElement>(
+          'button, input, a[href], [tabindex]:not([tabindex="-1"])',
+        ),
       ).filter((el) => el.offsetParent !== null);
       if (focusables.length === 0) return;
       const first = focusables[0];

@@ -186,12 +186,15 @@ export class Planet {
     const r = displayRadius(this.def.id, this.def.facts.diameterKm, scaleT);
     this.currentRadius = r;
     this.sizeGroup.scale.setScalar(r);
-    // pick-proxy floor: generous, but for Earth capped below the Moon's orbit
-    // so the Moon stays clickable at true scale
+    // pick-proxy floor: generous in explorer view, but planets with moons
+    // must shrink it at true scale or the proxy swallows the whole moon
+    // system (Io orbits 0.28 units out; a 1-unit floor would eat it)
     let hitFloor = 1.0;
     if (this.def.id === 'earth') {
       const moonDist = MOON_EXPLORER_DIST * (1 - scaleT) + (MOON_DIST_KM / AU_KM) * TRUE_UNITS_PER_AU * scaleT;
       hitFloor = Math.min(1.0, moonDist * 0.55);
+    } else if (this.def.facts.moons > 0) {
+      hitFloor = 1.0 * (1 - scaleT);
     }
     this.hit.scale.setScalar(Math.max(r * 1.6, hitFloor));
 

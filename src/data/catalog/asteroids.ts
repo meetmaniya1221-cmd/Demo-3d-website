@@ -363,6 +363,55 @@ export const ASTEROIDS: CatalogObject[] = [
         'JAXA/University of Tokyo/Kochi U./Rikkyo U./Nagoya U./Chiba Inst. Tech./Meiji U./U. Aizu/AIST (Hayabusa2)',
     },
   },
+  {
+    id: 'didymos',
+    name: 'Didymos',
+    type: 'asteroid',
+    category: 'Near-Earth asteroid (binary)',
+    parent: 'sun',
+    color: 0x9a8f80,
+    physical: {
+      diameterKm: 0.78,
+      massKg: 5.3e11,
+      rotationHours: 2.26,
+      albedo: 0.15,
+      moons: 1,
+    },
+    orbit: elementsFromPerihelion({
+      a: 1.643,
+      e: 0.384,
+      i: 3.41,
+      node: 73.2,
+      argPeri: 319.3,
+      tpJD: 2459900,
+      periodDays: 770,
+    }),
+    positionAccuracy: 'approximate',
+    atmosphere: 'None.',
+    composition: 'Silicate rock (S-type); a fast-spinning top shape with a tiny moon, Dimorphos.',
+    discovery: { by: 'Spacewatch (Kitt Peak)', year: 1996 },
+    overview:
+      'Didymos is a 780-metre near-Earth asteroid orbited by a 151-metre moonlet, Dimorphos - and that little moon is now famous: in September 2022 NASA’s DART spacecraft deliberately crashed into it, the first-ever test of deflecting an asteroid.',
+    concept: {
+      title: 'Planetary defence, tested for real',
+      text: 'DART hit Dimorphos at 6.1 km/s and shortened its orbit around Didymos by about 32 minutes - far more than predicted, because the ejected debris acted like a rocket plume. It proved that with enough warning, a small impactor really can nudge an asteroid off a collision course.',
+    },
+    quickFacts: [
+      'Dimorphos is the first celestial body whose orbit humans have measurably changed.',
+      'Didymos spins in just 2.26 hours - near the limit before a rubble pile flies apart.',
+      'ESA’s Hera spacecraft is en route to survey the aftermath up close in late 2026.',
+    ],
+    missionIds: ['dart'],
+    related: ['bennu', 'ryugu', 'eros'],
+    sources: [
+      { label: 'NASA Science - DART', url: 'https://science.nasa.gov/mission/dart/' },
+      { label: 'JPL Small-Body Database - 65803 Didymos', url: 'https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html#/?sstr=didymos' },
+    ],
+    texture: {
+      kind: 'procedural',
+      note: 'Rendered as a generic rocky body; DART and LICIACube imaged Didymos and Dimorphos only briefly during the 2022 encounter.',
+    },
+  },
 ];
 
 export const REGIONS: CatalogObject[] = [

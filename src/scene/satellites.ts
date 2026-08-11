@@ -238,6 +238,9 @@ export class SatelliteSystem {
   ): void {
     this.setVisible(nearCamera);
     if (!nearCamera) return;
+    // paint at most one surface per frame so approaching a five-moon system
+    // does not stall a whole frame on texture generation
+    let paintBudget = 1;
     for (const s of this.sats) {
       const orbit = s.def.satOrbit!;
       const floor = s.def.id === 'moon' ? 0.3 : 0.09;
@@ -252,6 +255,10 @@ export class SatelliteSystem {
       if (s.def.physical.rotationHours === undefined && s.def.id === 'hyperion') {
         // chaotic tumbler
         s.mesh.rotation.set(elapsed * 0.11, elapsed * 0.23, elapsed * 0.07);
+      } else if (s.def.physical.tidallyLocked === false && s.def.physical.rotationHours) {
+        // free rotator (Phoebe spins in 9.3 h despite its 550-day orbit)
+        s.mesh.rotation.y =
+          s.phase + ((simDays * 24) / s.def.physical.rotationHours) * Math.PI * 2;
       } else {
         // tidal lock: same face toward the parent
         s.mesh.rotation.y = ang + Math.PI;
@@ -263,7 +270,10 @@ export class SatelliteSystem {
         s.haze.scale.setScalar(r * 1.12);
       }
       s.ring.scale.setScalar(dist);
-      this.activate(s);
+      if (!s.activated && paintBudget > 0) {
+        paintBudget--;
+        this.activate(s);
+      }
     }
   }
 

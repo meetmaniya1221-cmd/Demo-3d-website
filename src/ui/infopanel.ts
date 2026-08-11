@@ -343,6 +343,12 @@ export class InfoPanel {
       const dAU = distanceFromEarthAU(this.currentId, this.state.simDays);
       if (dAU !== null) this.earthDelayValue.textContent = fmtLightTime(dAU);
     }
-    void this.activityValue;
+    if (this.activityValue && def.comet) {
+      const act = this.host.cometActivity(this.currentId);
+      const fill = this.body.querySelector<HTMLElement>('.activity-fill');
+      if (fill) fill.style.width = `${Math.round(Math.min(1, act / 4) * 100)}%`;
+      this.activityValue.textContent =
+        act < 0.05 ? 'Frozen - too far from the Sun' : act < 1 ? 'Waking up' : act < 2.5 ? 'Active - tails growing' : 'Highly active';
+    }
   }
 }

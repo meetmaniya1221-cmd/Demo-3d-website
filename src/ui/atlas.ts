@@ -15,7 +15,6 @@ export class Atlas {
   private listEl: HTMLElement;
   private state: AppState;
   private expanded = new Set<string>(['earth']);
-  private built = false;
 
   constructor(parent: HTMLElement, state: AppState) {
     this.state = state;
@@ -50,10 +49,10 @@ export class Atlas {
   }
 
   open(): void {
-    if (!this.built) {
-      this.built = true;
-      this.render();
-    }
+    // always re-render: selection/expansion may have changed while closed
+    const def = this.state.selectedId ? catalogObject(this.state.selectedId) : null;
+    if (def?.parent && MOONS_BY_PARENT.has(def.parent)) this.expanded.add(def.parent);
+    this.render();
     this.root.inert = false;
     this.root.classList.add('open');
     sound.play('click', 0.2);

@@ -45,6 +45,7 @@ export class Journey {
   private t = 0;
   private root: HTMLElement;
   private auEl!: HTMLElement;
+  private auB!: HTMLElement;
   private kmEl!: HTMLElement;
   private lightEl!: HTMLElement;
   private speedEl!: HTMLElement;
@@ -82,6 +83,7 @@ export class Journey {
       </div>
     `;
     this.auEl = this.root.querySelector('.journey-au')!;
+    this.auB = this.auEl.querySelector('b')!;
     this.kmEl = this.root.querySelector('.journey-km')!;
     this.lightEl = this.root.querySelector('.journey-light')!;
     this.speedEl = this.root.querySelector('.journey-speed')!;
@@ -93,13 +95,15 @@ export class Journey {
 
   start(): void {
     if (this.active) return;
-    this.active = true;
     this.ended = false;
     this.t = 0;
     this.nextMilestone = 0;
     const st = this.host.state;
     this.prevScale = st.scaleMode;
+    // deselect BEFORE arming: the app's select handler ends any active
+    // journey, and mid-start that would leave the HUD half-initialised
     st.select(null);
+    this.active = true;
     st.setScaleMode('true');
     if (!st.showOrbits) st.setToggle('showOrbits', true);
     if (!st.showLabels) st.setToggle('showLabels', true);
@@ -154,9 +158,9 @@ export class Journey {
     const lookX = (-mapped) * (1 - swing) + (mapped * 1.25 + 4) * swing;
     cam.lookAt(lookX, elev * 0.2 * swing, 0);
 
-    // readouts
+    // readouts (text nodes only - no per-frame innerHTML re-parse)
     const km = r * 149_597_871;
-    this.auEl.innerHTML = `<b>${r < 10 ? r.toFixed(2) : r.toFixed(1)}</b> AU from the Sun`;
+    this.auB.textContent = r < 10 ? r.toFixed(2) : r.toFixed(1);
     this.kmEl.textContent = `${km >= 1e9 ? `${(km / 1e9).toFixed(2)} billion` : `${Math.round(km / 1e6).toLocaleString()} million`} km`;
     this.lightEl.textContent = fmtLightTime(r);
     const speedC = ((r * Math.log(R_END / R_START)) / DURATION) * 499; // × light speed
@@ -181,8 +185,8 @@ export class Journey {
     if (this.t >= DURATION && !this.ended) {
       this.ended = true;
       this.showCallout(
-        '55 AU - the edge of the classical Kuiper belt',
-        'Voyager 1, our fastest outbound craft, needed 35 years to get this far. Light does it in 7.6 hours. Press End journey to fly back.',
+        '55 AU - beyond the Kuiper belt’s main band',
+        'Voyager 1, our fastest outbound craft, took about 16 years to get this far. Light does it in 7.6 hours. Press End journey to fly back.',
       );
     }
   }

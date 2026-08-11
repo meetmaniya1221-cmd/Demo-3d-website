@@ -97,9 +97,9 @@ export const COMETS: CatalogObject[] = [
     atmosphere: 'A weak coma near perihelion; after thousands of solar passes there is little ice left to boil off.',
     composition: 'Ice-depleted rock and dust; repeated solar roasting has built a dark crust that chokes off most activity.',
     discovery: {
-      by: 'Jean-Louis Pons',
+      by: 'Pierre Méchain',
       year: 1786,
-      how: 'its short period was computed by Johann Franz Encke, whose name the comet now carries',
+      how: 'its short period was computed in 1819 by Johann Franz Encke, whose name the comet now carries',
     },
     overview:
       'Encke races around the Sun every 3.3 years - the shortest period of any known comet - looping from inside Mercury’s orbit out to the asteroid belt. Thousands of close solar passes have baked away much of its ice, leaving a dim, crusted-over comet that shows us how comets age and fade.',

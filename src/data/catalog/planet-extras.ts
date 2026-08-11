@@ -69,7 +69,7 @@ export const PLANET_EXTRAS: Record<string, PlanetExtras> = {
   mars: {
     category: 'Rocky planet',
     atmosphere:
-      '95% CO₂ with nitrogen and argon at ~0.006 bar - so thin that liquid water boils away even at -50 °C.',
+      '95% CO₂ with nitrogen and argon at ~0.006 bar - so thin that liquid water is unstable: exposed water either freezes or boils away, even in the cold.',
     composition:
       'An iron-sulfur core and silicate mantle beneath a basaltic crust dusted with rust-red iron oxide.',
     missionIds: ['viking1', 'marsexpress', 'curiosity', 'perseverance'],

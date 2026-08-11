@@ -64,7 +64,7 @@ export const MISSIONS: Mission[] = [
     summary:
       'The first spacecraft to visit Mercury, and the first ever to use one planet’s gravity (Venus) to slingshot to another. Its three flybys in 1974-75 mapped about 45% of Mercury’s surface.',
     highlights: [
-      'First gravity-assist manoeuvre in history, at Venus.',
+      'First spacecraft to use a gravity assist to reach another planet.',
       'Three Mercury flybys; mapped ~45% of the surface.',
       'Discovered Mercury’s surprising magnetic field.',
     ],
@@ -537,7 +537,7 @@ export const MISSIONS: Mission[] = [
     ended: 2022,
     status: 'completed',
     craft: 'Impactor',
-    targets: [],
+    targets: ['didymos'],
     summary:
       'The first planetary-defence test: DART deliberately crashed into the small asteroid moon Dimorphos in September 2022 and shortened its orbit around Didymos by 32 minutes. Humanity has now demonstrably changed the motion of a celestial body.',
     highlights: [

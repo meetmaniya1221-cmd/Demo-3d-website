@@ -1695,7 +1695,7 @@ input[type='range']::-moz-range-thumb {
 .search-overlay {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 80;
   background: rgba(2, 4, 10, 0.6);
   backdrop-filter: blur(6px);
   display: flex;
@@ -1703,11 +1703,17 @@ input[type='range']::-moz-range-thumb {
   align-items: flex-start;
   padding: 12vh 18px 18px;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.22s ease;
+}
+
+.search-overlay[hidden] {
+  display: none;
 }
 
 .search-overlay.open {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .search-card {
@@ -2486,6 +2492,9 @@ body.journey-active .toast,
 body.journey-active .atlas {
   opacity: 0;
   pointer-events: none;
+  /* also unreachable by Tab - invisible controls must not catch focus */
+  visibility: hidden;
+  transition: opacity 0.4s ease, visibility 0s 0.4s;
 }
 
 /* label size variants */

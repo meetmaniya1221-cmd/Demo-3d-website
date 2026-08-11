@@ -387,10 +387,18 @@ export function keplerPosition(el: OrbitalElements, tDays: number): [number, num
   const n = 360 / el.periodDays; // mean motion, deg/day
   const L = el.L0 + n * tDays;
   let M = ((L - el.wBar) % 360) * DEG;
-  // Newton–Raphson solve of Kepler's equation E − e·sinE = M
-  let E = M;
-  for (let k = 0; k < 6; k++) {
-    E -= (E - el.e * Math.sin(E) - M) / (1 - el.e * Math.cos(E));
+  // normalize to (−π, π] so the solver starts near the right branch
+  M = M % (2 * Math.PI);
+  if (M > Math.PI) M -= 2 * Math.PI;
+  else if (M < -Math.PI) M += 2 * Math.PI;
+  // Newton–Raphson solve of Kepler's equation E − e·sinE = M.
+  // Starting at E = M diverges for near-parabolic orbits (Hale-Bopp,
+  // e ≈ 0.995), so high-e orbits start from ±π instead.
+  let E = el.e < 0.8 ? M : Math.PI * (M >= 0 ? 1 : -1);
+  for (let k = 0; k < 24; k++) {
+    const d = (E - el.e * Math.sin(E) - M) / (1 - el.e * Math.cos(E));
+    E -= d;
+    if (Math.abs(d) < 1e-9) break;
   }
   const xOrb = el.a * (Math.cos(E) - el.e);
   const yOrb = el.a * Math.sqrt(1 - el.e * el.e) * Math.sin(E);

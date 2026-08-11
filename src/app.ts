@@ -149,7 +149,8 @@ export class App implements TourHost {
 
     // ---- state wiring ----
     this.state.on('select', (id) => {
-      if (this.journey.active) this.journey.end();
+      // picking a destination leaves the journey; mere deselection does not
+      if (id && this.journey.active) this.journey.end();
       this.system.setHighlightedOrbit(id && catalogObject(id)?.type !== 'region' ? id : null);
       this.updateViewOffset();
       if (id) {
@@ -199,7 +200,13 @@ export class App implements TourHost {
       const t = e.target;
       if (!(t instanceof HTMLElement)) return;
       const btn = t.closest('button');
-      if (!btn || btn.closest('.body-label') || btn.closest('.rail')) return;
+      if (!btn) return;
+      // after a MOUSE click, release focus so arrow-key world cycling keeps
+      // working (keyboard activation keeps focus for accessibility)
+      if (e.detail > 0 && btn.closest('.top-actions, .view-toggles, .timebar, .rail')) {
+        btn.blur();
+      }
+      if (btn.closest('.body-label') || btn.closest('.rail')) return;
       sound.play('click', 0.22);
     });
     canvas.addEventListener('pointerup', (e) => {
@@ -281,6 +288,8 @@ export class App implements TourHost {
 
   startJourney(): void {
     if (this.tour.active) this.tour.dismiss();
+    this.atlas.close();
+    if (this.search.isOpen) this.search.close();
     this.journey.start();
   }
 
@@ -316,8 +325,8 @@ export class App implements TourHost {
       else if (this.gravity.isOpen) this.gravity.close();
       else if (this.missions.isOpen) this.missions.close();
       else if (this.meteors.isOpen) this.meteors.close();
-      else if (this.atlas.isOpen) this.atlas.close();
       else if (this.journey.active) this.journey.end();
+      else if (this.atlas.isOpen) this.atlas.close();
       else if (this.tour.active) this.tour.end();
       else if (this.state.selectedId) this.state.select(null);
       return;
@@ -392,8 +401,9 @@ export class App implements TourHost {
 
     // adaptive resolution: EMA of frame time with two-way hysteresis. Changes
     // recreate every post-processing target, so they are rate-limited - some
-    // drivers show a garbage frame when targets churn mid-session.
-    this.frameTimeEma += (rawDt * 1000 - this.frameTimeEma) * 0.05;
+    // drivers show a garbage frame when targets churn mid-session. Clamp the
+    // sample so one hidden-tab gap can't poison the average into a downscale.
+    this.frameTimeEma += (Math.min(rawDt, 0.25) * 1000 - this.frameTimeEma) * 0.05;
     const pr = this.renderer.getPixelRatio();
     const maxPr = Math.min(window.devicePixelRatio || 1, 2);
     const cooledDown = this.elapsed - this.lastPrChange > 8;
