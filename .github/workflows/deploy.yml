@@ -5,6 +5,7 @@ on:
     branches:
       - claude/solar-system-explorer-1ylnq2
       - claude/3d-solar-system-edu-rxmhpb
+      - claude/solar-system-upgrade-4d9hwd
       - main
   workflow_dispatch:
 
