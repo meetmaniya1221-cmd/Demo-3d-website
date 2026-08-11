@@ -1,6 +1,6 @@
 /** The right-hand (bottom sheet on mobile) information panel - one renderer
  *  for every catalog object type, from the Sun to a comet nucleus. */
-import { EARTH_GRAVITY, heliocentricDistance } from '../data/bodies';
+import { AU_KM, EARTH_GRAVITY, heliocentricDistance, keplerPosition, PLANETS } from '../data/bodies';
 import { catalogObject, missionsFor } from '../data/catalog';
 import { TYPE_LABEL, type CatalogObject } from '../data/types';
 import type { AppState } from '../sim/state';
@@ -33,6 +33,24 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 }
 
+const EARTH_ORBIT = PLANETS.find((p) => p.id === 'earth')!.orbit!;
+
+/** Straight-line Earth-to-body distance in AU right now (moons use their
+ *  parent's position - the offset is negligible at this scale). */
+function distanceFromEarthAU(id: string, simDays: number): number | null {
+  let def = catalogObject(id);
+  if (!def) return null;
+  if (def.type === 'moon' && def.parent === 'earth' && def.satOrbit) {
+    return def.satOrbit.distanceKm / AU_KM;
+  }
+  if (def.type === 'moon' && def.parent) def = catalogObject(def.parent) ?? def;
+  const [ex, ey, ez] = keplerPosition(EARTH_ORBIT, simDays);
+  if (def.id === 'sun' || def.type === 'region') return Math.hypot(ex, ey, ez);
+  if (!def.orbit) return null;
+  const [x, y, z] = keplerPosition(def.orbit, simDays);
+  return Math.hypot(x - ex, y - ey, z - ez);
+}
+
 export class InfoPanel {
   private root: HTMLElement;
   private title: HTMLElement;
@@ -40,6 +58,7 @@ export class InfoPanel {
   private body: HTMLElement;
   private distValue: HTMLElement | null = null;
   private lightValue: HTMLElement | null = null;
+  private earthDelayValue: HTMLElement | null = null;
   private activityValue: HTMLElement | null = null;
   private currentId: string | null = null;
   private state: AppState;
@@ -116,6 +135,14 @@ export class InfoPanel {
         this.cell('Orbital period', fmtDays(def.orbit.periodDays)),
         this.cell('Distance from Sun', `<span class="dist-now">${fmtAU(def.orbit.a)}</span>`),
         this.cell('Sunlight delay', `<span class="light-now">${fmtLightTime(def.orbit.a)}</span>`),
+      );
+    }
+    if (def.id !== 'earth' && (def.orbit || def.satOrbit || def.id === 'sun')) {
+      cells.push(
+        this.cell(
+          'Radio delay from Earth',
+          '<span class="edelay-now">…</span><small class="edelay-note"> one way, right now</small>',
+        ),
       );
     }
 
@@ -286,8 +313,10 @@ export class InfoPanel {
 
     this.distValue = this.body.querySelector('.dist-now');
     this.lightValue = this.body.querySelector('.light-now');
+    this.earthDelayValue = this.body.querySelector('.edelay-now');
     this.activityValue = this.body.querySelector('.activity-label');
     this.body.scrollTop = 0;
+    this.updateLive();
     this.root.classList.add('open');
   }
 
@@ -300,10 +329,16 @@ export class InfoPanel {
   updateLive(): void {
     if (!this.currentId) return;
     const def = catalogObject(this.currentId);
-    if (!def?.orbit) return;
-    const au = this.host.liveAU(this.currentId) ?? heliocentricDistance(def.orbit, this.state.simDays);
-    if (this.distValue) this.distValue.textContent = `${fmtAU(au, au > 50 ? 1 : 3)} now`;
-    if (this.lightValue) this.lightValue.textContent = fmtLightTime(au);
+    if (!def) return;
+    if (def.orbit) {
+      const au = this.host.liveAU(this.currentId) ?? heliocentricDistance(def.orbit, this.state.simDays);
+      if (this.distValue) this.distValue.textContent = `${fmtAU(au, au > 50 ? 1 : 3)} now`;
+      if (this.lightValue) this.lightValue.textContent = fmtLightTime(au);
+    }
+    if (this.earthDelayValue) {
+      const dAU = distanceFromEarthAU(this.currentId, this.state.simDays);
+      if (dAU !== null) this.earthDelayValue.textContent = fmtLightTime(dAU);
+    }
     void this.activityValue;
   }
 }

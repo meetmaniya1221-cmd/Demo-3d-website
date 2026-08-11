@@ -13,6 +13,32 @@ import { minorTexture, irregularGeometry, type MinorPaintKind } from './minortex
 
 const sphereGeo = new THREE.SphereGeometry(1, 48, 24);
 
+/** Moons with a visible gas envelope get a soft additive rim shell. */
+const MOON_HAZE: Record<string, { color: number; strength: number }> = {
+  titan: { color: 0xe8a04c, strength: 0.5 },
+  triton: { color: 0xb8d8e8, strength: 0.16 },
+};
+
+const HAZE_VERT = /* glsl */ `
+  varying vec3 vNormal;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const HAZE_FRAG = /* glsl */ `
+  precision highp float;
+  varying vec3 vNormal;
+  uniform vec3 uColor;
+  uniform float uStrength;
+  void main() {
+    float facing = dot(vNormal, vec3(0.0, 0.0, 1.0));
+    float rim = pow(clamp(0.62 - facing, 1e-4, 1.0), 3.6);
+    gl_FragColor = vec4(uColor * rim * uStrength, 1.0);
+  }
+`;
+
 /** Paint recipe for moons without photographic maps. */
 const MOON_PAINT: Record<string, MinorPaintKind> = {
   miranda: 'ice-gray',
@@ -34,6 +60,7 @@ interface Sat {
   mesh: THREE.Mesh;
   hit: THREE.Mesh;
   ring: THREE.LineLoop;
+  haze?: THREE.Mesh;
   phase: number;
   radius: number;
   activated: boolean;
@@ -93,12 +120,33 @@ export class SatelliteSystem {
       // Earth's Moon orbits near the ecliptic, regular moons near the equator
       const host = def.id === 'moon' ? eclipticGroup : equatorialGroup;
       host.add(mesh, hit, ring);
+      let haze: THREE.Mesh | undefined;
+      const hazeSpec = MOON_HAZE[def.id];
+      if (hazeSpec) {
+        haze = new THREE.Mesh(
+          sphereGeo,
+          new THREE.ShaderMaterial({
+            vertexShader: HAZE_VERT,
+            fragmentShader: HAZE_FRAG,
+            uniforms: {
+              uColor: { value: new THREE.Color(hazeSpec.color) },
+              uStrength: { value: hazeSpec.strength },
+            },
+            side: THREE.BackSide,
+            blending: THREE.AdditiveBlending,
+            transparent: true,
+            depthWrite: false,
+          }),
+        );
+        host.add(haze);
+      }
       this.pickables.push(hit);
       this.sats.push({
         def,
         mesh,
         hit,
         ring,
+        haze,
         phase: (def.id.charCodeAt(0) * 1.37 + def.id.length) % (Math.PI * 2),
         radius: 0.1,
         activated: false,
@@ -148,6 +196,7 @@ export class SatelliteSystem {
     this.visible = v;
     for (const s of this.sats) {
       s.mesh.visible = v;
+      if (s.haze) s.haze.visible = v;
       s.ring.visible = v && this.orbitsEnabled;
       // keep hit proxies raycastable only while shown
       s.hit.visible = false;
@@ -209,6 +258,10 @@ export class SatelliteSystem {
       }
       s.hit.position.copy(s.mesh.position);
       s.hit.scale.setScalar(Math.max(r * 1.7, 0.14 * (1 - scaleT) + r * 2 * scaleT));
+      if (s.haze) {
+        s.haze.position.copy(s.mesh.position);
+        s.haze.scale.setScalar(r * 1.12);
+      }
       s.ring.scale.setScalar(dist);
       this.activate(s);
     }
