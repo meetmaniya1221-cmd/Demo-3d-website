@@ -2876,3 +2876,42 @@ body.journey-active .distance-readout {
   font-size: 10px;
   letter-spacing: 0.08em;
 }
+
+/* ------------------------------------------------ time machine controls --- */
+
+.timebar .play.rewind {
+  width: 30px;
+  height: 30px;
+  opacity: 0.75;
+}
+
+.timebar .play.rewind.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  opacity: 1;
+}
+
+button.sim-date {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  white-space: nowrap;
+}
+
+button.sim-date:hover {
+  border-color: var(--line-strong);
+  background: var(--accent-soft);
+}
+
+.sim-date-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  bottom: 0;
+  left: 50%;
+}

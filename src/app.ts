@@ -27,6 +27,7 @@ import { Journey } from './ui/journey';
 import { Tour, type TourHost } from './ui/tour';
 import { PLANETS } from './data/bodies';
 import { catalogObject } from './data/catalog';
+import { fmtSimDate } from './ui/format';
 
 const CYCLE_IDS = ['sun', ...PLANETS.map((p) => p.id)];
 
@@ -179,6 +180,9 @@ export class App implements TourHost {
       }
     });
     this.state.on('tour', () => this.updateViewOffset());
+    this.state.on('timejump', () =>
+      this.announce(`Simulation date set to ${fmtSimDate(this.state.simDays)}`),
+    );
     this.state.on('scale', (mode) => {
       this.scaleTarget = mode === 'true' ? 1 : 0;
       if (this.journey.active) return; // journey narrates the scale itself

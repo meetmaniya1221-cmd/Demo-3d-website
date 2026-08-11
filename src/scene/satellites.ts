@@ -156,7 +156,13 @@ export class SatelliteSystem {
         ring,
         haze,
         markerIdx: markers.register(def.id, def.color),
-        phase: (def.id.charCodeAt(0) * 1.37 + def.id.length) % (Math.PI * 2),
+        // Earth's Moon gets its real J2000 mean longitude (218.32°) so the
+        // simulated phase tracks the actual lunar cycle; other moons use a
+        // stable hash (their positions are disclosed as approximate)
+        phase:
+          def.id === 'moon'
+            ? THREE.MathUtils.degToRad(218.316)
+            : (def.id.charCodeAt(0) * 1.37 + def.id.length) % (Math.PI * 2),
         radius: 0.1,
         activated: false,
       });
@@ -244,7 +250,7 @@ export class SatelliteSystem {
     scaleT: number,
     parentDisplayR: number,
     nearCamera: boolean,
-    elapsed: number,
+    _elapsed: number,
     camPos: THREE.Vector3,
     halfTanFov: number,
     viewH: number,
@@ -278,8 +284,10 @@ export class SatelliteSystem {
       s.mesh.position.set(Math.cos(ang) * dist, 0, -Math.sin(ang) * dist);
       s.mesh.scale.setScalar(r);
       if (s.def.physical.rotationHours === undefined && s.def.id === 'hyperion') {
-        // chaotic tumbler
-        s.mesh.rotation.set(elapsed * 0.11, elapsed * 0.23, elapsed * 0.07);
+        // chaotic tumbler - driven by sim time so pause/rewind apply (the
+        // real tumble is unpredictable; this is an artistic stand-in)
+        const tumble = simDays * 2.6;
+        s.mesh.rotation.set(tumble * 1.1, tumble * 2.3, tumble * 0.7);
       } else if (s.def.physical.tidallyLocked === false && s.def.physical.rotationHours) {
         // free rotator (Phoebe spins in 9.3 h despite its 550-day orbit)
         s.mesh.rotation.y =

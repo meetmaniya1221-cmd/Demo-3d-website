@@ -20,7 +20,13 @@ export interface BodyFacts {
   diameterKm: number;
   massKg: number;
   gravity: number; // m/s² at surface (or 1-bar level for giants)
-  rotationHours: number; // sidereal; negative = retrograde
+  /**
+   * Sidereal rotation; negative = retrograde. NOTE for renderers: axialTiltDeg
+   * > 90° ALSO encodes retrograde (the NASA fact-sheet convention stores
+   * both). Orient the axis from the tilt and spin with |rotationHours|, or
+   * the two negatives cancel into a wrong prograde spin.
+   */
+  rotationHours: number;
   dayLengthHours: number; // solar day (sunrise to sunrise)
   orbitDays: number;
   distanceAU: number; // mean distance from Sun (from parent for moons)
@@ -28,6 +34,17 @@ export interface BodyFacts {
   tempRangeC?: [number, number];
   moons: number;
   axialTiltDeg: number;
+  /**
+   * Prime-meridian angle W at J2000 in degrees (IAU WGCCRE 2015 report).
+   * Ties the rendered spin phase to the real epoch so the time machine shows
+   * approximately correct planet orientations (Earth: W ≈ GMST, so day/night
+   * tracks UTC). Approximate: we measure it in the ecliptic rather than each
+   * body's true equator of date.
+   */
+  w0Deg?: number;
+  /** Cloud-deck rotation period in hours when it differs dramatically from
+   *  the surface (Venus's ~4-day super-rotation). Signed like rotationHours. */
+  cloudPeriodHours?: number;
 }
 
 export type BodyKind = 'star' | 'rocky' | 'gas giant' | 'ice giant' | 'moon';
@@ -97,6 +114,7 @@ export const PLANETS: BodyDef[] = [
       tempRangeC: [-173, 427],
       moons: 0,
       axialTiltDeg: 0.03,
+      w0Deg: 329.5988,
     },
     overview:
       'Mercury is the smallest planet and the closest to the Sun - a cratered, airless world that looks a lot like our Moon. With almost no atmosphere to trap heat, it swings between scorching days and freezing nights more than any other planet.',
@@ -127,6 +145,8 @@ export const PLANETS: BodyDef[] = [
       tempMeanC: 464,
       moons: 0,
       axialTiltDeg: 177.4,
+      w0Deg: 160.2,
+      cloudPeriodHours: -96,
     },
     overview:
       'Venus is almost Earth’s twin in size - and utterly unlike it in every other way. A crushing carbon-dioxide atmosphere traps the Sun’s heat so effectively that its surface stays hot enough to melt lead, day and night, pole to pole.',
@@ -158,6 +178,7 @@ export const PLANETS: BodyDef[] = [
       tempRangeC: [-89, 57],
       moons: 1,
       axialTiltDeg: 23.4,
+      w0Deg: 190.147,
     },
     overview:
       'Earth is the only place we know of where liquid water pools on the surface - and the only place we know of with life. It sits in the Sun’s habitable zone: close enough that water doesn’t freeze solid, far enough that it doesn’t boil away.',
@@ -189,6 +210,7 @@ export const PLANETS: BodyDef[] = [
       tempRangeC: [-153, 20],
       moons: 2,
       axialTiltDeg: 25.2,
+      w0Deg: 176.63,
     },
     overview:
       'Mars is a cold desert world with the largest volcano and the deepest canyon in the Solar System. Dry riverbeds and minerals that only form in water tell us it was once warmer and wetter - which is why it is the prime target in the search for past life.',
@@ -219,6 +241,7 @@ export const PLANETS: BodyDef[] = [
       tempMeanC: -110,
       moons: 101,
       axialTiltDeg: 3.1,
+      w0Deg: 284.95,
     },
     overview:
       'Jupiter is more massive than all the other planets combined - a giant ball of hydrogen and helium with no solid surface to stand on. Its Great Red Spot is a storm wider than Earth that has raged for at least 190 years.',
@@ -249,6 +272,7 @@ export const PLANETS: BodyDef[] = [
       tempMeanC: -140,
       moons: 285,
       axialTiltDeg: 26.7,
+      w0Deg: 38.9,
     },
     overview:
       'Saturn’s rings are made of countless chunks of nearly pure water ice - from dust grains to house-sized boulders - spanning 280,000 km yet averaging only about 10 metres thick. The planet itself is so light for its size that it would float in a big enough ocean.',
@@ -279,6 +303,7 @@ export const PLANETS: BodyDef[] = [
       tempMeanC: -195,
       moons: 29,
       axialTiltDeg: 97.8,
+      w0Deg: 203.81,
     },
     overview:
       'Uranus rolls around the Sun on its side - its axis is tipped almost 98°, probably from a colossal ancient collision. Each pole gets 42 years of continuous sunlight followed by 42 years of darkness.',
@@ -309,6 +334,7 @@ export const PLANETS: BodyDef[] = [
       tempMeanC: -200,
       moons: 16,
       axialTiltDeg: 28.3,
+      w0Deg: 249.978,
     },
     overview:
       'Neptune is the most distant planet - so far out that the Sun looks like a very bright star and one orbit takes 165 Earth years. Despite receiving 900× less sunlight than Earth, it hosts the fastest winds in the Solar System.',

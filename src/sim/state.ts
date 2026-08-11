@@ -63,6 +63,7 @@ type Events = {
   toggles: void;
   layers: void;
   timejump: void;
+  direction: 1 | -1; // time flowing forward or in rewind
   tour: number | null; // step index or null = tour ended
 };
 
@@ -71,6 +72,8 @@ type Handler<T> = (payload: T) => void;
 export class AppState {
   simDays = daysSinceJ2000(Date.now());
   speedIndex = DEFAULT_SPEED_INDEX;
+  /** +1 = forward, -1 = rewind; multiplies the active speed preset. */
+  direction: 1 | -1 = 1;
   paused = false;
   scaleMode: ScaleMode = 'explorer';
   /** Animated 0→1 blend toward true scale; owned by the render loop. */
@@ -103,7 +106,13 @@ export class AppState {
 
   /** Advance simulation time by real elapsed seconds. */
   tick(dtSec: number): void {
-    if (!this.paused) this.simDays += this.speed.daysPerSec * dtSec;
+    if (!this.paused) this.simDays += this.direction * this.speed.daysPerSec * dtSec;
+  }
+
+  setDirection(dir: 1 | -1): void {
+    if (this.direction === dir) return;
+    this.direction = dir;
+    this.emit('direction', dir);
   }
 
   select(id: string | null): void {
@@ -155,6 +164,16 @@ export class AppState {
 
   jumpToNow(): void {
     this.simDays = daysSinceJ2000(Date.now());
+    this.setDirection(1);
+    this.emit('timejump', undefined);
+  }
+
+  /** Time machine: jump the simulation to an absolute date (Unix epoch ms).
+   *  Always use this rather than writing simDays directly, so listeners
+   *  (HUD clock, announcements) hear about the jump. */
+  setSimDate(msEpoch: number): void {
+    if (!Number.isFinite(msEpoch)) return;
+    this.simDays = daysSinceJ2000(msEpoch);
     this.emit('timejump', undefined);
   }
 

@@ -85,7 +85,13 @@ export class Planet {
 
   constructor(def: BodyDef, surface: BodySurface, ringTexture?: THREE.Texture) {
     this.def = def;
-    this.spinPhase = (def.id.charCodeAt(0) * 0.7) % (Math.PI * 2);
+    // epoch-tied spin phase: the IAU prime-meridian angle at J2000 when we
+    // have it (Earth's W tracks GMST, so day/night matches UTC), a stable
+    // hash otherwise
+    this.spinPhase =
+      def.facts.w0Deg !== undefined
+        ? THREE.MathUtils.degToRad(def.facts.w0Deg)
+        : (def.id.charCodeAt(0) * 0.7) % (Math.PI * 2);
 
     const mat = new THREE.MeshStandardMaterial({
       map: surface.map,
@@ -208,10 +214,19 @@ export class Planet {
         .set(-p.x / len, -p.y / len, -p.z / len);
     }
 
-    // sidereal spin (negative rotationHours = retrograde)
-    const spin = this.spinPhase + (simDays * 24 / this.def.facts.rotationHours) * Math.PI * 2;
+    // Sidereal spin. The axis orientation (axialTiltDeg > 90° flips the pole)
+    // already encodes retrograde rotation, so spin about the local axis with
+    // |rotationHours| - using the signed value too would double-negate Venus,
+    // Uranus and Pluto into a wrong prograde spin.
+    const hours = Math.abs(this.def.facts.rotationHours);
+    const spin = this.spinPhase + ((simDays * 24) / hours) * Math.PI * 2;
     this.surface.rotation.y = spin;
-    if (this.clouds) this.clouds.rotation.y = spin * 0.88; // clouds lag the surface
+    if (this.clouds) {
+      const cloudHours = this.def.facts.cloudPeriodHours;
+      this.clouds.rotation.y = cloudHours
+        ? this.spinPhase + ((simDays * 24) / Math.abs(cloudHours)) * Math.PI * 2
+        : spin * 0.88; // default: clouds lag the surface slightly
+    }
   }
 
   get radius(): number {

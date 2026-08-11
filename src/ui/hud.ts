@@ -2,13 +2,15 @@
  *  search and the atlas; visibility lives in the View panel - the HUD stays
  *  out of the scene's way. */
 import { AppState, SPEED_PRESETS } from '../sim/state';
-import { fmtSimDate } from './format';
+import { fmtSimDate, fmtSimTime, simDateMs } from './format';
 import { sound } from '../audio';
 
 const PLAY_ICON =
   '<svg width="11" height="12" viewBox="0 0 11 12" fill="currentColor" aria-hidden="true"><path d="M0 0l11 6-11 6z"/></svg>';
 const PAUSE_ICON =
   '<svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor" aria-hidden="true"><rect width="3.4" height="12" rx="1"/><rect x="6.6" width="3.4" height="12" rx="1"/></svg>';
+const REWIND_ICON =
+  '<svg width="14" height="12" viewBox="0 0 14 12" fill="currentColor" aria-hidden="true"><path d="M7 0L0 6l7 6V0z"/><path d="M14 0L7 6l7 6V0z"/></svg>';
 
 export interface HudCallbacks {
   onTour: () => void;
@@ -27,6 +29,7 @@ export class Hud {
   private speedSlider!: HTMLInputElement;
   private speedLabel!: HTMLElement;
   private dateEl!: HTMLElement;
+  private dateInput!: HTMLInputElement;
   private scaleButtons: { explorer: HTMLButtonElement; true: HTMLButtonElement };
 
   constructor(parent: HTMLElement, state: AppState, cb: HudCallbacks) {
@@ -109,6 +112,16 @@ export class Hud {
     bar.setAttribute('role', 'group');
     bar.setAttribute('aria-label', 'Time controls');
 
+    const rewindBtn = document.createElement('button');
+    rewindBtn.className = 'play rewind';
+    rewindBtn.setAttribute('aria-label', 'Run time backwards');
+    rewindBtn.setAttribute('aria-pressed', 'false');
+    rewindBtn.title = 'Rewind: run the simulation backwards';
+    rewindBtn.innerHTML = REWIND_ICON;
+    rewindBtn.addEventListener('click', () =>
+      state.setDirection(state.direction === 1 ? -1 : 1),
+    );
+
     this.playBtn = document.createElement('button');
     this.playBtn.className = 'play';
     this.playBtn.setAttribute('aria-label', 'Pause simulation');
@@ -134,8 +147,36 @@ export class Hud {
     );
     speedGroup.append(labelRow, this.speedSlider);
 
-    this.dateEl = document.createElement('div');
+    // the date readout doubles as the time machine's date picker
+    this.dateEl = document.createElement('button');
     this.dateEl.className = 'sim-date';
+    this.dateEl.title = 'Time machine: jump to any date';
+    this.dateEl.setAttribute('aria-label', 'Simulation date - activate to pick another date');
+    this.dateInput = document.createElement('input');
+    this.dateInput.type = 'date';
+    this.dateInput.className = 'sim-date-input';
+    this.dateInput.min = '1900-01-01';
+    this.dateInput.max = '2100-12-31';
+    this.dateInput.setAttribute('aria-label', 'Set simulation date');
+    this.dateInput.tabIndex = -1;
+    this.dateEl.addEventListener('click', () => {
+      const d = new Date(simDateMs(state.simDays));
+      if (d.getUTCFullYear() >= 1900 && d.getUTCFullYear() <= 2100) {
+        this.dateInput.value = d.toISOString().slice(0, 10);
+      }
+      // showPicker needs a rendered input; fall back to focus for old engines
+      try {
+        this.dateInput.showPicker();
+      } catch {
+        this.dateInput.focus();
+      }
+    });
+    this.dateInput.addEventListener('change', () => {
+      const v = this.dateInput.value;
+      if (!v) return;
+      const [y, m, d] = v.split('-').map(Number);
+      state.setSimDate(Date.UTC(y, m - 1, d, 12));
+    });
 
     const nowBtn = document.createElement('button');
     nowBtn.className = 'now-btn';
@@ -143,7 +184,7 @@ export class Hud {
     nowBtn.setAttribute('aria-label', 'Reset simulation to today');
     nowBtn.addEventListener('click', () => state.jumpToNow());
 
-    bar.append(this.playBtn, speedGroup, this.dateEl, nowBtn);
+    bar.append(rewindBtn, this.playBtn, speedGroup, this.dateEl, this.dateInput, nowBtn);
     parent.appendChild(bar);
 
     // reactive wiring
@@ -154,11 +195,18 @@ export class Hud {
     state.on('speed', (i) => {
       this.speedSlider.value = String(i);
       this.speedSlider.setAttribute('aria-valuetext', SPEED_PRESETS[i].label);
-      this.speedLabel.textContent = SPEED_PRESETS[i].label;
+      this.syncSpeedLabel();
     });
+    state.on('direction', (d) => {
+      rewindBtn.classList.toggle('active', d === -1);
+      rewindBtn.setAttribute('aria-pressed', String(d === -1));
+      this.syncSpeedLabel();
+      this.updateClock();
+    });
+    state.on('timejump', () => this.updateClock());
     state.on('scale', () => this.syncScale());
 
-    this.speedLabel.textContent = SPEED_PRESETS[state.speedIndex].label;
+    this.syncSpeedLabel();
     this.syncScale();
   }
 
@@ -168,6 +216,11 @@ export class Hud {
     b.textContent = label;
     b.addEventListener('click', onClick);
     return b;
+  }
+
+  private syncSpeedLabel(): void {
+    const label = SPEED_PRESETS[this.state.speedIndex].label;
+    this.speedLabel.textContent = this.state.direction === -1 ? `${label} · REWIND` : label;
   }
 
   private syncScale(): void {
@@ -180,6 +233,11 @@ export class Hud {
 
   /** Called once per second from the app loop. */
   updateClock(): void {
-    this.dateEl.textContent = fmtSimDate(this.state.simDays);
+    // at sub-day speeds the date alone would look frozen - show the clock too
+    const showTime = Math.abs(this.state.speed.daysPerSec) < 1;
+    const date = fmtSimDate(this.state.simDays);
+    this.dateEl.textContent = showTime
+      ? `${date} · ${fmtSimTime(this.state.simDays)}`
+      : date;
   }
 }
