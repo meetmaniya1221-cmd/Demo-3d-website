@@ -1,93 +1,289 @@
 /**
- * Ecliptic reference grid: polar rings at round AU distances plus faint
- * radial spokes - the "instrumentation" layer that makes the view read as an
- * astronomical map. Scale-mode aware; ring labels are projected by the HUD.
+ * Astronomical orbital reference grid - a polar coordinate instrument
+ * centred on the Sun in the ecliptic plane:
+ *
+ *   - smooth concentric rings at round heliocentric distances (AU),
+ *   - subtle radial spokes every 15°, with the four cardinal directions
+ *     (real ecliptic longitude 0°/90°/180°/270°) slightly stronger,
+ *   - a log-space LOD window: rings near the camera's current working
+ *     distance are visible, much-smaller and much-larger rings fade out,
+ *     so the grid stays readable at every zoom instead of stacking up.
+ *
+ * All rings render as ONE LineSegments draw call (per-vertex AU attribute,
+ * fade computed in the shader); spokes are a second. Label anchors for the
+ * HUD ladder (AU values up the 0° axis) and the cardinal degree marks are
+ * computed here and projected by SkyNotes.
  */
 import * as THREE from 'three';
 import { mapDistanceAU } from '../sim/scale';
 
-export const GRID_RINGS_AU = [0.5, 1, 2, 5, 10, 20, 40];
-export const LABELED_RINGS_AU = [1, 5, 10, 20, 40];
+/** Full ring ladder; "major" rings can carry labels. */
+interface RingSpec {
+  rAU: number;
+  major: boolean;
+}
 
-const RING_SEGMENTS = 180;
-const SPOKES = 12;
-const SPOKE_INNER_AU = 0.3;
-const SPOKE_OUTER_AU = 46;
+const RINGS: RingSpec[] = [
+  { rAU: 0.1, major: true },
+  { rAU: 0.15, major: false },
+  { rAU: 0.2, major: true },
+  { rAU: 0.3, major: false },
+  { rAU: 0.5, major: true },
+  { rAU: 0.7, major: false },
+  { rAU: 1, major: true },
+  { rAU: 1.5, major: false },
+  { rAU: 2, major: true },
+  { rAU: 3, major: false },
+  { rAU: 5, major: true },
+  { rAU: 7, major: false },
+  { rAU: 10, major: true },
+  { rAU: 15, major: false },
+  { rAU: 20, major: true },
+  { rAU: 30, major: true },
+  { rAU: 40, major: false },
+  { rAU: 50, major: true },
+];
 
-/** Fixed azimuth where ring labels sit (radians, scene frame). */
-export const RING_LABEL_ANGLE = -0.62;
+const RING_SEGMENTS = 256;
+const SPOKES = 24;
+const PLANE_Y = -0.05;
+
+/** Log-distance window shared by shader and label logic: 1 near the focus
+ *  distance, fading to 0 for rings far smaller/larger than the view. */
+function ringWeight(rAU: number, focusAU: number): number {
+  const d = Math.log(rAU / focusAU);
+  // asymmetric: keep a couple of rings inside, a bit more headroom outside
+  const inner = THREE.MathUtils.smoothstep(d, -2.6, -1.4);
+  const outer = 1 - THREE.MathUtils.smoothstep(d, 0.9, 2.0);
+  return Math.min(inner, outer);
+}
+
+const GRID_VERT = /* glsl */ `
+  attribute float aAU;
+  attribute float aStrength; // per-line base opacity share (major/minor/cardinal)
+  varying float vAlpha;
+  uniform float uLogFocus;
+  uniform float uOpacity;
+  float win(float d, float a, float b) {
+    return clamp((d - a) / (b - a), 0.0, 1.0);
+  }
+  void main() {
+    float d = log(aAU) - uLogFocus;
+    float inner = win(d, -2.6, -1.4);
+    float outer = 1.0 - win(d, 0.9, 2.0);
+    vAlpha = aStrength * uOpacity * min(inner, outer);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const GRID_FRAG = /* glsl */ `
+  precision highp float;
+  varying float vAlpha;
+  uniform vec3 uColor;
+  void main() {
+    if (vAlpha < 0.003) discard;
+    gl_FragColor = vec4(uColor, vAlpha);
+  }
+`;
+
+export interface GridLabelState {
+  kind: 'au' | 'deg';
+  text: string;
+  world: THREE.Vector3;
+  alpha: number;
+}
 
 export class ReferenceGrid {
   readonly group = new THREE.Group();
-  private rings: THREE.LineLoop[] = [];
+  private rings: THREE.LineSegments;
   private spokes: THREE.LineSegments;
+  private ringPos: Float32Array;
   private spokePos: Float32Array;
+  private spokeAU: Float32Array;
+  private ringMat: THREE.ShaderMaterial;
+  private spokeMat: THREE.ShaderMaterial;
+  private scaleT = 0;
+  private focusAU = 12;
+  private labelPool: GridLabelState[] = [];
 
   constructor() {
-    // unit circle shared by every ring; per-ring scale sets the radius
-    const circle = new Float32Array(RING_SEGMENTS * 3);
-    for (let i = 0; i < RING_SEGMENTS; i++) {
-      const a = (i / RING_SEGMENTS) * Math.PI * 2;
-      circle[i * 3] = Math.cos(a);
-      circle[i * 3 + 2] = -Math.sin(a);
-    }
-    const circleGeo = new THREE.BufferGeometry();
-    circleGeo.setAttribute('position', new THREE.BufferAttribute(circle, 3));
-
-    const ringMat = new THREE.LineBasicMaterial({
-      color: 0x4a6da8,
-      transparent: true,
-      opacity: 0.14,
+    // ---- rings: one geometry, per-vertex AU + strength
+    const vertsPerRing = RING_SEGMENTS * 2;
+    this.ringPos = new Float32Array(RINGS.length * vertsPerRing * 3);
+    const ringAU = new Float32Array(RINGS.length * vertsPerRing);
+    const ringStrength = new Float32Array(RINGS.length * vertsPerRing);
+    RINGS.forEach((spec, ri) => {
+      const base = ri * vertsPerRing;
+      for (let i = 0; i < RING_SEGMENTS; i++) {
+        for (let k = 0; k < 2; k++) {
+          const idx = base + i * 2 + k;
+          ringAU[idx] = spec.rAU;
+          ringStrength[idx] = spec.major ? 1.0 : 0.38;
+        }
+      }
     });
-    for (const _ of GRID_RINGS_AU) {
-      const ring = new THREE.LineLoop(circleGeo, ringMat);
-      ring.frustumCulled = false;
-      this.rings.push(ring);
-      this.group.add(ring);
-    }
+    const ringGeo = new THREE.BufferGeometry();
+    ringGeo.setAttribute('position', new THREE.BufferAttribute(this.ringPos, 3));
+    ringGeo.setAttribute('aAU', new THREE.BufferAttribute(ringAU, 1));
+    ringGeo.setAttribute('aStrength', new THREE.BufferAttribute(ringStrength, 1));
+    this.ringMat = new THREE.ShaderMaterial({
+      vertexShader: GRID_VERT,
+      fragmentShader: GRID_FRAG,
+      uniforms: {
+        uLogFocus: { value: Math.log(12) },
+        uOpacity: { value: 0.16 },
+        uColor: { value: new THREE.Color(0x64788f) },
+      },
+      transparent: true,
+      depthWrite: false,
+    });
+    this.rings = new THREE.LineSegments(ringGeo, this.ringMat);
+    this.rings.frustumCulled = false;
+    this.rings.renderOrder = -3;
+    this.group.add(this.rings);
 
-    this.spokePos = new Float32Array(SPOKES * 2 * 3);
+    // ---- spokes: radial lines built from short segments so the LOD window
+    // can fade each PIECE by its own distance (outer reaches vanish cleanly)
+    const SPOKE_STEPS = RINGS.length - 1;
+    const segs = SPOKES * SPOKE_STEPS;
+    this.spokePos = new Float32Array(segs * 2 * 3);
+    this.spokeAU = new Float32Array(segs * 2);
+    const spokeStrength = new Float32Array(segs * 2);
+    for (let s = 0; s < SPOKES; s++) {
+      const cardinal = s % (SPOKES / 4) === 0;
+      for (let p = 0; p < SPOKE_STEPS; p++) {
+        const idx = (s * SPOKE_STEPS + p) * 2;
+        this.spokeAU[idx] = RINGS[p].rAU;
+        this.spokeAU[idx + 1] = RINGS[p + 1].rAU;
+        spokeStrength[idx] = spokeStrength[idx + 1] = cardinal ? 0.75 : 0.3;
+      }
+    }
     const spokeGeo = new THREE.BufferGeometry();
     spokeGeo.setAttribute('position', new THREE.BufferAttribute(this.spokePos, 3));
-    this.spokes = new THREE.LineSegments(
-      spokeGeo,
-      new THREE.LineBasicMaterial({ color: 0x4a6da8, transparent: true, opacity: 0.07 }),
-    );
+    spokeGeo.setAttribute('aAU', new THREE.BufferAttribute(this.spokeAU, 1));
+    spokeGeo.setAttribute('aStrength', new THREE.BufferAttribute(spokeStrength, 1));
+    this.spokeMat = new THREE.ShaderMaterial({
+      vertexShader: GRID_VERT,
+      fragmentShader: GRID_FRAG,
+      uniforms: {
+        uLogFocus: { value: Math.log(12) },
+        uOpacity: { value: 0.12 },
+        uColor: { value: new THREE.Color(0x64788f) },
+      },
+      transparent: true,
+      depthWrite: false,
+    });
+    this.spokes = new THREE.LineSegments(spokeGeo, this.spokeMat);
     this.spokes.frustumCulled = false;
+    this.spokes.renderOrder = -3;
     this.group.add(this.spokes);
 
-    // sit just under the ecliptic so orbit lines never z-fight the grid
-    this.group.position.y = -0.06;
-    this.group.renderOrder = -2;
+    this.group.position.y = PLANE_Y;
     this.rebuild(0);
   }
 
+  /** Re-place every vertex for the current explorer↔true blend. */
   rebuild(scaleT: number): void {
-    GRID_RINGS_AU.forEach((rAU, i) => {
-      const r = mapDistanceAU(rAU, scaleT);
-      this.rings[i].scale.set(r, 1, r);
+    this.scaleT = scaleT;
+    RINGS.forEach((spec, ri) => {
+      const r = mapDistanceAU(spec.rAU, scaleT);
+      const base = ri * RING_SEGMENTS * 2 * 3;
+      for (let i = 0; i < RING_SEGMENTS; i++) {
+        const a0 = (i / RING_SEGMENTS) * Math.PI * 2;
+        const a1 = (((i + 1) % RING_SEGMENTS) / RING_SEGMENTS) * Math.PI * 2;
+        const o = base + i * 6;
+        this.ringPos[o] = Math.cos(a0) * r;
+        this.ringPos[o + 2] = -Math.sin(a0) * r;
+        this.ringPos[o + 3] = Math.cos(a1) * r;
+        this.ringPos[o + 5] = -Math.sin(a1) * r;
+      }
     });
-    const inner = mapDistanceAU(SPOKE_INNER_AU, scaleT);
-    const outer = mapDistanceAU(SPOKE_OUTER_AU, scaleT);
-    for (let i = 0; i < SPOKES; i++) {
-      const a = (i / SPOKES) * Math.PI * 2;
+    (this.rings.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+
+    const SPOKE_STEPS = RINGS.length - 1;
+    for (let s = 0; s < SPOKES; s++) {
+      const a = (s / SPOKES) * Math.PI * 2;
       const cos = Math.cos(a);
       const sin = -Math.sin(a);
-      this.spokePos[i * 6] = cos * inner;
-      this.spokePos[i * 6 + 2] = sin * inner;
-      this.spokePos[i * 6 + 3] = cos * outer;
-      this.spokePos[i * 6 + 5] = sin * outer;
+      for (let p = 0; p < SPOKE_STEPS; p++) {
+        const r0 = mapDistanceAU(RINGS[p].rAU, scaleT);
+        const r1 = mapDistanceAU(RINGS[p + 1].rAU, scaleT);
+        const o = (s * SPOKE_STEPS + p) * 6;
+        this.spokePos[o] = cos * r0;
+        this.spokePos[o + 2] = sin * r0;
+        this.spokePos[o + 3] = cos * r1;
+        this.spokePos[o + 5] = sin * r1;
+      }
     }
     (this.spokes.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
   }
 
-  /** World anchor for a ring's AU label. */
-  labelAnchor(rAU: number, scaleT: number, out: THREE.Vector3): THREE.Vector3 {
-    const r = mapDistanceAU(rAU, scaleT);
-    return out.set(Math.cos(RING_LABEL_ANGLE) * r, -0.06, -Math.sin(RING_LABEL_ANGLE) * r);
+  /** Per-frame: adapt the LOD window to the camera's working distance. */
+  updateFocus(camPos: THREE.Vector3): void {
+    // working distance ≈ how far the camera is from the plane centre,
+    // converted to AU through the current mapping (approximate but smooth)
+    const horiz = Math.hypot(camPos.x, camPos.z);
+    const sceneR = Math.max(Math.abs(camPos.y) * 1.2, horiz * 0.5, 4);
+    const explorer = Math.pow(sceneR / 26, 1 / 0.55);
+    const trueScale = sceneR / 100;
+    const f = THREE.MathUtils.clamp(
+      explorer * (1 - this.scaleT) + trueScale * this.scaleT,
+      0.08,
+      60,
+    );
+    // ease toward the target so zooming never pops rings in and out
+    this.focusAU += (f - this.focusAU) * 0.08;
+    const logF = Math.log(this.focusAU);
+    this.ringMat.uniforms.uLogFocus.value = logF;
+    this.spokeMat.uniforms.uLogFocus.value = logF;
+  }
+
+  /**
+   * Labels for the HUD projector: AU values laddered up the 0° spoke
+   * (+x, the vernal-equinox direction) and the four ecliptic-longitude
+   * cardinal marks on the outermost well-visible major ring.
+   */
+  labelStates(): GridLabelState[] {
+    this.labelPool.length = 0;
+    let outermost: number | null = null;
+    for (const spec of RINGS) {
+      if (!spec.major) continue;
+      const w = ringWeight(spec.rAU, this.focusAU);
+      if (w < 0.25) continue;
+      const r = mapDistanceAU(spec.rAU, this.scaleT);
+      this.labelPool.push({
+        kind: 'au',
+        text: spec.rAU < 1 ? `${spec.rAU} AU` : `${spec.rAU} AU`,
+        world: new THREE.Vector3(r, PLANE_Y, 0),
+        alpha: Math.min(1, w * 1.4),
+      });
+      if (w > 0.55) outermost = spec.rAU;
+    }
+    if (outermost !== null) {
+      const r = mapDistanceAU(outermost, this.scaleT) * 1.06;
+      const marks: Array<[string, number]> = [
+        ['0°', 0],
+        ['90°', Math.PI / 2],
+        ['180°', Math.PI],
+        ['270°', (3 * Math.PI) / 2],
+      ];
+      for (const [text, ang] of marks) {
+        this.labelPool.push({
+          kind: 'deg',
+          text,
+          world: new THREE.Vector3(Math.cos(ang) * r, PLANE_Y, -Math.sin(ang) * r),
+          alpha: 0.8,
+        });
+      }
+    }
+    return this.labelPool;
   }
 
   setVisible(v: boolean): void {
     this.group.visible = v;
+  }
+
+  get isVisible(): boolean {
+    return this.group.visible;
   }
 }

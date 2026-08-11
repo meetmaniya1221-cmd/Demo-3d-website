@@ -2868,3 +2868,11 @@ body.journey-active .distance-readout {
     display: none !important;
   }
 }
+
+/* grid annotation variants: AU ladder + ecliptic-longitude marks */
+.skynote.deg {
+  color: rgba(130, 165, 210, 0.6);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}

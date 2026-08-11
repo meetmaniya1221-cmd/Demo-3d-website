@@ -153,6 +153,7 @@ export class SolarSystem {
     }
 
     this.markers.commit();
+    this.grid.updateFocus(cameraPos);
     this.mainBelt.update(simDays, scaleT);
     this.kuiperBelt.update(simDays, scaleT);
     this.sky.update(elapsed);
