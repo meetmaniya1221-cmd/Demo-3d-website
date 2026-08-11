@@ -18,6 +18,8 @@ import {
 export interface InfoPanelHost {
   /** Open the comparison overlay, optionally head-to-head with this body. */
   onCompare: (id?: string) => void;
+  /** Open the Earth-Moon lab (offered on Earth and the Moon). */
+  onEarthMoon: () => void;
   /** Open the interior cross-section view for this body. */
   onStructure: (id: string) => void;
   openMission: (missionId: string) => void;
@@ -311,6 +313,9 @@ export class InfoPanel {
       actionsEl.appendChild(b);
     };
     if (def.interior) mkAction('Interior ◔', () => this.host.onStructure(def.id));
+    if (def.id === 'earth' || def.id === 'moon') {
+      mkAction('Earth-Moon lab', () => this.host.onEarthMoon());
+    }
     if (def.type !== 'region') mkAction('Compare', () => this.host.onCompare(def.id));
     else mkAction('Compare sizes', () => this.host.onCompare());
     if (def.parent && def.type === 'moon') {
