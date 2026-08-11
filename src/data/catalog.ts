@@ -34,6 +34,8 @@ function adaptPlanet(def: BodyDef, parent: string | null): CatalogObject {
       diameterKm: def.facts.diameterKm,
       massKg: def.facts.massKg,
       gravity: def.facts.gravity,
+      density: def.facts.density,
+      albedo: def.facts.albedo,
       rotationHours: def.facts.rotationHours,
       axialTiltDeg: def.facts.axialTiltDeg,
       tempMeanC: def.facts.tempMeanC,
@@ -53,11 +55,18 @@ function adaptPlanet(def: BodyDef, parent: string | null): CatalogObject {
             credit: 'AI-generated map (Higgsfield)',
             note: 'Earth’s map here is an AI-generated rendering in the style of satellite imagery, not a NASA product.',
           }
-        : {
-            file: `${def.id}.webp`,
-            kind: 'photo',
-            credit: PLANET_TEXTURE_CREDIT,
-          },
+        : isSun
+          ? {
+              file: 'sun.webp',
+              kind: 'procedural',
+              credit: PLANET_TEXTURE_CREDIT,
+              note: 'A stylised solar surface - real photographs of the Sun are taken in narrow filter bands, not visible-light color.',
+            }
+          : {
+              file: `${def.id}.webp`,
+              kind: 'photo',
+              credit: PLANET_TEXTURE_CREDIT,
+            },
     ...restExtras,
     sources: [
       { label: 'NASA Planetary Fact Sheet', url: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/' },

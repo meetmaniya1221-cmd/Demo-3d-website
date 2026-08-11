@@ -515,7 +515,7 @@ export const MISSIONS: Mission[] = [
     launched: 2021,
     status: 'en route',
     craft: 'Flyby probe',
-    targets: ['main-belt'],
+    targets: ['trojans', 'main-belt'],
     summary:
       'Lucy is on a 12-year tour of the Jupiter Trojan asteroids - primitive leftovers trapped in Jupiter’s orbit - with its main tour beginning in 2027. Practice flybys of the main-belt asteroids Dinkinesh and Donaldjohanson have already delivered surprises.',
     highlights: [
@@ -543,7 +543,7 @@ export const MISSIONS: Mission[] = [
     highlights: [
       'First test of asteroid deflection by kinetic impact.',
       'Shortened Dimorphos’ orbit by 32 minutes.',
-      'Struck its 160 m target at ~22,500 km/h.',
+      'Struck its 160 m target at ~6.1 km/s (about 22,000 km/h).',
     ],
     url: 'https://science.nasa.gov/mission/dart/',
     sources: [

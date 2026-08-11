@@ -14,6 +14,7 @@ import { elementsFromPerihelion } from './util';
 export const ASTEROIDS: CatalogObject[] = [
   {
     id: 'vesta',
+    aliases: ['4 Vesta'],
     name: 'Vesta',
     type: 'asteroid',
     category: 'Main-belt asteroid',
@@ -66,6 +67,7 @@ export const ASTEROIDS: CatalogObject[] = [
   },
   {
     id: 'pallas',
+    aliases: ['2 Pallas'],
     name: 'Pallas',
     type: 'asteroid',
     category: 'Main-belt asteroid',
@@ -114,6 +116,7 @@ export const ASTEROIDS: CatalogObject[] = [
   },
   {
     id: 'hygiea',
+    aliases: ['10 Hygiea'],
     name: 'Hygiea',
     type: 'asteroid',
     category: 'Main-belt asteroid',
@@ -164,6 +167,7 @@ export const ASTEROIDS: CatalogObject[] = [
   },
   {
     id: 'psyche',
+    aliases: ['16 Psyche'],
     name: 'Psyche',
     type: 'asteroid',
     category: 'Main-belt asteroid (metallic)',
@@ -215,6 +219,7 @@ export const ASTEROIDS: CatalogObject[] = [
   },
   {
     id: 'eros',
+    aliases: ['433 Eros'],
     name: 'Eros',
     type: 'asteroid',
     category: 'Near-Earth asteroid (Amor)',
@@ -264,6 +269,7 @@ export const ASTEROIDS: CatalogObject[] = [
   },
   {
     id: 'bennu',
+    aliases: ['101955'],
     name: 'Bennu',
     type: 'asteroid',
     category: 'Near-Earth asteroid (Apollo)',
@@ -314,6 +320,7 @@ export const ASTEROIDS: CatalogObject[] = [
   },
   {
     id: 'ryugu',
+    aliases: ['162173'],
     name: 'Ryugu',
     type: 'asteroid',
     category: 'Near-Earth asteroid (Apollo)',
@@ -365,6 +372,7 @@ export const ASTEROIDS: CatalogObject[] = [
   },
   {
     id: 'didymos',
+    aliases: ['65803', 'Dimorphos'],
     name: 'Didymos',
     type: 'asteroid',
     category: 'Near-Earth asteroid (binary)',
@@ -415,6 +423,37 @@ export const ASTEROIDS: CatalogObject[] = [
 ];
 
 export const REGIONS: CatalogObject[] = [
+  {
+    id: 'trojans',
+    name: 'Jupiter Trojans',
+    type: 'region',
+    category: 'Trojan swarms',
+    parent: 'sun',
+    color: 0x9a8f7d,
+    physical: {
+      diameterKm: 0,
+      dimensionsKm: 'two swarms near 5.2 AU, 60\u00b0 ahead of and behind Jupiter',
+    },
+    composition: 'Dark, reddish primitive bodies - likely captured planetesimals rich in organics and ice.',
+    overview:
+      'Sharing Jupiter\u2019s orbit, two swarms of asteroids ride the gravitationally stable Lagrange points 60\u00b0 ahead of and behind the planet. Over 12,000 are known, and models suggest the swarms rival the main belt in number. They are thought to be planetesimals captured during the giant planets\u2019 early migration - which makes them time capsules from the Solar System\u2019s first few million years.',
+    concept: {
+      title: 'Lagrange points',
+      text: 'At two special points along a planet\u2019s orbit, the pull of the Sun and the planet balance in a way that lets small bodies circle stably for billions of years. NASA\u2019s Lucy mission is the first to visit these clouds.',
+    },
+    quickFacts: [
+      'The two swarms are named the \u201cGreek camp\u201d (leading) and \u201cTrojan camp\u201d (trailing).',
+      'The first Trojan, 588 Achilles, was found in 1906.',
+      'Lucy will fly past eight Trojans between 2027 and 2033.',
+    ],
+    missionIds: ['lucy'],
+    related: ['jupiter', 'main-belt'],
+    sources: [
+      { label: 'NASA Science - Trojan Asteroids', url: 'https://science.nasa.gov/solar-system/asteroids/trojan-asteroids/' },
+      { label: 'NASA - Lucy Mission', url: 'https://science.nasa.gov/mission/lucy/' },
+    ],
+    uncertainty: 'Rendered as a selectable region, not individual bodies; listed extent is the swarm geometry.',
+  },
   {
     id: 'main-belt',
     name: 'Asteroid Belt',

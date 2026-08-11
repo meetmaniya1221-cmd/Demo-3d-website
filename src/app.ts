@@ -282,7 +282,9 @@ export class App implements TourHost {
         ? { rAU: 41, radius: 26, trueRadius: 320 }
         : id === 'oort-cloud'
           ? { rAU: 55, radius: 60, trueRadius: 1500 }
-          : { rAU: 2.7, radius: 14, trueRadius: 55 };
+          : id === 'trojans'
+            ? { rAU: 5.2, radius: 18, trueRadius: 160 }
+            : { rAU: 2.7, radius: 14, trueRadius: 55 };
     this.rig.flyTo(
       () => {
         const dir = this.tmpV.copy(this.rig.camera.position).setY(0);

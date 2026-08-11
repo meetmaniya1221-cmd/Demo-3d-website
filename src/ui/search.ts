@@ -54,7 +54,12 @@ function buildIndex(): SearchItem[] {
       name: o.name,
       detail,
       color: `#${o.color.toString(16).padStart(6, '0')}`,
-      keys: [norm(o.name), ...(ALIASES[o.id] ?? []).map(norm), norm(detail)],
+      keys: [
+        norm(o.name),
+        ...(o.aliases ?? []).map(norm),
+        ...(ALIASES[o.id] ?? []).map(norm),
+        norm(detail),
+      ],
     });
   }
   for (const m of MISSIONS_SORTED) {

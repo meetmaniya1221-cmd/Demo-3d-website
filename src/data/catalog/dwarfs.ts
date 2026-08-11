@@ -13,6 +13,7 @@ import { elementsFromPerihelion } from './util';
 export const DWARF_PLANETS: CatalogObject[] = [
   {
     id: 'ceres',
+    aliases: ['1 Ceres'],
     name: 'Ceres',
     type: 'dwarf',
     category: 'Dwarf planet (asteroid belt)',
@@ -74,6 +75,7 @@ export const DWARF_PLANETS: CatalogObject[] = [
   },
   {
     id: 'pluto',
+    aliases: ['134340'],
     name: 'Pluto',
     type: 'dwarf',
     category: 'Dwarf planet (Kuiper belt)',
@@ -136,6 +138,7 @@ export const DWARF_PLANETS: CatalogObject[] = [
   },
   {
     id: 'eris',
+    aliases: ['136199', '2003 UB313'],
     name: 'Eris',
     type: 'dwarf',
     category: 'Dwarf planet (scattered disc)',
@@ -156,7 +159,7 @@ export const DWARF_PLANETS: CatalogObject[] = [
       i: 44.04,
       node: 35.95,
       argPeri: 151.64,
-      tpJD: 2567227,
+      tpJD: 2545407.7, // JPL SBDB (perihelion ~2257)
       periodDays: 203830,
     }),
     positionAccuracy: 'approximate',
@@ -195,6 +198,7 @@ export const DWARF_PLANETS: CatalogObject[] = [
   },
   {
     id: 'haumea',
+    aliases: ['136108', '2003 EL61'],
     name: 'Haumea',
     type: 'dwarf',
     category: 'Dwarf planet (Kuiper belt)',
@@ -213,7 +217,7 @@ export const DWARF_PLANETS: CatalogObject[] = [
       i: 28.21,
       node: 122.16,
       argPeri: 238.8,
-      tpJD: 2500269,
+      tpJD: 2500416.6, // JPL SBDB
       periodDays: 103660,
     }),
     positionAccuracy: 'approximate',
@@ -250,6 +254,7 @@ export const DWARF_PLANETS: CatalogObject[] = [
   },
   {
     id: 'makemake',
+    aliases: ['136472', '2005 FY9'],
     name: 'Makemake',
     type: 'dwarf',
     category: 'Dwarf planet (Kuiper belt)',
@@ -268,7 +273,7 @@ export const DWARF_PLANETS: CatalogObject[] = [
       i: 28.98,
       node: 79.62,
       argPeri: 294.83,
-      tpJD: 2395662,
+      tpJD: 2408158.7, // JPL SBDB (last perihelion ~1880)
       periodDays: 111450,
     }),
     positionAccuracy: 'approximate',
@@ -310,6 +315,7 @@ export const DWARF_PLANETS: CatalogObject[] = [
 export const TNOS: CatalogObject[] = [
   {
     id: 'quaoar',
+    aliases: ['50000', '2002 LM60'],
     name: 'Quaoar',
     type: 'tno',
     category: 'Dwarf-planet candidate (classical KBO)',
@@ -327,7 +333,7 @@ export const TNOS: CatalogObject[] = [
       i: 7.99,
       node: 188.8,
       argPeri: 147.5,
-      tpJD: 2451545,
+      tpJD: 2480516.4, // JPL SBDB (perihelion ~2078)
       periodDays: 105470,
     }),
     positionAccuracy: 'approximate',
@@ -362,6 +368,7 @@ export const TNOS: CatalogObject[] = [
   },
   {
     id: 'sedna',
+    aliases: ['90377', '2003 VB12'],
     name: 'Sedna',
     type: 'tno',
     category: 'Dwarf-planet candidate (detached object)',
@@ -379,7 +386,7 @@ export const TNOS: CatalogObject[] = [
       i: 11.93,
       node: 144.4,
       argPeri: 311.3,
-      tpJD: 2469808,
+      tpJD: 2479264.8, // JPL SBDB (perihelion 2075-76)
       periodDays: 4157000,
     }),
     positionAccuracy: 'approximate',
@@ -416,6 +423,7 @@ export const TNOS: CatalogObject[] = [
   },
   {
     id: 'gonggong',
+    aliases: ['225088', '2007 OR10'],
     name: 'Gonggong',
     type: 'tno',
     category: 'Dwarf-planet candidate (scattered disc)',
@@ -434,7 +442,7 @@ export const TNOS: CatalogObject[] = [
       i: 30.87,
       node: 336.8,
       argPeri: 207.7,
-      tpJD: 2402236,
+      tpJD: 2399252.7, // JPL SBDB (last perihelion ~1857)
       periodDays: 201000,
     }),
     positionAccuracy: 'approximate',
@@ -469,6 +477,7 @@ export const TNOS: CatalogObject[] = [
   },
   {
     id: 'orcus',
+    aliases: ['90482', '2004 DW'],
     name: 'Orcus',
     type: 'tno',
     category: 'Dwarf-planet candidate (plutino)',
@@ -486,7 +495,7 @@ export const TNOS: CatalogObject[] = [
       i: 20.59,
       node: 268.7,
       argPeri: 72.9,
-      tpJD: 2406264,
+      tpJD: 2504046.1, // JPL SBDB (next perihelion ~2143)
       periodDays: 90370,
     }),
     positionAccuracy: 'approximate',

@@ -32,6 +32,8 @@ export interface BodyFacts {
   distanceAU: number; // mean distance from Sun (from parent for moons)
   tempMeanC: number;
   tempRangeC?: [number, number];
+  density?: number; // g/cm3 (NASA Planetary Fact Sheet)
+  albedo?: number; // geometric albedo (NASA Planetary Fact Sheet)
   moons: number;
   axialTiltDeg: number;
   /**
@@ -79,6 +81,7 @@ export const SUN: BodyDef = {
     orbitDays: 0,
     distanceAU: 0,
     tempMeanC: 5505,
+    density: 1.408,
     moons: 0,
     axialTiltDeg: 7.25,
   },
@@ -115,6 +118,8 @@ export const PLANETS: BodyDef[] = [
       moons: 0,
       axialTiltDeg: 0.03,
       w0Deg: 329.5988,
+      density: 5.427,
+      albedo: 0.142,
     },
     overview:
       'Mercury is the smallest planet and the closest to the Sun - a cratered, airless world that looks a lot like our Moon. With almost no atmosphere to trap heat, it swings between scorching days and freezing nights more than any other planet.',
@@ -146,6 +151,8 @@ export const PLANETS: BodyDef[] = [
       moons: 0,
       axialTiltDeg: 177.4,
       w0Deg: 160.2,
+      density: 5.243,
+      albedo: 0.689,
       cloudPeriodHours: -96,
     },
     overview:
@@ -179,6 +186,8 @@ export const PLANETS: BodyDef[] = [
       moons: 1,
       axialTiltDeg: 23.4,
       w0Deg: 190.147,
+      density: 5.514,
+      albedo: 0.434,
     },
     overview:
       'Earth is the only place we know of where liquid water pools on the surface - and the only place we know of with life. It sits in the Sun’s habitable zone: close enough that water doesn’t freeze solid, far enough that it doesn’t boil away.',
@@ -211,6 +220,8 @@ export const PLANETS: BodyDef[] = [
       moons: 2,
       axialTiltDeg: 25.2,
       w0Deg: 176.63,
+      density: 3.934,
+      albedo: 0.17,
     },
     overview:
       'Mars is a cold desert world with the largest volcano and the deepest canyon in the Solar System. Dry riverbeds and minerals that only form in water tell us it was once warmer and wetter - which is why it is the prime target in the search for past life.',
@@ -239,9 +250,11 @@ export const PLANETS: BodyDef[] = [
       orbitDays: 4331,
       distanceAU: 5.204,
       tempMeanC: -110,
-      moons: 101,
+      moons: 95, // IAU-recognised as of early 2026
       axialTiltDeg: 3.1,
       w0Deg: 284.95,
+      density: 1.326,
+      albedo: 0.538,
     },
     overview:
       'Jupiter is more massive than all the other planets combined - a giant ball of hydrogen and helium with no solid surface to stand on. Its Great Red Spot is a storm wider than Earth that has raged for at least 190 years.',
@@ -270,9 +283,11 @@ export const PLANETS: BodyDef[] = [
       orbitDays: 10_759,
       distanceAU: 9.573,
       tempMeanC: -140,
-      moons: 285,
+      moons: 274, // IAU-recognised as of early 2026
       axialTiltDeg: 26.7,
       w0Deg: 38.9,
+      density: 0.687,
+      albedo: 0.499,
     },
     overview:
       'Saturn’s rings are made of countless chunks of nearly pure water ice - from dust grains to house-sized boulders - spanning 280,000 km yet averaging only about 10 metres thick. The planet itself is so light for its size that it would float in a big enough ocean.',
@@ -304,6 +319,8 @@ export const PLANETS: BodyDef[] = [
       moons: 29,
       axialTiltDeg: 97.8,
       w0Deg: 203.81,
+      density: 1.27,
+      albedo: 0.488,
     },
     overview:
       'Uranus rolls around the Sun on its side - its axis is tipped almost 98°, probably from a colossal ancient collision. Each pole gets 42 years of continuous sunlight followed by 42 years of darkness.',
@@ -335,6 +352,8 @@ export const PLANETS: BodyDef[] = [
       moons: 16,
       axialTiltDeg: 28.3,
       w0Deg: 249.978,
+      density: 1.638,
+      albedo: 0.442,
     },
     overview:
       'Neptune is the most distant planet - so far out that the Sun looks like a very bright star and one orbit takes 165 Earth years. Despite receiving 900× less sunlight than Earth, it hosts the fastest winds in the Solar System.',
@@ -358,13 +377,15 @@ export const MOON: BodyDef = {
   facts: {
     diameterKm: 3475,
     massKg: 7.35e22,
-    gravity: 1.6,
+    gravity: 1.62,
     rotationHours: 655.7,
     dayLengthHours: 708.7,
     orbitDays: 27.32,
     distanceAU: 384_400 / AU_KM,
     tempMeanC: -23,
     tempRangeC: [-173, 127],
+    density: 3.34,
+    albedo: 0.12,
     moons: 0,
     axialTiltDeg: 6.7,
   },

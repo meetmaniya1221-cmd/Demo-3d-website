@@ -60,8 +60,10 @@ export interface Discovery {
 export interface TextureInfo {
   /** File in /public/textures; when missing the procedural painter is used. */
   file?: string;
-  /** photo = real mission mosaic; tinted = real grayscale mosaic with a
-   *  display tint; procedural = artistic rendering informed by imagery. */
+  /** Provenance of whatever map is shown (independent of `file` - an
+   *  artistic map can ship as a file): photo = real mission mosaic;
+   *  tinted = real grayscale mosaic with a display tint;
+   *  procedural = artistic rendering informed by imagery. */
   kind: 'photo' | 'tinted' | 'procedural';
   credit?: string;
   note?: string;
@@ -81,6 +83,8 @@ export interface CometActivity {
 export interface CatalogObject {
   id: string;
   name: string;
+  /** Alternate names/designations for search ("136199", "2007 OR10", "1P"). */
+  aliases?: string[];
   type: ObjectType;
   /** Fine-grained label, e.g. "Galilean moon", "Jupiter-family comet". */
   category?: string;

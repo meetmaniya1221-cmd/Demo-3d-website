@@ -74,6 +74,7 @@ export const COMETS: CatalogObject[] = [
   },
   {
     id: 'encke',
+    aliases: ['2P'],
     name: '2P/Encke',
     type: 'comet',
     category: 'Jupiter-family comet',
@@ -194,6 +195,7 @@ export const COMETS: CatalogObject[] = [
   },
   {
     id: 'swifttuttle',
+    aliases: ['109P'],
     name: '109P/Swift-Tuttle',
     type: 'comet',
     category: 'Halley-type comet',
@@ -252,6 +254,7 @@ export const COMETS: CatalogObject[] = [
   },
   {
     id: 'tempeltuttle',
+    aliases: ['55P'],
     name: '55P/Tempel-Tuttle',
     type: 'comet',
     category: 'Halley-type comet',
@@ -309,6 +312,7 @@ export const COMETS: CatalogObject[] = [
   },
   {
     id: 'halebopp',
+    aliases: ['C/1995 O1'],
     name: 'C/1995 O1 (Hale-Bopp)',
     type: 'comet',
     category: 'Long-period comet',
