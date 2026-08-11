@@ -15,6 +15,9 @@ import { mapDistanceAU } from './sim/scale';
 import { Hud } from './ui/hud';
 import { InfoPanel } from './ui/infopanel';
 import { Labels } from './ui/labels';
+import { LayersPanel } from './ui/layerspanel';
+import { DistanceReadout } from './ui/distance';
+import { SkyNotes } from './ui/skynotes';
 import { CompareOverlay, GravityOverlay } from './ui/overlays';
 import { MissionsOverlay } from './ui/missions';
 import { MeteorsOverlay } from './ui/meteors';
@@ -40,6 +43,9 @@ export class App implements TourHost {
   private hud: Hud;
   private infoPanel: InfoPanel;
   private labels: Labels;
+  private layersPanel: LayersPanel;
+  private distance: DistanceReadout;
+  private skyNotes: SkyNotes;
   private compare: CompareOverlay;
   private gravity: GravityOverlay;
   private missions: MissionsOverlay;
@@ -101,6 +107,12 @@ export class App implements TourHost {
 
     // ---- UI ----
     this.labels = new Labels(root, this.state);
+    this.skyNotes = new SkyNotes(root, this.system);
+    this.distance = new DistanceReadout(root);
+    this.layersPanel = new LayersPanel(root, this.state, () => {
+      if (this.state.selectedId) this.state.select(null);
+      else this.focusOverview();
+    });
     this.compare = new CompareOverlay(root);
     this.gravity = new GravityOverlay(root);
     this.missions = new MissionsOverlay(root, { selectObject: (id) => this.state.select(id) });
@@ -180,14 +192,16 @@ export class App implements TourHost {
       } else {
         this.toast(
           'Explorer view',
-          'Distances compressed and planets enlarged so the whole system stays browsable.',
+          'Distances compressed and planet sizes enhanced for browsing. Moons keep their true size relative to their planet.',
         );
       }
     });
-    this.state.on('toggles', () => {
-      this.system.setOrbitsVisible(this.state.showOrbits);
-      this.system.setHZVisible(this.state.showHZ);
+    this.state.on('layers', () => {
+      this.system.setLayers(this.state.layers);
+      this.distance.setVisible(this.state.layers.distanceScale);
     });
+    this.system.setLayers(this.state.layers);
+    this.distance.setVisible(this.state.layers.distanceScale);
 
     // ---- input ----
     const canvas = this.renderer.domElement;
@@ -303,12 +317,14 @@ export class App implements TourHost {
     this.raycaster.setFromCamera(this.pointer, this.rig.camera);
     const hits = this.raycaster.intersectObjects(this.system.pickables, false);
     if (hits.length > 0) {
-      // a moon's pick proxy can sit inside its parent's - prefer the moon
-      // when the ray passes through both at nearly the same depth
+      // a moon's pick proxy can sit inside its parent's generous proxy -
+      // prefer the moon when the ray also passes through it anywhere within
+      // the parent's proxy depth
       let name = hits[0].object.name;
+      const proxyDepth = hits[0].object.scale.x * 2.2 + 0.4;
       const moonHit = hits.find((hit) => {
         const def = catalogObject(hit.object.name);
-        return def?.parent === name && hit.distance < hits[0].distance + 0.4;
+        return def?.parent === name && hit.distance < hits[0].distance + proxyDepth;
       });
       if (moonHit) name = moonHit.object.name;
       this.state.select(name);
@@ -321,6 +337,7 @@ export class App implements TourHost {
     // Escape always works, even from inside inputs/sliders
     if (e.key === 'Escape') {
       if (this.search.isOpen) this.search.close();
+      else if (this.layersPanel.isOpen) this.layersPanel.setOpen(false);
       else if (this.compare.isOpen) this.compare.close();
       else if (this.gravity.isOpen) this.gravity.close();
       else if (this.missions.isOpen) this.missions.close();
@@ -377,7 +394,7 @@ export class App implements TourHost {
       this.state.scaleT = this.scaleTarget;
     }
 
-    this.system.update(this.state.simDays, this.state.scaleT, this.elapsed, this.rig.camera.position);
+    this.system.update(this.state.simDays, this.state.scaleT, this.elapsed, this.rig.camera);
     // camera flights advance on wall-clock time so they finish on schedule
     // even when the GPU is struggling
     if (this.journey.active) {
@@ -387,6 +404,31 @@ export class App implements TourHost {
     }
     const panelInset = this.state.selectedId && window.innerWidth > 720 ? 372 : 0;
     this.labels.update(this.system, this.rig.camera, this.state, panelInset);
+    this.skyNotes.update(this.system, this.rig.camera, this.state);
+
+    // right-edge distance readout: camera → focused body (or the Sun)
+    if (this.state.layers.distanceScale) {
+      const focusId = this.state.selectedId ?? 'sun';
+      const def = catalogObject(focusId);
+      this.system.bodyPosition(
+        def && def.type !== 'region' ? focusId : 'sun',
+        this.tmpV,
+      );
+      this.distance.update(
+        this.rig.camera.position,
+        this.tmpV,
+        def && def.type !== 'region' ? (focusId === 'moon' ? 'the Moon' : (def?.name ?? 'the Sun')) : 'the Sun',
+        this.state.scaleT,
+      );
+    }
+
+    // deep true-scale views (Sedna's aphelion is 937 AU out) need a longer
+    // far plane; explorer view keeps the tighter one for depth precision
+    const wantFar = 22000 * (1 - this.state.scaleT) + 320000 * this.state.scaleT;
+    if (Math.abs(wantFar - this.rig.camera.far) / this.rig.camera.far > 0.2) {
+      this.rig.camera.far = wantFar;
+      this.rig.camera.updateProjectionMatrix();
+    }
 
     this.liveTimer += dt;
     if (this.liveTimer > 1) {
@@ -432,6 +474,8 @@ export class App implements TourHost {
   private setPixelRatio(value: number): void {
     this.renderer.setPixelRatio(value);
     this.composer.setPixelRatio(value);
+    this.system.markers.setPixelRatio(value);
+    this.system.constellations.setPixelRatio(value);
   }
 
   private resize(): void {

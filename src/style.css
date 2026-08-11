@@ -2568,3 +2568,303 @@ body.journey-active .atlas {
     font-size: 24px;
   }
 }
+
+/* ═══════════════════════════ ASTRONOMICAL NAVIGATOR RESTYLE ══ */
+
+/* Labels: quiet instrument text floating in space, no chrome boxes */
+.body-label {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(190, 214, 245, 0.88);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95), 0 0 14px rgba(0, 0, 0, 0.7);
+  clip-path: none;
+}
+
+.body-label .mark {
+  width: 5px;
+  height: 5px;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.body-label:hover {
+  color: #ffffff;
+  background: none;
+  border: none;
+}
+
+.body-label.selected {
+  color: var(--accent);
+  border: none;
+  background: none;
+  text-shadow: 0 0 12px rgba(102, 224, 255, 0.55), 0 1px 6px rgba(0, 0, 0, 0.95);
+}
+
+.body-label.minor {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: rgba(160, 186, 220, 0.72);
+  padding: 2px 5px;
+}
+
+/* Sky annotations: constellation names + AU ring marks */
+#skynotes {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 9;
+}
+
+.skynote {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  font-size: 9px;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  will-change: transform;
+}
+
+.skynote.constellation {
+  color: rgba(90, 130, 180, 0.5);
+  font-weight: 600;
+}
+
+.skynote.ring {
+  color: rgba(110, 150, 205, 0.55);
+  font-family: var(--mono);
+  letter-spacing: 0.12em;
+  font-size: 9.5px;
+}
+
+/* ------------------------------------------------ view cluster (bottom right) */
+.view-cluster {
+  position: fixed;
+  right: 18px;
+  bottom: 24px;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  transition: opacity 0.8s ease, visibility 0s;
+}
+
+.pre-entry .view-cluster {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.view-cluster-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.layers-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.layers-panel {
+  width: 236px;
+  max-height: min(62vh, 520px);
+  overflow-y: auto;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  padding: 6px 14px 12px;
+}
+
+.layers-group {
+  padding-top: 10px;
+}
+
+.layers-group + .layers-group {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.layers-group-title {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0.85;
+  margin-bottom: 6px;
+}
+
+.layers-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4.5px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.layers-row input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.layers-box {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--line-strong);
+  background: rgba(5, 11, 22, 0.6);
+  position: relative;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.layers-row input:checked + .layers-box {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.layers-row input:checked + .layers-box::after {
+  content: '';
+  position: absolute;
+  inset: 2.5px;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(102, 224, 255, 0.6);
+}
+
+.layers-row input:focus-visible + .layers-box {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.layers-text {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.layers-row:hover .layers-text {
+  color: var(--text);
+}
+
+.layers-text small {
+  font-size: 9.5px;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+
+/* -------------------------------------------------- distance readout (right) */
+.distance-readout {
+  position: fixed;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+.distance-readout.hidden {
+  opacity: 0;
+}
+
+.distance-readout .tick {
+  width: 14px;
+  height: 1px;
+  background: rgba(110, 150, 205, 0.55);
+  position: relative;
+}
+
+.distance-readout .tick::before {
+  content: '';
+  position: absolute;
+  width: 1px;
+  height: 9px;
+  background: rgba(110, 150, 205, 0.55);
+  right: 0;
+}
+
+.distance-readout .tick.top::before {
+  top: 0;
+}
+
+.distance-readout .tick.bottom::before {
+  bottom: 0;
+}
+
+.distance-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  writing-mode: vertical-rl;
+  padding: 10px 0;
+}
+
+.distance-label {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(110, 150, 205, 0.75);
+}
+
+.distance-value {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 10px rgba(102, 224, 255, 0.35);
+}
+
+.distance-target {
+  font-size: 8.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+body.journey-active .distance-readout {
+  opacity: 0;
+}
+
+/* thinner, quieter orbit paths overall */
+.pre-entry .distance-readout {
+  opacity: 0;
+}
+
+@media (max-width: 720px) {
+  .view-cluster {
+    right: 12px;
+    bottom: 108px;
+  }
+
+  .layers-panel {
+    width: 210px;
+    max-height: 48vh;
+  }
+
+  .distance-readout {
+    right: 6px;
+  }
+
+  .skynote.constellation {
+    display: none !important;
+  }
+}

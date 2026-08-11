@@ -45,6 +45,17 @@ export function fmtDays(days: number): string {
   return `${(days / 365.25).toFixed(1)} years`;
 }
 
+/**
+ * Distance with an automatically chosen readable unit:
+ * "384,400 km" → "57.9 million km" → "1.52 AU".
+ */
+export function fmtDistanceAuto(au: number): string {
+  const km = au * AU_KM;
+  if (au >= 0.35) return `${au.toFixed(au >= 10 ? 1 : 2)} AU`;
+  if (km >= 1e6) return `${(km / 1e6).toFixed(km >= 2e7 ? 0 : 1)} million km`;
+  return `${fmtInt(km)} km`;
+}
+
 /** Light travel time for a distance in AU. */
 export function fmtLightTime(au: number): string {
   const sec = (au * AU_KM) / LIGHT_KM_PER_S;

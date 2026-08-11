@@ -54,6 +54,14 @@ The USGS maps were retrieved from the USGS Astrogeology Science Center
 public archive (`planetarymaps.usgs.gov` / `asc-pds-services` mirror);
 the Pluto color map from NASA's science.nasa.gov asset library.
 
+## Sky
+
+The 15 constellation stick figures and ~70 named bright stars use real J2000
+equatorial coordinates (rounded to roughly 0.1 h / 1°, i.e. accurate to about
+a degree - fine for stick figures). The faint background starfield and the
+Milky Way band are procedural art, not a star catalog. The ecliptic reference
+grid marks true astronomical-unit distances in the current scale mode.
+
 ## Audio
 
 - UI sounds: [Kenney](https://kenney.nl) "Interface Sounds" / "Sci-Fi Sounds" (CC0)

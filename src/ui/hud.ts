@@ -1,5 +1,6 @@
-/** HUD chrome: brand, top actions, planet rail, view toggles, time bar. */
-import { SUN, PLANETS } from '../data/bodies';
+/** HUD chrome: brand, top actions, time bar. Navigation lives in labels,
+ *  search and the atlas; visibility lives in the View panel - the HUD stays
+ *  out of the scene's way. */
 import { AppState, SPEED_PRESETS } from '../sim/state';
 import { fmtSimDate } from './format';
 import { sound } from '../audio';
@@ -26,9 +27,7 @@ export class Hud {
   private speedSlider!: HTMLInputElement;
   private speedLabel!: HTMLElement;
   private dateEl!: HTMLElement;
-  private railButtons = new Map<string, HTMLButtonElement>();
   private scaleButtons: { explorer: HTMLButtonElement; true: HTMLButtonElement };
-  private toggleChips = new Map<string, HTMLButtonElement>();
 
   constructor(parent: HTMLElement, state: AppState, cb: HudCallbacks) {
     this.state = state;
@@ -104,36 +103,6 @@ export class Hud {
     );
     parent.appendChild(actions);
 
-    // planet rail
-    const rail = document.createElement('nav');
-    rail.className = 'rail';
-    rail.setAttribute('aria-label', 'Bodies');
-    for (const def of [SUN, ...PLANETS]) {
-      const b = document.createElement('button');
-      b.innerHTML = `<i class="dot" style="background:#${def.color
-        .toString(16)
-        .padStart(6, '0')}"></i><span class="txt">${def.name}</span>`;
-      b.setAttribute('aria-label', `Fly to ${def.name}`);
-      b.addEventListener('click', () => state.select(def.id));
-      rail.appendChild(b);
-      this.railButtons.set(def.id, b);
-    }
-    parent.appendChild(rail);
-
-    // view toggles
-    const toggles = document.createElement('div');
-    toggles.className = 'view-toggles';
-    const mkToggle = (label: string, key: 'showOrbits' | 'showLabels' | 'showHZ') => {
-      const b = this.chip(label, () => state.setToggle(key, !state[key]));
-      b.setAttribute('aria-pressed', String(state[key]));
-      toggles.appendChild(b);
-      this.toggleChips.set(key, b);
-    };
-    mkToggle('Orbits', 'showOrbits');
-    mkToggle('Labels', 'showLabels');
-    mkToggle('Habitable zone', 'showHZ');
-    parent.appendChild(toggles);
-
     // time bar
     const bar = document.createElement('div');
     bar.className = 'timebar';
@@ -187,13 +156,10 @@ export class Hud {
       this.speedSlider.setAttribute('aria-valuetext', SPEED_PRESETS[i].label);
       this.speedLabel.textContent = SPEED_PRESETS[i].label;
     });
-    state.on('select', (id) => this.syncSelection(id));
     state.on('scale', () => this.syncScale());
-    state.on('toggles', () => this.syncToggles());
 
     this.speedLabel.textContent = SPEED_PRESETS[state.speedIndex].label;
     this.syncScale();
-    this.syncToggles();
   }
 
   private chip(label: string, onClick: () => void): HTMLButtonElement {
@@ -204,34 +170,12 @@ export class Hud {
     return b;
   }
 
-  private syncSelection(id: string | null): void {
-    for (const [bid, btn] of this.railButtons) {
-      const active = bid === id;
-      btn.classList.toggle('active', active);
-      if (active) btn.setAttribute('aria-current', 'true');
-      else btn.removeAttribute('aria-current');
-    }
-  }
-
   private syncScale(): void {
     const mode = this.state.scaleMode;
     this.scaleButtons.explorer.classList.toggle('active', mode === 'explorer');
     this.scaleButtons.explorer.setAttribute('aria-pressed', String(mode === 'explorer'));
     this.scaleButtons.true.classList.toggle('active', mode === 'true');
     this.scaleButtons.true.setAttribute('aria-pressed', String(mode === 'true'));
-  }
-
-  private syncToggles(): void {
-    const map: Array<['showOrbits' | 'showLabels' | 'showHZ']> = [
-      ['showOrbits'],
-      ['showLabels'],
-      ['showHZ'],
-    ];
-    for (const [key] of map) {
-      const chipEl = this.toggleChips.get(key)!;
-      chipEl.classList.toggle('active', this.state[key]);
-      chipEl.setAttribute('aria-pressed', String(this.state[key]));
-    }
   }
 
   /** Called once per second from the app loop. */

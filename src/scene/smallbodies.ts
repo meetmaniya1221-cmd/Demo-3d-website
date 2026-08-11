@@ -2,15 +2,24 @@
  * Heliocentric small bodies: dwarf planets, notable TNOs, major asteroids and
  * periodic comets. Each rides real Kepler elements, draws an orbit ellipse,
  * lazily loads its surface, and (for comets) grows a coma and tails near the
- * Sun. Meshes are shared-geometry spheres or seeded irregular shapes.
+ * Sun.
+ *
+ * Rendering strategy (stability + performance):
+ *  - below a few projected pixels the mesh is hidden and a fixed-pixel-size
+ *    marker takes over (see markers.ts) - nothing sub-pixel ever rasterises,
+ *    which is what killed the comet flicker;
+ *  - comet coma/tails have their own projected-size gates with smooth fades;
+ *  - whole categories toggle via the layer system without touching the data.
  */
 import * as THREE from 'three';
 import type { CatalogObject } from '../data/types';
 import { keplerPosition } from '../data/bodies';
 import { mapPositionAU, minorDisplayRadius } from '../sim/scale';
+import type { Layers } from '../sim/state';
 import { OrbitLine } from './orbits';
 import { minorTexture, irregularGeometry, type MinorPaintKind } from './minortex';
 import { CometFX } from './comet';
+import { Markers, projectedPx, markerFade } from './markers';
 
 const sphereGeo = new THREE.SphereGeometry(1, 48, 24);
 
@@ -35,9 +44,14 @@ function paintKindOf(def: CatalogObject): MinorPaintKind {
 }
 
 function radiusFloor(def: CatalogObject): number {
-  if (def.type === 'comet') return 0.13;
-  if (def.type === 'asteroid') return 0.15;
-  return 0.24; // dwarfs / TNOs stay findable at overview zoom
+  if (def.type === 'comet' || def.type === 'asteroid') return 0.05;
+  return 0.1; // dwarfs / TNOs
+}
+
+function layerKeyOf(def: CatalogObject): 'dwarfs' | 'asteroids' | 'comets' {
+  if (def.type === 'comet') return 'comets';
+  if (def.type === 'asteroid') return 'asteroids';
+  return 'dwarfs';
 }
 
 function parseAspect(dims?: string): [number, number, number] | null {
@@ -54,9 +68,12 @@ interface SmallBody {
   hit: THREE.Mesh;
   orbit: OrbitLine;
   fx?: CometFX;
+  markerIdx: number;
   radius: number;
   rAU: number;
   activated: boolean;
+  /** category layer currently on (or body force-shown by selection) */
+  enabled: boolean;
   /** asteroid orbits stay hidden unless the body is selected */
   orbitOnSelectOnly: boolean;
   spinPhase: number;
@@ -69,12 +86,19 @@ export class SmallBodies {
   private orbitsEnabled = true;
   private selectedId: string | null = null;
   private textureBase: string;
+  private markers: Markers;
   private tmp = { x: 0, y: 0, z: 0 };
   private tmpV = new THREE.Vector3();
   private tmpV2 = new THREE.Vector3();
 
-  constructor(scene: THREE.Scene, defs: CatalogObject[], textureBase: string) {
+  constructor(
+    scene: THREE.Scene,
+    defs: CatalogObject[],
+    textureBase: string,
+    markers: Markers,
+  ) {
     this.textureBase = textureBase;
+    this.markers = markers;
     scene.add(this.group);
     for (const def of defs) {
       if (!def.orbit) continue;
@@ -92,7 +116,6 @@ export class SmallBodies {
         new THREE.MeshStandardMaterial({ color: def.color, roughness: 1, metalness: 0 }),
       );
       mesh.name = def.id;
-      if (def.id === 'haumea' && aspect) mesh.scale.set(1, aspect[2], aspect[1]);
       const hitMat = new THREE.MeshBasicMaterial();
       hitMat.visible = false;
       const hit = new THREE.Mesh(sphereGeo, hitMat);
@@ -121,9 +144,11 @@ export class SmallBodies {
         hit,
         orbit,
         fx,
+        markerIdx: markers.register(def.id, def.color),
         radius: 0.2,
         rAU: def.orbit.a,
         activated: false,
+        enabled: true,
         orbitOnSelectOnly,
         spinPhase: (def.id.charCodeAt(1) * 0.9) % (Math.PI * 2),
       });
@@ -166,24 +191,54 @@ export class SmallBodies {
     this.syncOrbitVisibility();
   }
 
+  /** Category layers; a selected body is always force-shown. */
+  setLayers(layers: Layers): void {
+    for (const b of this.bodies.values()) {
+      b.enabled = layers[layerKeyOf(b.def)] || b.def.id === this.selectedId;
+      b.root.visible = b.enabled;
+      // keep disabled bodies out of the raycaster
+      b.hit.layers.set(b.enabled ? 0 : 31);
+    }
+    this.syncOrbitVisibility();
+  }
+
   setSelected(id: string | null): void {
     this.selectedId = id;
     for (const [bid, b] of this.bodies) {
       b.orbit.setHighlight(bid === id, id !== null);
       if (bid === id) this.activate(b);
     }
-    this.syncOrbitVisibility();
+  }
+
+  get selected(): string | null {
+    return this.selectedId;
+  }
+
+  isEnabled(id: string): boolean {
+    return this.bodies.get(id)?.enabled ?? false;
   }
 
   private syncOrbitVisibility(): void {
     for (const [bid, b] of this.bodies) {
-      const wanted = b.orbitOnSelectOnly ? bid === this.selectedId : this.orbitsEnabled;
+      const wanted =
+        b.enabled && (b.orbitOnSelectOnly ? bid === this.selectedId : this.orbitsEnabled);
       b.orbit.line.visible = wanted;
     }
   }
 
-  update(simDays: number, scaleT: number, elapsed: number, camera: THREE.Vector3): void {
+  update(
+    simDays: number,
+    scaleT: number,
+    elapsed: number,
+    camera: THREE.Vector3,
+    halfTanFov: number,
+    viewH: number,
+  ): void {
     for (const b of this.bodies.values()) {
+      if (!b.enabled) {
+        this.markers.set(b.markerIdx, 0, 0, 0, 0, 0);
+        continue;
+      }
       const el = b.def.orbit!;
       const [x, y, z] = keplerPosition(el, simDays);
       b.rAU = Math.hypot(x, y, z);
@@ -196,11 +251,26 @@ export class SmallBodies {
       else b.mesh.scale.set(r, r * 0.51, r * 0.8); // fast spin flattened Haumea
 
       const camDist = camera.distanceTo(b.root.position);
-      // activate surfaces as the camera approaches
-      if (!b.activated && camDist < Math.max(30, r * 40)) this.activate(b);
+      const px = projectedPx(r, camDist, halfTanFov, viewH);
+      const mFade = markerFade(px);
+      // sub-pixel meshes never rasterise: that IS the flicker fix
+      b.mesh.visible = mFade < 1;
+      this.markers.set(
+        b.markerIdx,
+        b.root.position.x,
+        b.root.position.y,
+        b.root.position.z,
+        mFade,
+        r * 1.6,
+      );
 
-      const hours = b.def.physical.rotationHours ?? 30;
-      b.mesh.rotation.y = b.spinPhase + ((simDays * 24) / hours) * Math.PI * 2;
+      // activate surfaces as the camera approaches
+      if (!b.activated && b.mesh.visible && px > 6) this.activate(b);
+
+      if (b.mesh.visible) {
+        const hours = b.def.physical.rotationHours ?? 30;
+        b.mesh.rotation.y = b.spinPhase + ((simDays * 24) / hours) * Math.PI * 2;
+      }
       b.hit.scale.setScalar(Math.max(r * 1.8, 0.3 * (1 - scaleT) + r * 2 * scaleT));
 
       if (b.fx) {
@@ -214,6 +284,20 @@ export class SmallBodies {
         if (vel.lengthSq() < 1e-12) vel.set(0, 0, 1);
         vel.normalize();
         b.fx.update(b.rAU, antiSun, vel, r, scaleT, elapsed);
+        // LOD gates: the coma sprite needs real screen coverage to earn its
+        // bloom; tails may linger longer (a distant active comet reads as a
+        // marker dot with a faint streak - exactly right)
+        const comaPx = projectedPx(r * (1.7 + b.fx.activity * 2.0), camDist, halfTanFov, viewH);
+        const tailPx = projectedPx(
+          b.fx.activity * (3.2 * (1 - scaleT) + 12 * scaleT),
+          camDist,
+          halfTanFov,
+          viewH,
+        );
+        b.fx.setLOD(
+          THREE.MathUtils.smoothstep(comaPx, 7, 16),
+          THREE.MathUtils.smoothstep(tailPx, 14, 34),
+        );
       }
     }
   }

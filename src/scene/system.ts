@@ -4,6 +4,7 @@ import { PLANETS, keplerPosition, type BodyDef } from '../data/bodies';
 import { mapPositionAU } from '../sim/scale';
 import { MOONS_BY_PARENT, SMALL_BODIES, catalogObject } from '../data/catalog';
 import type { CatalogObject } from '../data/types';
+import { DEFAULT_LAYERS, type Layers } from '../sim/state';
 import { Sun } from './sun';
 import { Planet } from './planet';
 import { Sky } from './sky';
@@ -11,6 +12,9 @@ import { Belt, MAIN_BELT, KUIPER_BELT } from './belt';
 import { OrbitLine, HabitableZone } from './orbits';
 import { SatelliteSystem } from './satellites';
 import { SmallBodies } from './smallbodies';
+import { Markers } from './markers';
+import { ReferenceGrid } from './grid';
+import { Constellations } from './constellations';
 import type { GeneratedTextures } from './textures';
 
 export class SolarSystem {
@@ -21,12 +25,16 @@ export class SolarSystem {
   readonly satSystems = new Map<string, SatelliteSystem>(); // keyed by parent id
   readonly smallBodies: SmallBodies;
   readonly hz: HabitableZone;
+  readonly markers: Markers;
+  readonly grid: ReferenceGrid;
+  readonly constellations: Constellations;
   readonly pickables: THREE.Object3D[] = [];
   private sky: Sky;
   private mainBelt: Belt;
   private kuiperBelt: Belt;
   private lastOrbitScaleT = -1;
   private selectedId: string | null = null;
+  private layers: Layers = { ...DEFAULT_LAYERS };
   private tmp = { x: 0, y: 0, z: 0 };
   private tmpV = new THREE.Vector3();
 
@@ -35,6 +43,16 @@ export class SolarSystem {
 
     this.sky = new Sky(tex.milkyWay);
     this.scene.add(this.sky.group);
+
+    this.markers = new Markers();
+    this.scene.add(this.markers.points);
+
+    this.grid = new ReferenceGrid();
+    this.scene.add(this.grid.group);
+
+    this.constellations = new Constellations();
+    // ride the camera-pinned sky group so stars stay at optical infinity
+    this.sky.group.add(this.constellations.group);
 
     this.sun = new Sun();
     this.scene.add(this.sun.group);
@@ -60,13 +78,14 @@ export class SolarSystem {
           planet.satEquatorial,
           planet.group,
           textureBase,
+          this.markers,
         );
         this.satSystems.set(def.id, sats);
         this.pickables.push(...sats.pickables);
       }
     }
 
-    this.smallBodies = new SmallBodies(this.scene, SMALL_BODIES, textureBase);
+    this.smallBodies = new SmallBodies(this.scene, SMALL_BODIES, textureBase, this.markers);
     this.pickables.push(...this.smallBodies.pickables);
 
     // satellite systems around small-body parents (Pluto & Charon)
@@ -78,9 +97,10 @@ export class SolarSystem {
       const sats = new SatelliteSystem(
         parentDef.physical.diameterKm / 2,
         moons,
-        parentBody.root as unknown as THREE.Group,
-        parentBody.root as unknown as THREE.Group,
+        parentBody.root,
+        parentBody.root,
         textureBase,
+        this.markers,
       );
       this.satSystems.set(parentId, sats);
       this.pickables.push(...sats.pickables);
@@ -99,10 +119,13 @@ export class SolarSystem {
     this.scene.add(new THREE.AmbientLight(0x445870, 1.7));
   }
 
-  update(simDays: number, scaleT: number, elapsed: number, cameraPos?: THREE.Vector3): void {
+  update(simDays: number, scaleT: number, elapsed: number, camera: THREE.PerspectiveCamera): void {
     this.sun.update(elapsed, scaleT);
+    const cameraPos = camera.position;
+    const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const viewH = window.innerHeight;
     // pin the sky to the camera so the stars stay at optical infinity
-    if (cameraPos) this.sky.group.position.copy(cameraPos);
+    this.sky.group.position.copy(cameraPos);
 
     for (const planet of this.planets.values()) {
       const def = planet.def;
@@ -112,21 +135,24 @@ export class SolarSystem {
       planet.update(simDays, scaleT);
     }
 
-    this.smallBodies.update(simDays, scaleT, elapsed, cameraPos ?? this.tmpV.set(0, 0, 0));
+    this.smallBodies.update(simDays, scaleT, elapsed, cameraPos, halfTan, viewH);
 
     // satellite systems: collapse to nothing when the camera is far away
     for (const [parentId, sats] of this.satSystems) {
       const parentPos = this.bodyPosition(parentId, this.tmpV);
       const parentR = this.parentDisplayRadius(parentId);
       const extent = sats.systemExtent(parentR, scaleT);
-      const camDist = cameraPos ? cameraPos.distanceTo(parentPos) : 1e9;
+      const camDist = cameraPos.distanceTo(parentPos);
       const selectedHere =
         this.selectedId !== null &&
         (this.selectedId === parentId || sats.has(this.selectedId));
-      const near = selectedHere || camDist < Math.max(extent * 9, parentR * 24);
-      sats.update(simDays, scaleT, parentR, near, elapsed);
+      const near =
+        (this.layers.moons || selectedHere) &&
+        (selectedHere || camDist < Math.max(extent * 9, parentR * 24));
+      sats.update(simDays, scaleT, parentR, near, elapsed, cameraPos, halfTan, viewH);
     }
 
+    this.markers.commit();
     this.mainBelt.update(simDays, scaleT);
     this.kuiperBelt.update(simDays, scaleT);
     this.sky.update(elapsed);
@@ -135,9 +161,29 @@ export class SolarSystem {
       this.lastOrbitScaleT = scaleT;
       for (const orbit of this.orbitLines.values()) orbit.rebuild(scaleT);
       this.smallBodies.rebuildOrbits(scaleT);
+      this.grid.rebuild(scaleT);
       this.hz.update(scaleT);
     }
-    if (cameraPos) this.hz.updateViewFade(cameraPos);
+    this.hz.updateViewFade(cameraPos);
+  }
+
+  /** Apply the layer visibility state to every scene subsystem. */
+  setLayers(layers: Layers): void {
+    this.layers = { ...layers };
+    for (const [id, planet] of this.planets) {
+      planet.group.visible = layers.planets;
+      const orbit = this.orbitLines.get(id);
+      if (orbit) orbit.line.visible = layers.planets && layers.planetOrbits;
+      planet.hit.layers.set(layers.planets ? 0 : 31);
+    }
+    this.smallBodies.setOrbitsVisible(layers.planetOrbits);
+    this.smallBodies.setLayers(layers);
+    for (const sats of this.satSystems.values()) sats.setOrbitsVisible(layers.planetOrbits);
+    this.mainBelt.points.visible = layers.beltDust;
+    this.kuiperBelt.points.visible = layers.beltDust;
+    this.grid.setVisible(layers.grid);
+    this.constellations.setVisible(layers.constellations);
+    this.hz.mesh.visible = layers.habitableZone;
   }
 
   private parentDisplayRadius(parentId: string): number {
@@ -147,21 +193,14 @@ export class SolarSystem {
     return this.smallBodies.displayRadius(parentId);
   }
 
-  setOrbitsVisible(v: boolean): void {
-    for (const o of this.orbitLines.values()) o.line.visible = v;
-    this.smallBodies.setOrbitsVisible(v);
-    for (const sats of this.satSystems.values()) sats.setOrbitsVisible(v);
-  }
-
-  setHZVisible(v: boolean): void {
-    this.hz.mesh.visible = v;
-  }
-
   setHighlightedOrbit(id: string | null): void {
     this.selectedId = id;
     // while a body is focused, other orbits recede so they don't slice the shot
     for (const [pid, o] of this.orbitLines) o.setHighlight(pid === id, id !== null);
     this.smallBodies.setSelected(id);
+    // re-apply layers: a selected body is always force-shown even if its
+    // category layer is off (search can reveal anything)
+    this.smallBodies.setLayers(this.layers);
     if (id) {
       for (const sats of this.satSystems.values()) {
         if (sats.has(id)) sats.activateMoon(id);
@@ -207,14 +246,17 @@ export class SolarSystem {
   labelVisible(id: string, camPos: THREE.Vector3, selectedId: string | null): boolean {
     const def = catalogObject(id);
     if (!def) return false;
-    if (def.type === 'star' || def.type === 'planet') return true;
+    if (id === selectedId) return true;
+    if (def.type === 'star') return true;
+    if (def.type === 'planet') return this.layers.planets;
     if (def.type === 'moon') {
       const sats = def.parent ? this.satSystems.get(def.parent) : undefined;
       return !!sats?.isVisible;
     }
-    if (def.type === 'dwarf' || def.type === 'tno') return true;
-    // asteroids + comets: visible when selected, near, or (comets) active
-    if (id === selectedId) return true;
+    // categories the user has switched off stay quiet
+    if (def.type === 'dwarf' || def.type === 'tno') return this.layers.dwarfs;
+    if (def.type === 'asteroid' && !this.layers.asteroids) return false;
+    if (def.type === 'comet' && !this.layers.comets) return false;
     if (def.type === 'comet' && this.smallBodies.cometActivity(id) > 0.08) return true;
     const pos = this.bodyPosition(id, this.tmpV);
     return camPos.distanceTo(pos) < 60;

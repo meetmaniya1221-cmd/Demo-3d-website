@@ -4,6 +4,40 @@ import { daysSinceJ2000 } from '../data/bodies';
 
 export type ScaleMode = 'explorer' | 'true';
 
+/** Togglable visualization layers. Defaults give a clean first impression:
+ *  Sun + planets + orbits + a subtle sky; the deep catalog is opt-in. */
+export interface Layers {
+  planets: boolean;
+  planetOrbits: boolean;
+  moons: boolean;
+  dwarfs: boolean; // dwarf planets + TNOs
+  asteroids: boolean; // named asteroids
+  comets: boolean;
+  beltDust: boolean; // aggregated asteroid/Kuiper belt particles
+  labels: boolean;
+  constellations: boolean;
+  grid: boolean;
+  distanceScale: boolean;
+  habitableZone: boolean;
+}
+
+export const DEFAULT_LAYERS: Layers = {
+  planets: true,
+  planetOrbits: true,
+  moons: true,
+  dwarfs: false,
+  asteroids: false,
+  comets: false,
+  beltDust: true,
+  labels: true,
+  constellations: true,
+  grid: true,
+  distanceScale: true,
+  habitableZone: false,
+};
+
+export type LayerKey = keyof Layers;
+
 export interface SpeedPreset {
   daysPerSec: number;
   label: string;
@@ -27,6 +61,7 @@ type Events = {
   pause: boolean;
   scale: ScaleMode;
   toggles: void;
+  layers: void;
   timejump: void;
   tour: number | null; // step index or null = tour ended
 };
@@ -44,6 +79,7 @@ export class AppState {
   showOrbits = true;
   showLabels = true;
   showHZ = false;
+  layers: Layers = { ...DEFAULT_LAYERS };
   tourStep: number | null = null;
 
   private handlers: { [K in keyof Events]?: Array<Handler<Events[K]>> } = {};
@@ -98,6 +134,22 @@ export class AppState {
   setToggle(key: 'showOrbits' | 'showLabels' | 'showHZ', value: boolean): void {
     if (this[key] === value) return;
     this[key] = value;
+    // legacy toggles mirror into the layer system
+    if (key === 'showOrbits') this.layers.planetOrbits = value;
+    if (key === 'showLabels') this.layers.labels = value;
+    if (key === 'showHZ') this.layers.habitableZone = value;
+    this.emit('toggles', undefined);
+    this.emit('layers', undefined);
+  }
+
+  setLayer(key: LayerKey, value: boolean): void {
+    if (this.layers[key] === value) return;
+    this.layers[key] = value;
+    // keep the legacy flags coherent for older call sites
+    if (key === 'planetOrbits') this.showOrbits = value;
+    if (key === 'labels') this.showLabels = value;
+    if (key === 'habitableZone') this.showHZ = value;
+    this.emit('layers', undefined);
     this.emit('toggles', undefined);
   }
 

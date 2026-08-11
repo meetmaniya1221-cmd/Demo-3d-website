@@ -124,6 +124,14 @@ export class CometFX {
   private coma: THREE.Sprite;
   /** Current activity level 0..4 (0 = frozen, far from the Sun). */
   activity = 0;
+  private comaLOD = 1;
+  private tailLOD = 1;
+
+  /** Projected-size fades set by the scene (0 = too small on screen, hide). */
+  setLOD(coma: number, tails: number): void {
+    this.comaLOD = coma;
+    this.tailLOD = tails;
+  }
 
   constructor(seed: number) {
     this.ion = tailPoints(1100, new THREE.Color(0.45, 0.65, 1.0), 0.2, 0, 0.62, 0.4, seed);
@@ -164,9 +172,12 @@ export class CometFX {
     let act = Math.min(4, Math.pow(2.8 / Math.max(rAU, 0.05), 2));
     act *= THREE.MathUtils.smoothstep(6.5 - rAU, 0, 2.5); // gentle outer cutoff
     this.activity = act;
-    const on = act > 0.02;
+    const on = act > 0.02 && (this.comaLOD > 0.01 || this.tailLOD > 0.01);
     this.group.visible = on;
     if (!on) return;
+    this.ion.points.visible = this.tailLOD > 0.01;
+    this.dust.points.visible = this.tailLOD > 0.01;
+    this.coma.visible = this.comaLOD > 0.01;
 
     const len = act * (3.2 * (1 - scaleT) + 12 * scaleT);
     for (const tail of [this.ion, this.dust]) {
@@ -176,10 +187,11 @@ export class CometFX {
     }
     this.ion.mat.uniforms.uLen.value = len;
     this.dust.mat.uniforms.uLen.value = len * 0.7;
-    this.ion.mat.uniforms.uOpacity.value = Math.min(0.42, act * 0.24);
-    this.dust.mat.uniforms.uOpacity.value = Math.min(0.34, act * 0.19);
+    this.ion.mat.uniforms.uOpacity.value = Math.min(0.42, act * 0.24) * this.tailLOD;
+    this.dust.mat.uniforms.uOpacity.value = Math.min(0.34, act * 0.19) * this.tailLOD;
     const comaScale = nucleusR * (1.7 + act * 2.0);
     this.coma.scale.setScalar(comaScale);
-    (this.coma.material as THREE.SpriteMaterial).opacity = Math.min(0.6, 0.16 + act * 0.13);
+    (this.coma.material as THREE.SpriteMaterial).opacity =
+      Math.min(0.6, 0.16 + act * 0.13) * this.comaLOD;
   }
 }

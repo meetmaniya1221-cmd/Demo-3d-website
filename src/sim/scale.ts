@@ -101,18 +101,38 @@ export function moonDisplayDist(
   );
 }
 
-/** Exaggerated display radius for a minor body (moons, dwarfs, asteroids). */
-export function minorExplorerRadius(diameterKm: number, floor = 0.09): number {
+/** Exaggerated display radius for a heliocentric minor body (dwarfs, asteroids,
+ *  comet nuclei) - same power curve as the planets so ordering stays honest. */
+export function minorExplorerRadius(diameterKm: number, floor = 0.05): number {
   const rel = diameterKm / 2 / EARTH_RADIUS_KM;
   return Math.max(floor, 0.92 * Math.pow(rel, 0.45));
 }
 
-/** Blended display radius for a minor body. */
+/** Blended display radius for a heliocentric minor body. */
 export function minorDisplayRadius(
   id: string,
   diameterKm: number,
   t: number,
-  floor = 0.09,
+  floor = 0.05,
 ): number {
   return minorExplorerRadius(diameterKm, floor) * (1 - t) + trueRadius(id, diameterKm) * t;
+}
+
+/**
+ * Moon display radius: TRUE size relative to the parent's displayed size.
+ * A moon must never read as planet-sized - the Moon is 0.27 Earths, Titan is
+ * 0.04 Saturns, and the view keeps those ratios. Only a subtle visibility
+ * floor is applied (markers + labels carry findability below it).
+ */
+export function moonDisplayRadius(
+  moonId: string,
+  moonDiameterKm: number,
+  parentDiameterKm: number,
+  parentDisplayR: number,
+  t: number,
+): number {
+  const trueRel = moonDiameterKm / parentDiameterKm;
+  const floor = Math.max(0.014, parentDisplayR * 0.02);
+  const explorer = Math.max(parentDisplayR * trueRel, floor);
+  return explorer * (1 - t) + trueRadius(moonId, moonDiameterKm) * t;
 }

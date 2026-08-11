@@ -8,8 +8,9 @@
  */
 import * as THREE from 'three';
 import type { CatalogObject } from '../data/types';
-import { moonDisplayDist, minorDisplayRadius, trueRadius } from '../sim/scale';
+import { moonDisplayDist, moonDisplayRadius, trueRadius } from '../sim/scale';
 import { minorTexture, irregularGeometry, type MinorPaintKind } from './minortex';
+import { Markers, projectedPx, markerFade } from './markers';
 
 const sphereGeo = new THREE.SphereGeometry(1, 48, 24);
 
@@ -61,6 +62,7 @@ interface Sat {
   hit: THREE.Mesh;
   ring: THREE.LineLoop;
   haze?: THREE.Mesh;
+  markerIdx: number;
   phase: number;
   radius: number;
   activated: boolean;
@@ -90,6 +92,9 @@ export class SatelliteSystem {
   private visible = true;
   private orbitsEnabled = true;
   private textureBase: string;
+  private markers: Markers;
+  private lastParentR = 1;
+  private tmpV = new THREE.Vector3();
 
   constructor(
     parentRadiusKm: number,
@@ -97,9 +102,11 @@ export class SatelliteSystem {
     equatorialGroup: THREE.Group,
     eclipticGroup: THREE.Group,
     textureBase: string,
+    markers: Markers,
   ) {
     this.parentRadiusKm = parentRadiusKm;
     this.textureBase = textureBase;
+    this.markers = markers;
     for (const def of moons) {
       const aspect = parseAspect(def.physical.dimensionsKm);
       const geo = aspect ? irregularGeometry(def.id, aspect) : sphereGeo;
@@ -147,6 +154,7 @@ export class SatelliteSystem {
         hit,
         ring,
         haze,
+        markerIdx: markers.register(def.id, def.color),
         phase: (def.id.charCodeAt(0) * 1.37 + def.id.length) % (Math.PI * 2),
         radius: 0.1,
         activated: false,
@@ -235,20 +243,35 @@ export class SatelliteSystem {
     parentDisplayR: number,
     nearCamera: boolean,
     elapsed: number,
+    camPos: THREE.Vector3,
+    halfTanFov: number,
+    viewH: number,
   ): void {
+    this.lastParentR = parentDisplayR;
     this.setVisible(nearCamera);
-    if (!nearCamera) return;
+    if (!nearCamera) {
+      for (const s of this.sats) this.markers.set(s.markerIdx, 0, 0, 0, 0, 0);
+      return;
+    }
     // paint at most one surface per frame so approaching a five-moon system
     // does not stall a whole frame on texture generation
     let paintBudget = 1;
     for (const s of this.sats) {
       const orbit = s.def.satOrbit!;
-      const floor = s.def.id === 'moon' ? 0.3 : 0.09;
-      const r = minorDisplayRadius(s.def.id, s.def.physical.diameterKm, scaleT, floor);
+      // TRUE size relative to the parent (plus a subtle visibility floor) -
+      // the Moon must read as dramatically smaller than Earth, Titan as a
+      // speck beside Saturn. Markers + labels carry findability below that.
+      const r = moonDisplayRadius(
+        s.def.id,
+        s.def.physical.diameterKm,
+        this.parentRadiusKm * 2,
+        parentDisplayR,
+        scaleT,
+      );
       s.radius = r;
       let dist = moonDisplayDist(orbit.distanceKm, this.parentRadiusKm, parentDisplayR, scaleT);
-      // never let an exaggerated moon intersect its exaggerated parent
-      dist = Math.max(dist, parentDisplayR * 1.3 + r * 2);
+      // never let a floored moon intersect its exaggerated parent
+      dist = Math.max(dist, parentDisplayR * 1.15 + r * 2);
       const ang = (simDays / orbit.periodDays) * Math.PI * 2 + s.phase;
       s.mesh.position.set(Math.cos(ang) * dist, 0, -Math.sin(ang) * dist);
       s.mesh.scale.setScalar(r);
@@ -270,7 +293,16 @@ export class SatelliteSystem {
         s.haze.scale.setScalar(r * 1.12);
       }
       s.ring.scale.setScalar(dist);
-      if (!s.activated && paintBudget > 0) {
+
+      // marker crossfade: tiny moons render as stable fixed-size dots
+      const world = s.mesh.getWorldPosition(this.tmpV);
+      const px = projectedPx(r, camPos.distanceTo(world), halfTanFov, viewH);
+      const mFade = markerFade(px);
+      s.mesh.visible = mFade < 1;
+      if (s.haze) s.haze.visible = s.mesh.visible;
+      this.markers.set(s.markerIdx, world.x, world.y, world.z, mFade, r * 1.6);
+
+      if (!s.activated && s.mesh.visible && px > 4 && paintBudget > 0) {
         paintBudget--;
         this.activate(s);
       }
@@ -291,8 +323,13 @@ export class SatelliteSystem {
     const sat = this.sats.find((s) => s.def.id === id);
     if (!sat) return 0.1;
     if (!this.visible) {
-      const floor = id === 'moon' ? 0.3 : 0.09;
-      return minorDisplayRadius(id, sat.def.physical.diameterKm, scaleT, floor);
+      return moonDisplayRadius(
+        id,
+        sat.def.physical.diameterKm,
+        this.parentRadiusKm * 2,
+        this.lastParentR,
+        scaleT,
+      );
     }
     return sat.radius;
   }

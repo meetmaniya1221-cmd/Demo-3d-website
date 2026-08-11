@@ -61,10 +61,24 @@ the Kuiper belt at true scale, with a live AU odometer, light-time
 readout, and an uncomfortable speedometer ("you are moving at 40× the
 speed of light and this is still taking ages").
 
-**Two honest scales.** *Explorer view* compresses distances so the system
-stays browsable; *True scale* morphs the scene to physical proportions
-(1 AU = 100 units). The app always tells you which lie it is currently
-telling, and the guided tour ends by taking the lie away.
+**Two honest scales.** *Explorer view* compresses distances and enhances
+planet sizes so the system stays browsable - but moons always keep their
+TRUE size relative to their planet (the Moon is 0.27 Earths here, Titan a
+speck beside Saturn), with fixed-pixel markers and labels carrying
+findability below the visibility floor. *True scale* morphs the scene to
+physical proportions (1 AU = 100 units). The app always tells you which
+lie it is currently telling, and the guided tour ends by taking the lie
+away.
+
+**An astronomical navigator, not a landing page.** Text-only instrument
+labels, thin orbit paths, an ecliptic reference grid with AU rings, real
+constellation figures over ~70 real bright stars, and a right-edge
+distance readout that picks its own unit (km → million km → AU). A View
+panel toggles every layer; the default view shows a clean eight-planet
+system and the deep catalog (asteroids, comets, dwarfs) is one checkbox
+away. Sub-pixel bodies never rasterise - a stable fixed-size marker takes
+over below a few projected pixels, which is also why comets don't flicker
+when you zoom out.
 
 **Plus** the guided tour (15 stops, now including Pluto and an active
 comet), size/distance comparison charts, the gravity lab, per-system moon
