@@ -1,5 +1,32 @@
-/** Number formatting for astronomical quantities. */
+/** Number formatting for astronomical quantities.
+ *  A module-level unit mode (metric/imperial) applies everywhere distances
+ *  and temperatures are formatted; AU and light-times are universal. */
 import { AU_KM, LIGHT_KM_PER_S } from '../data/bodies';
+
+const KM_PER_MI = 1.609344;
+const UNITS_KEY = 'orrery-units';
+
+export type UnitMode = 'metric' | 'imperial';
+
+let unitMode: UnitMode = 'metric';
+try {
+  if (localStorage.getItem(UNITS_KEY) === 'imperial') unitMode = 'imperial';
+} catch {
+  // storage unavailable - metric stands
+}
+
+export function getUnitMode(): UnitMode {
+  return unitMode;
+}
+
+export function setUnitMode(mode: UnitMode): void {
+  unitMode = mode;
+  try {
+    localStorage.setItem(UNITS_KEY, mode);
+  } catch {
+    // in-session only
+  }
+}
 
 const SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹';
 
@@ -15,6 +42,7 @@ export function fmtInt(n: number): string {
 }
 
 export function fmtKm(km: number): string {
+  if (unitMode === 'imperial') return `${fmtInt(km / KM_PER_MI)} mi`;
   return `${fmtInt(km)} km`;
 }
 
@@ -29,6 +57,10 @@ export function fmtAU(au: number, digits = 2): string {
 }
 
 export function fmtTempC(c: number): string {
+  if (unitMode === 'imperial') {
+    const f = (c * 9) / 5 + 32;
+    return `${f > 0 ? '+' : ''}${Math.round(f)} °F`;
+  }
   return `${c > 0 ? '+' : ''}${Math.round(c)} °C`;
 }
 
@@ -52,6 +84,11 @@ export function fmtDays(days: number): string {
 export function fmtDistanceAuto(au: number): string {
   const km = au * AU_KM;
   if (au >= 0.35) return `${au.toFixed(au >= 10 ? 1 : 2)} AU`;
+  if (unitMode === 'imperial') {
+    const mi = km / KM_PER_MI;
+    if (mi >= 1e6) return `${(mi / 1e6).toFixed(mi >= 2e7 ? 0 : 1)} million mi`;
+    return `${fmtInt(mi)} mi`;
+  }
   if (km >= 1e6) return `${(km / 1e6).toFixed(km >= 2e7 ? 0 : 1)} million km`;
   return `${fmtInt(km)} km`;
 }

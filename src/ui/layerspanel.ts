@@ -1,6 +1,7 @@
 /** The View panel: visibility layers grouped like a chart legend. Sits in the
  *  bottom-right corner and opens upward; the 3D scene stays the hero. */
 import { AppState, type LayerKey } from '../sim/state';
+import { getUnitMode, setUnitMode, type UnitMode } from './format';
 import { sound } from '../audio';
 
 interface Row {
@@ -84,6 +85,44 @@ export class LayersPanel {
       }
       this.panel.appendChild(g);
     }
+
+    // units: one choice, applied to every formatted distance/temperature
+    const unitsGroup = document.createElement('div');
+    unitsGroup.className = 'layers-group';
+    unitsGroup.innerHTML = '<div class="layers-group-title">Units</div>';
+    const unitsRow = document.createElement('div');
+    unitsRow.className = 'units-row';
+    unitsRow.setAttribute('role', 'group');
+    unitsRow.setAttribute('aria-label', 'Measurement units');
+    const mkUnit = (mode: UnitMode, label: string) => {
+      const b = document.createElement('button');
+      b.className = 'chip unit-chip';
+      b.textContent = label;
+      b.setAttribute('aria-pressed', String(getUnitMode() === mode));
+      b.classList.toggle('active', getUnitMode() === mode);
+      b.addEventListener('click', () => {
+        if (getUnitMode() === mode) return;
+        setUnitMode(mode);
+        state.notifyUnitsChanged();
+        sound.play('click', 0.18);
+        syncUnits();
+      });
+      return b;
+    };
+    const metricBtn = mkUnit('metric', 'km · °C');
+    const imperialBtn = mkUnit('imperial', 'mi · °F');
+    const syncUnits = () => {
+      for (const [b, m] of [
+        [metricBtn, 'metric'],
+        [imperialBtn, 'imperial'],
+      ] as const) {
+        b.classList.toggle('active', getUnitMode() === m);
+        b.setAttribute('aria-pressed', String(getUnitMode() === m));
+      }
+    };
+    unitsRow.append(metricBtn, imperialBtn);
+    unitsGroup.appendChild(unitsRow);
+    this.panel.appendChild(unitsGroup);
 
     const actions = document.createElement('div');
     actions.className = 'layers-actions';

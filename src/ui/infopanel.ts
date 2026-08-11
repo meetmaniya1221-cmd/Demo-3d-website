@@ -344,6 +344,11 @@ export class InfoPanel {
     this.root.classList.remove('open');
   }
 
+  /** Re-render the open panel (e.g. after a unit-mode change). */
+  refresh(): void {
+    if (this.currentId) this.show(this.currentId);
+  }
+
   /** Refresh the live distance readouts (called ~1 Hz). */
   updateLive(): void {
     if (!this.currentId) return;

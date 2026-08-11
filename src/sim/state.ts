@@ -67,6 +67,7 @@ type Events = {
   layers: void;
   timejump: void;
   direction: 1 | -1; // time flowing forward or in rewind
+  units: void; // unit mode changed - re-render formatted values
   tour: number | null; // step index or null = tour ended
 };
 
@@ -116,6 +117,11 @@ export class AppState {
     if (this.direction === dir) return;
     this.direction = dir;
     this.emit('direction', dir);
+  }
+
+  /** The unit mode itself lives in ui/format; this just fans out the change. */
+  notifyUnitsChanged(): void {
+    this.emit('units', undefined);
   }
 
   select(id: string | null): void {

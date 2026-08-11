@@ -3,7 +3,7 @@
  *  radial compression so the number stays meaningful in explorer view. */
 import * as THREE from 'three';
 import { EXPLORER_A, EXPLORER_GAMMA, TRUE_UNITS_PER_AU } from '../sim/scale';
-import { fmtDistanceAuto } from './format';
+import { fmtDistanceAuto, fmtLightTime } from './format';
 
 /** Scene-space heliocentric radius → AU, honouring the current scale blend.
  *  The forward map is mapped(r) = (1-t)·A·r^γ + t·r·U; blending the two
@@ -30,7 +30,9 @@ export class DistanceReadout {
   private root: HTMLElement;
   private valueEl: HTMLElement;
   private targetEl: HTMLElement;
+  private lightEl: HTMLElement;
   private lastText = '';
+  private lastLight = '';
   private a = new THREE.Vector3();
   private b = new THREE.Vector3();
 
@@ -44,11 +46,13 @@ export class DistanceReadout {
         <span class="distance-label">Distance</span>
         <span class="distance-value"></span>
         <span class="distance-target"></span>
+        <span class="distance-light"></span>
       </div>
       <i class="tick bottom"></i>
     `;
     this.valueEl = this.root.querySelector('.distance-value')!;
     this.targetEl = this.root.querySelector('.distance-target')!;
+    this.lightEl = this.root.querySelector('.distance-light')!;
     parent.appendChild(this.root);
   }
 
@@ -86,5 +90,11 @@ export class DistanceReadout {
     }
     const label = `from ${targetName}`;
     if (this.targetEl.textContent !== label) this.targetEl.textContent = label;
+    // the educational kicker: how long light itself would need
+    const light = au > 1e-7 ? `light ${fmtLightTime(au)}` : '';
+    if (light !== this.lastLight) {
+      this.lastLight = light;
+      this.lightEl.textContent = light;
+    }
   }
 }

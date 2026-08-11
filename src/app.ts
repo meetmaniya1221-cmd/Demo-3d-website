@@ -196,6 +196,7 @@ export class App implements TourHost {
     this.state.on('timejump', () =>
       this.announce(`Simulation date set to ${fmtSimDate(this.state.simDays)}`),
     );
+    this.state.on('units', () => this.infoPanel.refresh());
     this.state.on('scale', (mode) => {
       this.scaleTarget = mode === 'true' ? 1 : 0;
       if (this.journey.active) return; // journey narrates the scale itself

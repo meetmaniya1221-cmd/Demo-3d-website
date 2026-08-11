@@ -3342,3 +3342,30 @@ button.sim-date:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ----------------------------------------------------------- unit picker --- */
+
+.units-row {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+
+.unit-chip {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.unit-chip.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.distance-light {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
