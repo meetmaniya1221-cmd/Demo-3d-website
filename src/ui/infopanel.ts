@@ -16,7 +16,8 @@ import {
 } from './format';
 
 export interface InfoPanelHost {
-  onCompare: () => void;
+  /** Open the comparison overlay, optionally head-to-head with this body. */
+  onCompare: (id?: string) => void;
   /** Open the interior cross-section view for this body. */
   onStructure: (id: string) => void;
   openMission: (missionId: string) => void;
@@ -310,7 +311,8 @@ export class InfoPanel {
       actionsEl.appendChild(b);
     };
     if (def.interior) mkAction('Interior ◔', () => this.host.onStructure(def.id));
-    mkAction('Compare sizes', this.host.onCompare);
+    if (def.type !== 'region') mkAction('Compare', () => this.host.onCompare(def.id));
+    else mkAction('Compare sizes', () => this.host.onCompare());
     if (def.parent && def.type === 'moon') {
       const parentName = catalogObject(def.parent)?.name ?? def.parent;
       mkAction(`Back to ${parentName}`, () => this.state.select(def.parent));

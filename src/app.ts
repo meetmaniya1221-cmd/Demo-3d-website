@@ -145,7 +145,7 @@ export class App implements TourHost {
       onMeteors: () => this.meteors.open(),
     });
     this.infoPanel = new InfoPanel(root, this.state, {
-      onCompare: () => this.compare.open(),
+      onCompare: (id) => (id ? this.compare.openWith(id) : this.compare.open()),
       onStructure: (id) => this.structure.openFor(id),
       openMission: (id) => this.missions.openAt(id),
       liveAU: (id) => this.system.heliocentricAU(id),

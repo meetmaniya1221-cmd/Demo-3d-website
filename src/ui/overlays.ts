@@ -1,9 +1,16 @@
 /** Modal overlays: size/distance comparison and the gravity lab. */
 import { SUN, PLANETS, MOON, EARTH_GRAVITY, type BodyDef } from '../data/bodies';
+import { ALL_OBJECTS, catalogObject } from '../data/catalog';
+import type { CatalogObject } from '../data/types';
+import { fmtDays, fmtHours, fmtInt, fmtMass, fmtTempC } from './format';
 import { sound } from '../audio';
 
 function colorOf(def: BodyDef): string {
   return `#${def.color.toString(16).padStart(6, '0')}`;
+}
+
+function colorHex(color: number): string {
+  return `#${color.toString(16).padStart(6, '0')}`;
 }
 
 export abstract class Overlay {
@@ -90,17 +97,19 @@ export abstract class Overlay {
 /* --------------------------------------------------------------- compare -- */
 
 export class CompareOverlay extends Overlay {
-  private tab: 'size' | 'distance' = 'size';
+  private tab: 'size' | 'distance' | 'duel' = 'size';
   private tabButtons: Record<string, HTMLButtonElement> = {};
+  private duelA = 'earth';
+  private duelB = 'mars';
 
   constructor(parent: HTMLElement) {
     super(parent, 'Compare the worlds', 'compare-title');
     const slot = this.root.querySelector('.overlay-head-slot')!;
     const tabs = document.createElement('div');
     tabs.className = 'overlay-tabs';
-    for (const t of ['size', 'distance'] as const) {
+    for (const t of ['size', 'distance', 'duel'] as const) {
       const b = document.createElement('button');
-      b.textContent = t === 'size' ? 'Size' : 'Distance';
+      b.textContent = t === 'size' ? 'Size' : t === 'distance' ? 'Distance' : 'Head to head';
       b.addEventListener('click', () => {
         this.tab = t;
         this.render();
@@ -114,6 +123,15 @@ export class CompareOverlay extends Overlay {
     });
   }
 
+  /** Deep link: open head-to-head with a body pre-selected. */
+  openWith(idA: string, idB?: string): void {
+    this.tab = 'duel';
+    if (catalogObject(idA)) this.duelA = idA;
+    const b = idB ?? (idA === 'earth' ? 'mars' : 'earth');
+    if (catalogObject(b) && b !== this.duelA) this.duelB = b;
+    this.open();
+  }
+
   protected onOpen(): void {
     this.render();
   }
@@ -121,9 +139,174 @@ export class CompareOverlay extends Overlay {
   private render(): void {
     this.tabButtons.size.classList.toggle('active', this.tab === 'size');
     this.tabButtons.distance.classList.toggle('active', this.tab === 'distance');
+    this.tabButtons.duel.classList.toggle('active', this.tab === 'duel');
     this.bodyEl.innerHTML = '';
     if (this.tab === 'size') this.renderSize();
-    else this.renderDistance();
+    else if (this.tab === 'distance') this.renderDistance();
+    else this.renderDuel();
+  }
+
+  /* ------------------------------------------------------- head to head -- */
+
+  private renderDuel(): void {
+    const candidates = ALL_OBJECTS.filter(
+      (o) => o.type !== 'region' && o.physical.diameterKm > 0,
+    );
+    const pick = (side: 'A' | 'B', current: string) => {
+      const sel = document.createElement('select');
+      sel.className = 'duel-select';
+      sel.setAttribute('aria-label', `Choose ${side === 'A' ? 'first' : 'second'} world`);
+      for (const o of candidates) {
+        const opt = document.createElement('option');
+        opt.value = o.id;
+        opt.textContent = o.name;
+        if (o.id === current) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      sel.addEventListener('change', () => {
+        if (side === 'A') this.duelA = sel.value;
+        else this.duelB = sel.value;
+        this.render();
+      });
+      return sel;
+    };
+
+    const a = catalogObject(this.duelA)!;
+    const b = catalogObject(this.duelB)!;
+
+    const head = document.createElement('div');
+    head.className = 'duel-head';
+    head.append(pick('A', this.duelA));
+    const vs = document.createElement('span');
+    vs.className = 'duel-vs';
+    vs.textContent = 'vs';
+    head.appendChild(vs);
+    head.append(pick('B', this.duelB));
+    this.bodyEl.appendChild(head);
+
+    // --- discs at one shared scale
+    const W = Math.min(640, Math.max(420, this.bodyEl.clientWidth - 20 || 640));
+    const H = 240;
+    const [canvas, ctx] = this.makeCanvas(
+      W,
+      H,
+      `${a.name} and ${b.name} drawn to the same scale`,
+    );
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:grid;place-items:center';
+    wrap.appendChild(canvas);
+    this.bodyEl.appendChild(wrap);
+
+    const dA = a.physical.diameterKm;
+    const dB = b.physical.diameterKm;
+    const maxD = Math.max(dA, dB);
+    const maxR = H * 0.36;
+    const draw = (def: CatalogObject, d: number, cx: number) => {
+      const r = Math.max((d / maxD) * maxR, 1.6);
+      const cy = H / 2 - 16;
+      const g = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.25, r * 0.05, cx, cy, r);
+      g.addColorStop(0, this.lighten(colorHex(def.color), 0.35));
+      g.addColorStop(1, colorHex(def.color));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(223,230,244,0.92)';
+      ctx.font = '600 11px -apple-system, sans-serif';
+      ctx.fillText(def.name.toUpperCase(), cx, H - 30);
+      ctx.fillStyle = 'rgba(132,148,176,0.9)';
+      ctx.font = '10px ui-monospace, monospace';
+      ctx.fillText(`${fmtInt(d)} km`, cx, H - 16);
+    };
+    draw(a, dA, W * 0.3);
+    draw(b, dB, W * 0.72);
+    const ratio = maxD / Math.min(dA, dB);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(158,189,255,0.75)';
+    ctx.font = '600 11px ui-monospace, monospace';
+    ctx.fillText(
+      ratio < 1.05
+        ? 'almost the same size'
+        : `${dA > dB ? a.name : b.name} is ${ratio.toFixed(ratio > 20 ? 0 : 1)}× wider`,
+      W / 2,
+      18,
+    );
+
+    // --- fact rows
+    const rows: Array<[string, (o: CatalogObject) => string | null, ((va: number, vb: number) => string)?]> = [
+      ['Diameter', (o) => `${fmtInt(o.physical.diameterKm)} km`],
+      ['Mass', (o) => (o.physical.massKg ? fmtMass(o.physical.massKg) : null)],
+      [
+        'Surface gravity',
+        (o) =>
+          o.physical.gravity !== undefined
+            ? `${o.physical.gravity} m/s² (${(o.physical.gravity / EARTH_GRAVITY).toFixed(2)}×⊕)`
+            : null,
+      ],
+      ['Density', (o) => (o.physical.density !== undefined ? `${o.physical.density} g/cm³` : null)],
+      [
+        'Rotation',
+        (o) =>
+          o.physical.rotationHours !== undefined
+            ? `${fmtHours(Math.abs(o.physical.rotationHours))}${o.physical.rotationHours < 0 ? ' (retrograde)' : ''}`
+            : o.physical.tidallyLocked
+              ? 'tidally locked'
+              : null,
+      ],
+      [
+        'Orbital period',
+        (o) =>
+          o.orbit
+            ? fmtDays(o.orbit.periodDays)
+            : o.satOrbit
+              ? `${fmtDays(Math.abs(o.satOrbit.periodDays))} around ${catalogObject(o.parent ?? '')?.name ?? 'parent'}`
+              : null,
+      ],
+      [
+        'Distance from Sun',
+        (o) =>
+          o.orbit
+            ? `${o.orbit.a.toFixed(2)} AU`
+            : o.id === 'sun'
+              ? '-'
+              : o.satOrbit && o.parent
+                ? `orbits ${catalogObject(o.parent)?.name} at ${fmtInt(o.satOrbit.distanceKm)} km`
+                : null,
+      ],
+      ['Mean temperature', (o) => (o.physical.tempMeanC !== undefined ? fmtTempC(o.physical.tempMeanC) : null)],
+      ['Albedo', (o) => (o.physical.albedo !== undefined ? `${o.physical.albedo} (reflects ${Math.round(o.physical.albedo * 100)}%)` : null)],
+      ['Known moons', (o) => (o.physical.moons !== undefined ? String(o.physical.moons) : null)],
+      ['Atmosphere', (o) => o.atmosphere ?? null],
+    ];
+
+    const table = document.createElement('div');
+    table.className = 'duel-table';
+    table.setAttribute('role', 'table');
+    let html = `<div class="duel-row duel-header" role="row">
+      <span role="columnheader"></span>
+      <span role="columnheader" style="color:${colorHex(a.color)}">${a.name}</span>
+      <span role="columnheader" style="color:${colorHex(b.color)}">${b.name}</span>
+    </div>`;
+    for (const [label, get] of rows) {
+      const va = get(a);
+      const vb = get(b);
+      if (va === null && vb === null) continue;
+      html += `<div class="duel-row" role="row">
+        <span class="k" role="rowheader">${label}</span>
+        <span role="cell">${va ?? '<i class="nodata">no data</i>'}</span>
+        <span role="cell">${vb ?? '<i class="nodata">no data</i>'}</span>
+      </div>`;
+    }
+    table.innerHTML = html;
+    this.bodyEl.appendChild(table);
+
+    const note = document.createElement('p');
+    note.className = 'overlay-note';
+    note.style.marginTop = '12px';
+    note.textContent =
+      'Discs share one scale. Fields without reliable published values are shown as "no data" rather than guessed.';
+    this.bodyEl.appendChild(note);
   }
 
   private makeCanvas(
