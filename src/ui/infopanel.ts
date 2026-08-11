@@ -101,7 +101,11 @@ export class InfoPanel {
     const isSun = def.id === 'sun';
 
     if (f.dimensionsKm) {
-      cells.push(this.cell('Size', `${f.dimensionsKm} km`));
+      // region extents carry their own unit ("30 - 50 AU"); body dims are km
+      const hasUnit = /[a-zA-Z]/.test(f.dimensionsKm);
+      cells.push(
+        this.cell(def.type === 'region' ? 'Extent' : 'Size', hasUnit ? f.dimensionsKm : `${f.dimensionsKm} km`),
+      );
     } else if (f.diameterKm > 0) {
       cells.push(this.cell('Diameter', fmtKm(f.diameterKm)));
     }
