@@ -34,14 +34,14 @@ function buildLanding(root: HTMLElement, app: App): void {
   const landing = document.createElement('div');
   landing.id = 'landing';
   landing.innerHTML = `
-    <div class="landing-kicker">An interactive journey</div>
+    <div class="landing-kicker">An interactive Solar System explorer</div>
     <h1 class="landing-title">ORRERY</h1>
-    <p class="landing-sub">Fly between the planets, bend time, and discover how big - and how empty - the Solar System really is.</p>
+    <p class="landing-sub">Fly between planets, moons, comets and dwarf worlds - real NASA maps, real orbits, and the true, humbling scale of it all.</p>
     <div class="landing-actions">
       <button class="btn primary" data-act="explore">Explore freely</button>
       <button class="btn" data-act="tour">Take the guided tour</button>
     </div>
-    <div class="landing-hint">Drag to orbit &nbsp;·&nbsp; Scroll or pinch to zoom &nbsp;·&nbsp; Tap any world to visit it<br />← → switch worlds &nbsp;·&nbsp; Space pauses time &nbsp;·&nbsp; Esc goes back</div>
+    <div class="landing-hint">Drag to orbit &nbsp;·&nbsp; Scroll or pinch to zoom &nbsp;·&nbsp; Tap any world to visit it<br />Press / to search everything &nbsp;·&nbsp; ← → switch worlds &nbsp;·&nbsp; Space pauses time &nbsp;·&nbsp; Esc goes back</div>
   `;
   root.appendChild(landing);
 

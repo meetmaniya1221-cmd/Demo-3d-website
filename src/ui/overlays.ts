@@ -6,7 +6,7 @@ function colorOf(def: BodyDef): string {
   return `#${def.color.toString(16).padStart(6, '0')}`;
 }
 
-abstract class Overlay {
+export abstract class Overlay {
   protected root: HTMLElement;
   protected bodyEl: HTMLElement;
   private closeBtn: HTMLButtonElement;

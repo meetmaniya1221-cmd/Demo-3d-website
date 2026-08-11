@@ -16,8 +16,14 @@ import { Hud } from './ui/hud';
 import { InfoPanel } from './ui/infopanel';
 import { Labels } from './ui/labels';
 import { CompareOverlay, GravityOverlay } from './ui/overlays';
+import { MissionsOverlay } from './ui/missions';
+import { MeteorsOverlay } from './ui/meteors';
+import { Search } from './ui/search';
+import { Atlas } from './ui/atlas';
+import { Journey } from './ui/journey';
 import { Tour, type TourHost } from './ui/tour';
 import { PLANETS } from './data/bodies';
+import { catalogObject } from './data/catalog';
 
 const CYCLE_IDS = ['sun', ...PLANETS.map((p) => p.id)];
 
@@ -36,6 +42,11 @@ export class App implements TourHost {
   private labels: Labels;
   private compare: CompareOverlay;
   private gravity: GravityOverlay;
+  private missions: MissionsOverlay;
+  private meteors: MeteorsOverlay;
+  private search: Search;
+  private atlas: Atlas;
+  private journey: Journey;
   private tour: Tour;
   private toastEl: HTMLElement;
   private liveRegion!: HTMLElement;
@@ -65,11 +76,11 @@ export class App implements TourHost {
     this.renderer.domElement.setAttribute('role', 'img');
     this.renderer.domElement.setAttribute(
       'aria-label',
-      '3D view of the Solar System. Use the Bodies list or arrow keys to move between worlds.',
+      '3D view of the Solar System. Use search, the atlas, or arrow keys to move between worlds.',
     );
     root.appendChild(this.renderer.domElement);
 
-    this.system = new SolarSystem(textures);
+    this.system = new SolarSystem(textures, import.meta.env.BASE_URL);
     this.rig = new CameraRig(this.renderer.domElement);
     this.rig.camera.position.set(40, 320, 720);
 
@@ -90,14 +101,39 @@ export class App implements TourHost {
 
     // ---- UI ----
     this.labels = new Labels(root, this.state);
+    this.compare = new CompareOverlay(root);
+    this.gravity = new GravityOverlay(root);
+    this.missions = new MissionsOverlay(root, { selectObject: (id) => this.state.select(id) });
+    this.meteors = new MeteorsOverlay(root, { selectObject: (id) => this.state.select(id) });
+    this.search = new Search(root, {
+      selectObject: (id) => this.state.select(id),
+      openMission: (id) => this.missions.openAt(id),
+    });
+    this.atlas = new Atlas(root, this.state);
+    this.journey = new Journey(root, {
+      state: this.state,
+      camera: this.rig.camera,
+      setControlsEnabled: (v) => {
+        this.rig.controls.enabled = v;
+      },
+      onEnd: () => this.focusOverview(),
+    });
     this.hud = new Hud(root, this.state, {
       onTour: () => this.tour.start(),
       onCompare: () => this.compare.open(),
       onGravity: () => this.gravity.open(),
+      onSearch: () => this.search.open(),
+      onAtlas: () => this.atlas.toggle(),
+      onJourney: () => this.startJourney(),
+      onMissions: () => this.missions.open(),
+      onMeteors: () => this.meteors.open(),
     });
-    this.infoPanel = new InfoPanel(root, this.state, () => this.compare.open());
-    this.compare = new CompareOverlay(root);
-    this.gravity = new GravityOverlay(root);
+    this.infoPanel = new InfoPanel(root, this.state, {
+      onCompare: () => this.compare.open(),
+      openMission: (id) => this.missions.openAt(id),
+      liveAU: (id) => this.system.heliocentricAU(id),
+      cometActivity: (id) => this.system.smallBodies.cometActivity(id),
+    });
     this.tour = new Tour(root, this);
 
     this.toastEl = document.createElement('div');
@@ -113,14 +149,17 @@ export class App implements TourHost {
 
     // ---- state wiring ----
     this.state.on('select', (id) => {
-      this.system.setHighlightedOrbit(id);
+      if (this.journey.active) this.journey.end();
+      this.system.setHighlightedOrbit(id && catalogObject(id)?.type !== 'region' ? id : null);
       this.updateViewOffset();
       if (id) {
         // choosing a destination mid-tour means leaving the tour
         if (this.tour.active) this.tour.dismiss();
         sound.play('select', 0.45);
-        this.focusBody(id);
-        this.announce(`${this.system.bodyDef(id)?.name ?? 'Sun'} selected, details panel opened.`);
+        const def = catalogObject(id);
+        if (def?.type === 'region') this.focusRegion(id);
+        else this.focusBody(id);
+        this.announce(`${def?.name ?? id} selected, details panel opened.`);
       } else {
         sound.play('back', 0.4);
         this.focusOverview();
@@ -129,6 +168,7 @@ export class App implements TourHost {
     this.state.on('tour', () => this.updateViewOffset());
     this.state.on('scale', (mode) => {
       this.scaleTarget = mode === 'true' ? 1 : 0;
+      if (this.journey.active) return; // journey narrates the scale itself
       if (mode === 'true') {
         // labels are the only way to find planets at true scale
         if (!this.state.showLabels) this.state.setToggle('showLabels', true);
@@ -169,6 +209,7 @@ export class App implements TourHost {
       const dt = performance.now() - this.downPos.t;
       this.downPos = null;
       if (dx * dx + dy * dy > 36 || dt > 500) return; // it was a drag
+      if (this.journey.active) return;
       this.pick(e.clientX, e.clientY);
     });
     window.addEventListener('resize', () => this.resize());
@@ -177,14 +218,16 @@ export class App implements TourHost {
     this.hud.updateClock();
     this.renderer.setAnimationLoop(() => this.frame());
 
-    // stream in the photographic AI surface maps over the procedural ones
+    // stream in the photographic surface maps over the procedural ones
     enhanceSurfaces(this.system);
   }
 
   // ------------------------------------------------------------ tour host --
 
   focusBody(id: string, distanceFactor?: number): void {
-    const factor = distanceFactor ?? (id === 'sun' ? 4.2 : 5.5);
+    const def = catalogObject(id);
+    const factor =
+      distanceFactor ?? (id === 'sun' ? 4.2 : def?.type === 'comet' ? 9 : 5.5);
     this.rig.flyTo(
       () => ({
         position: this.system.bodyPosition(id, this.tmpV).clone(),
@@ -205,19 +248,40 @@ export class App implements TourHost {
   }
 
   focusBelt(): void {
+    this.focusRegion('main-belt');
+  }
+
+  focusRegion(id: string): void {
+    const spec =
+      id === 'kuiper-belt'
+        ? { rAU: 41, radius: 26, trueRadius: 320 }
+        : id === 'oort-cloud'
+          ? { rAU: 55, radius: 60, trueRadius: 1500 }
+          : { rAU: 2.7, radius: 14, trueRadius: 55 };
     this.rig.flyTo(
       () => {
         const dir = this.tmpV.copy(this.rig.camera.position).setY(0);
         if (dir.lengthSq() < 1) dir.set(0, 0, 1);
         dir.normalize();
-        const r = mapDistanceAU(2.7, this.state.scaleT);
+        const r = mapDistanceAU(spec.rAU, this.state.scaleT);
         return {
           position: dir.clone().multiplyScalar(r),
-          radius: 14 * (1 - this.state.scaleT) + 55 * this.state.scaleT,
+          radius: spec.radius * (1 - this.state.scaleT) + spec.trueRadius * this.state.scaleT,
         };
       },
       { distanceFactor: 3.2 },
     );
+    if (id === 'oort-cloud') {
+      this.toast(
+        'The Oort cloud',
+        'It begins roughly 2,000 AU out - about 40× farther than the whole map you are looking at - and has never been observed directly.',
+      );
+    }
+  }
+
+  startJourney(): void {
+    if (this.tour.active) this.tour.dismiss();
+    this.journey.start();
   }
 
   // --------------------------------------------------------------- input --
@@ -230,13 +294,14 @@ export class App implements TourHost {
     this.raycaster.setFromCamera(this.pointer, this.rig.camera);
     const hits = this.raycaster.intersectObjects(this.system.pickables, false);
     if (hits.length > 0) {
-      // at true scale the Moon's pick proxy sits inside Earth's - prefer the
-      // Moon when the ray passes through both at nearly the same depth
+      // a moon's pick proxy can sit inside its parent's - prefer the moon
+      // when the ray passes through both at nearly the same depth
       let name = hits[0].object.name;
-      if (name === 'earth') {
-        const moonHit = hits.find((hit) => hit.object.name === 'moon');
-        if (moonHit && moonHit.distance < hits[0].distance + 0.4) name = 'moon';
-      }
+      const moonHit = hits.find((hit) => {
+        const def = catalogObject(hit.object.name);
+        return def?.parent === name && hit.distance < hits[0].distance + 0.4;
+      });
+      if (moonHit) name = moonHit.object.name;
       this.state.select(name);
     } else if (this.state.selectedId) {
       this.state.select(null);
@@ -246,8 +311,13 @@ export class App implements TourHost {
   private onKey(e: KeyboardEvent): void {
     // Escape always works, even from inside inputs/sliders
     if (e.key === 'Escape') {
-      if (this.compare.isOpen) this.compare.close();
+      if (this.search.isOpen) this.search.close();
+      else if (this.compare.isOpen) this.compare.close();
       else if (this.gravity.isOpen) this.gravity.close();
+      else if (this.missions.isOpen) this.missions.close();
+      else if (this.meteors.isOpen) this.meteors.close();
+      else if (this.atlas.isOpen) this.atlas.close();
+      else if (this.journey.active) this.journey.end();
       else if (this.tour.active) this.tour.end();
       else if (this.state.selectedId) this.state.select(null);
       return;
@@ -265,8 +335,13 @@ export class App implements TourHost {
         break;
       case 'ArrowRight':
       case 'ArrowLeft': {
-        const cur = this.state.selectedId ?? 'sun';
-        const idx = CYCLE_IDS.indexOf(cur === 'moon' ? 'earth' : cur);
+        let cur = this.state.selectedId ?? 'sun';
+        // from a moon or small body, cycle relative to its parent/nearest planet
+        if (!CYCLE_IDS.includes(cur)) {
+          const def = catalogObject(cur);
+          cur = def?.parent && CYCLE_IDS.includes(def.parent) ? def.parent : 'sun';
+        }
+        const idx = CYCLE_IDS.indexOf(cur);
         const dir = e.key === 'ArrowRight' ? 1 : -1;
         const next = (idx + dir + CYCLE_IDS.length) % CYCLE_IDS.length;
         this.state.select(CYCLE_IDS[next]);
@@ -296,7 +371,11 @@ export class App implements TourHost {
     this.system.update(this.state.simDays, this.state.scaleT, this.elapsed, this.rig.camera.position);
     // camera flights advance on wall-clock time so they finish on schedule
     // even when the GPU is struggling
-    this.rig.update(Math.min(rawDt, 0.5));
+    if (this.journey.active) {
+      this.journey.update(Math.min(rawDt, 0.5));
+    } else {
+      this.rig.update(Math.min(rawDt, 0.5));
+    }
     const panelInset = this.state.selectedId && window.innerWidth > 720 ? 372 : 0;
     this.labels.update(this.system, this.rig.camera, this.state, panelInset);
 
@@ -396,6 +475,12 @@ export class App implements TourHost {
       select: (id: string | null) => this.state.select(id),
       setScale: (m: 'explorer' | 'true') => this.state.setScaleMode(m),
       startTour: () => this.tour.start(),
+      startJourney: () => this.startJourney(),
+      openSearch: () => this.search.open(),
+      openMissions: () => this.missions.open(),
+      openMeteors: () => this.meteors.open(),
+      openAtlas: () => this.atlas.open(),
+      system: this.system,
       renderer: this.renderer,
       camera: this.rig.camera,
       isFlying: () => this.rig.isFlying,

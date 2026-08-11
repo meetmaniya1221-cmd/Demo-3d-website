@@ -86,6 +86,18 @@ const STEPS: TourStep[] = [
     focus: { kind: 'body', id: 'neptune' },
   },
   {
+    title: 'Pluto - a world, not a planet',
+    text: 'Pluto is the most famous citizen of the Kuiper belt - a dwarf planet with five moons, mountains of water ice and a heart-shaped nitrogen glacier. It was reclassified in 2006 when we realised it is one of thousands of similar icy worlds sharing this region. Its moon Charon is so large the two orbit a point between them.',
+    focus: { kind: 'body', id: 'pluto', distanceFactor: 7 },
+    speedIndex: 5,
+  },
+  {
+    title: 'Comets - visitors under power',
+    text: 'Comet 2P/Encke is an icy leftover that swings from the asteroid belt to inside Mercury’s orbit every 3.3 years. Watch its tails when it nears the Sun: sunlight and the solar wind push gas and dust AWAY from the Sun, so the tails always point outward - a comet flying away from the Sun travels tail-first.',
+    focus: { kind: 'body', id: 'encke', distanceFactor: 12 },
+    speedIndex: 4,
+  },
+  {
     title: 'The real scale of everything',
     text: 'Until now, distances were compressed so you could sightsee. This is the truth: planets are grains of dust separated by oceans of nothing. If the Sun were a basketball, Earth would be a peppercorn 26 metres away - and Neptune almost 800 metres. Look at the labels. That emptiness is the Solar System.',
     focus: { kind: 'overview' },

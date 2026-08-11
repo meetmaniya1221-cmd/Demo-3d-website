@@ -1,8 +1,8 @@
-# Orrery - Interactive 3D Solar System
+# Orrery - Interactive 3D Solar System Explorer
 
 An educational, cinematic 3D Solar System that runs entirely in the browser.
-Fly between the planets, bend time, and see how big - and how empty - the
-Solar System really is.
+Fly between planets, moons, comets and dwarf worlds - real NASA maps, real
+orbits, and the true, humbling scale of it all.
 
 ![stack](https://img.shields.io/badge/stack-Vite%20%2B%20TypeScript%20%2B%20Three.js-blue)
 
@@ -15,79 +15,107 @@ npm run build    # type-check + production build into dist/
 npm run preview  # serve the production build
 ```
 
-No API keys, no downloads: every planet surface, ring, starfield and the
-Milky Way are procedurally painted onto canvases at load time.
-
 ## What's inside
 
-- **Real orbital mechanics** - planet positions come from J2000 Keplerian
-  elements (JPL "Approximate Positions of the Planets") solved with
-  Newton–Raphson each frame, so the planets stand where they really are today.
-  Eccentric, inclined orbits - Mercury's stretched path is visible.
-- **Two honest scales** - *Explorer view* compresses distances so the system
-  stays browsable, and *True scale* morphs the whole scene to physical
-  proportions (1 AU = 100 units), which is the lesson itself.
-- **Click-to-fly camera** - click any world (or its label, or the nav rail)
-  and the camera flies over to its day side, then rides along with it.
-- **Time controls** - real time up to a year per second, with a live
-  simulation date and a "Today" reset.
-- **Guided tour** - 13 scripted stops from the Sun to the Kuiper belt, each
-  pairing camera choreography with one concept (greenhouse effect, tidal
-  locking, the habitable zone, why the belt never became a planet…).
-- **Compare overlay** - all diameters on one scale (the Sun barely fits) and
-  a scrollable to-scale distance strip with light-travel times.
-- **Gravity lab** - set your Earth weight, read a bathroom scale on ten
-  worlds, and see how high the same jump carries you.
-- **The details** - Earth–Moon system with true tidal locking, Saturn's rings
-  with the Cassini division, Uranus rolling on its side, 4,000-particle
-  asteroid belt and Kuiper belt orbiting on the GPU, habitable-zone overlay,
-  animated plasma Sun with corona.
+**A comprehensive catalog.** The Sun, all eight planets, 22 major moons
+(the Galileans, nine Saturnian moons, the five round Uranian moons, Triton,
+Charon, Phobos, Deimos and our Moon), the five IAU dwarf planets, four
+dwarf-planet candidates beyond Neptune (Quaoar, Sedna, Gonggong, Orcus),
+seven landmark asteroids (Vesta, Pallas, Hygiea, Psyche, Eros, Bennu,
+Ryugu), six periodic comets with their real orbits, the asteroid belt,
+Kuiper belt and Oort cloud - each with structured scientific data, mission
+history, sources and honest uncertainty notes.
+
+**Real NASA surfaces.** 22 mission-imagery global mosaics (USGS
+Astrogeology / New Horizons / Cassini / Galileo / Dawn / Hayabusa2 -
+see [SOURCES.md](SOURCES.md)). Where no map exists the app paints a
+seeded procedural surface and labels it *Artistic rendering* - it never
+passes art off as photography.
+
+**Search everything** (`/` or `Ctrl+K`). Type "Europa", "Halley",
+"Cassini" or "Kuiper" and the camera flies straight there - objects and
+missions share one index, no menu digging.
+
+**The Atlas.** An expandable hierarchy of the whole system - Sun →
+planets → their moons → dwarf planets → TNOs → asteroids → comets →
+regions - one click from any row.
+
+**Comets that behave like comets.** Nuclei ride real Kepler ellipses; the
+coma and two tails (blue ion tail straight anti-sunward, curved dust tail)
+grow as sublimation ramps up near perihelion, and the info panel shows a
+live activity meter. Halley sits frozen at 35 AU right now - the app shows
+that too, honestly.
+
+**Meteor lab.** The meteoroid → meteor → meteorite pipeline, animated
+against real altitude bands: pick a size class (sand grain, pebble,
+boulder, Chelyabinsk-class) and watch ablation, dark flight, airburst or a
+surviving meteorite - with scientifically correct terminology throughout.
+
+**Mission explorer.** Six decades of exploration - Apollo 11 to Europa
+Clipper - as a timeline, each mission linked both ways to the worlds it
+studied.
+
+**Distance journey.** A continuous camera ride from the Sun's doorstep to
+the Kuiper belt at true scale, with a live AU odometer, light-time
+readout, and an uncomfortable speedometer ("you are moving at 40× the
+speed of light and this is still taking ages").
+
+**Two honest scales.** *Explorer view* compresses distances so the system
+stays browsable; *True scale* morphs the scene to physical proportions
+(1 AU = 100 units). The app always tells you which lie it is currently
+telling, and the guided tour ends by taking the lie away.
+
+**Plus** the guided tour (15 stops, now including Pluto and an active
+comet), size/distance comparison charts, the gravity lab, per-system moon
+orbits in the parent's equatorial plane (watch Uranus's moons roll with
+it), tidal locking, retrograde Triton, the tumbling Hyperion, and a
+GPU-orbiting asteroid belt.
 
 ## Architecture
 
 ```
 src/
-  main.ts          boot: WebGL check → texture generation → app
-  app.ts           renderer, post-processing, input, UI wiring
-  data/bodies.ts   NASA fact-sheet data, J2000 elements, Kepler solver
-  sim/scale.ts     explorer ↔ true-scale mapping (single source of truth)
-  sim/state.ts     app state + event emitter
-  scene/           sun, planets, belts, sky, orbit lines, camera rig
-  ui/              HUD, info panel, labels, overlays, guided tour
+  main.ts               boot: WebGL check → texture generation → app
+  app.ts                renderer, post-processing, input, UI wiring
+  data/bodies.ts        planets: fact-sheet data, J2000 elements, Kepler solver
+  data/types.ts         CatalogObject/Mission - the uniform data model
+  data/catalog.ts       assembles the full catalog + mission cross-index
+  data/catalog/*.ts     moons, dwarfs, asteroids, comets, missions, regions
+  sim/scale.ts          explorer ↔ true-scale mapping (single source of truth)
+  sim/state.ts          app state + event emitter
+  scene/                sun, planets, satellites, small bodies, comet tails,
+                        belts, sky, orbit lines, lazy procedural surfaces
+  ui/                   HUD, info panel, labels, search, atlas, missions,
+                        meteor lab, journey, overlays, guided tour
 ```
 
-Notable implementation choices:
+Performance strategy: shared geometries; textures stream lazily (flat
+colour → real map only when you approach or select a body); moon systems
+collapse entirely beyond visibility range; belts orbit in the vertex
+shader (zero CPU cost for ~7,000 particles); comet tails are two small
+GPU particle systems; adaptive pixel ratio backs off under load; the
+camera near-plane tracks zoom depth. Initial payload is one JS bundle +
+~4 MB of webp maps loaded on demand.
 
-- **Procedural everything** - seeded value-noise/fBm painters generate each
-  surface (`scene/textures.ts`), so the app has zero network assets and
-  loads in a couple of seconds.
-- **GPU-orbiting belts** - asteroid positions are computed in the vertex
-  shader from per-particle orbital elements and a time uniform: zero
-  per-frame CPU cost for ~7,000 bodies.
-- **One mapping function** - every heliocentric position (planets, orbit
-  lines, belts, habitable zone) passes through the same radial compression,
-  so both scale modes stay geometrically consistent while animating.
-- **Adaptive quality** - pixel ratio backs off automatically when frame
-  times stay high; the camera's near plane tracks zoom depth to keep
-  depth precision at every scale.
+## Scientific honesty
+
+- Planet positions use JPL J2000 mean elements - accurate to well under a
+  degree over centuries. Small-body positions use published elements with
+  approximate epochs; the info panel says "position along the orbit is
+  approximate" on every such body.
+- Moons ride circular orbits at their mean distance in the parent's
+  equatorial plane (Earth's Moon near the ecliptic); per-object notes
+  disclose simplifications (Triton's real 157° inclination, Phoebe's
+  eccentric retrograde path, Hyperion's chaotic tumble).
+- Pluto is a dwarf planet here, meteors are events not objects, grayscale
+  mosaics are labelled as such, display tints are disclosed, and estimated
+  values carry explicit uncertainty notes.
 
 ## Data sources & credits
 
-NASA Planetary Fact Sheet (nssdc.gsfc.nasa.gov) and JPL's approximate
-planetary elements. Orbits are Keplerian two-body approximations; moon
-counts are IAU-confirmed totals as of 2025. Explorer view exaggerates sizes
-and compresses distances for usability - the app says so on screen, and
-True scale shows the honest picture.
-
-Planet, Sun, Moon and Saturn-ring surface maps are from
-[Solar System Scope](https://www.solarsystemscope.com/textures/)
-(CC BY 4.0), based on NASA mission imagery (MESSENGER, Cassini, Voyager,
-LRO, MGS). Earth's map was generated with Higgsfield AI. Procedural
-fallback surfaces are generated in-browser if the maps fail to load.
-
-Sound effects are from [Kenney](https://kenney.nl)'s "Interface Sounds"
-and "Sci-Fi Sounds" packs (CC0 / public domain), with the UI click tone
-from [Mixkit](https://mixkit.co) (Mixkit Free License). Background music:
-"Floating Cities" by Kevin MacLeod ([incompetech.com](https://incompetech.com)),
-licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-Audio starts after the first interaction and can be muted from the top bar.
+See [SOURCES.md](SOURCES.md) for the complete asset-by-asset list.
+Headlines: NASA Planetary Fact Sheets + JPL SSD/SBDB for data; USGS
+Astrogeology public-domain mosaics, the New Horizons MVIC Pluto color map,
+Dawn, Cassini, Galileo, Voyager, Mars Express, OSIRIS-REx and Hayabusa2
+imagery for surfaces; Solar System Scope (CC BY 4.0) for the classic
+planet maps; Kenney/Mixkit/Kevin MacLeod for audio.

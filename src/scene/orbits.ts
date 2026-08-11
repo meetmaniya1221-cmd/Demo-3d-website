@@ -1,22 +1,50 @@
 /** Orbit ellipses + the habitable-zone annulus, both scale-mode aware. */
 import * as THREE from 'three';
-import { keplerPosition, type BodyDef, HZ_INNER_AU, HZ_OUTER_AU } from '../data/bodies';
+import { type OrbitalElements, HZ_INNER_AU, HZ_OUTER_AU } from '../data/bodies';
 import { mapDistanceAU, mapPositionAU } from '../sim/scale';
 
 const ORBIT_SEGMENTS = 256;
+const DEG = Math.PI / 180;
+
+/** Ecliptic position for eccentric anomaly E - sampling uniformly in E keeps
+ *  high-eccentricity comet orbits smooth at perihelion. */
+function positionFromE(el: OrbitalElements, E: number): [number, number, number] {
+  const xOrb = el.a * (Math.cos(E) - el.e);
+  const yOrb = el.a * Math.sqrt(1 - el.e * el.e) * Math.sin(E);
+  const w = (el.wBar - el.omega) * DEG;
+  const om = el.omega * DEG;
+  const inc = el.i * DEG;
+  const cosW = Math.cos(w), sinW = Math.sin(w);
+  const cosO = Math.cos(om), sinO = Math.sin(om);
+  const cosI = Math.cos(inc), sinI = Math.sin(inc);
+  const x = (cosW * cosO - sinW * sinO * cosI) * xOrb + (-sinW * cosO - cosW * sinO * cosI) * yOrb;
+  const y = (cosW * sinO + sinW * cosO * cosI) * xOrb + (-sinW * sinO + cosW * cosO * cosI) * yOrb;
+  const z = sinW * sinI * xOrb + cosW * sinI * yOrb;
+  return [x, y, z];
+}
+
+export interface OrbitStyle {
+  opacity?: number;
+  focusOpacity?: number;
+  fadeOpacity?: number;
+}
 
 export class OrbitLine {
   readonly line: THREE.LineLoop;
   private baseAU: Float32Array; // ecliptic AU positions, untransformed
   private mat: THREE.LineBasicMaterial;
+  private style: Required<OrbitStyle>;
 
-  constructor(def: BodyDef) {
-    const el = def.orbit!;
+  constructor(el: OrbitalElements, color: number, style: OrbitStyle = {}) {
+    this.style = {
+      opacity: style.opacity ?? 0.32,
+      focusOpacity: style.focusOpacity ?? 0.75,
+      fadeOpacity: style.fadeOpacity ?? 0.14,
+    };
     this.baseAU = new Float32Array(ORBIT_SEGMENTS * 3);
     for (let i = 0; i < ORBIT_SEGMENTS; i++) {
-      // sample uniformly in mean anomaly by sweeping a full period
-      const t = (i / ORBIT_SEGMENTS) * el.periodDays;
-      const [x, y, z] = keplerPosition(el, t);
+      const E = (i / ORBIT_SEGMENTS) * Math.PI * 2;
+      const [x, y, z] = positionFromE(el, E);
       this.baseAU[i * 3] = x;
       this.baseAU[i * 3 + 1] = y;
       this.baseAU[i * 3 + 2] = z;
@@ -24,9 +52,9 @@ export class OrbitLine {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(ORBIT_SEGMENTS * 3), 3));
     this.mat = new THREE.LineBasicMaterial({
-      color: def.color,
+      color,
       transparent: true,
-      opacity: 0.32,
+      opacity: this.style.opacity,
     });
     this.line = new THREE.LineLoop(geo, this.mat);
     this.line.frustumCulled = false;
@@ -47,7 +75,11 @@ export class OrbitLine {
   }
 
   setHighlight(on: boolean, someoneFocused: boolean): void {
-    this.mat.opacity = on ? 0.75 : someoneFocused ? 0.14 : 0.32;
+    this.mat.opacity = on
+      ? this.style.focusOpacity
+      : someoneFocused
+        ? this.style.fadeOpacity
+        : this.style.opacity;
   }
 }
 

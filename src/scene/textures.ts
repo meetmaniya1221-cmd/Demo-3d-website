@@ -20,7 +20,7 @@ function canvasOf(w: number, h: number): [HTMLCanvasElement, CanvasRenderingCont
   return [c, ctx];
 }
 
-function toTexture(c: HTMLCanvasElement, srgb = true): THREE.CanvasTexture {
+export function toTexture(c: HTMLCanvasElement, srgb = true): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
@@ -31,7 +31,7 @@ function toTexture(c: HTMLCanvasElement, srgb = true): THREE.CanvasTexture {
 type PixelFn = (u: number, v: number) => RGB;
 
 /** Run a per-pixel painter over an equirect canvas. */
-function paint(w: number, h: number, fn: PixelFn): HTMLCanvasElement {
+export function paint(w: number, h: number, fn: PixelFn): HTMLCanvasElement {
   const [c, ctx] = canvasOf(w, h);
   const img = ctx.createImageData(w, h);
   const d = img.data;
@@ -52,7 +52,7 @@ function paint(w: number, h: number, fn: PixelFn): HTMLCanvasElement {
 }
 
 /** Sprinkle impact craters over a rocky-body canvas. */
-function craters(
+export function craters(
   c: HTMLCanvasElement,
   seed: number,
   count: number,

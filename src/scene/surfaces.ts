@@ -14,7 +14,6 @@ const BODY_IDS = [
   'mercury',
   'venus',
   'earth',
-  'moon',
   'mars',
   'jupiter',
   'saturn',
@@ -71,8 +70,6 @@ export function enhanceSurfaces(system: SolarSystem): void {
         prepare(tex);
         if (id === 'sun') {
           system.sun.setSurfaceMap(tex);
-        } else if (id === 'moon') {
-          system.planets.get('earth')?.setMoonTexture(tex);
         } else {
           const planet = system.planets.get(id);
           if (!planet) return;

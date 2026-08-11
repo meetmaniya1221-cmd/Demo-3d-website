@@ -1,6 +1,6 @@
-/** One planet: tilted spin group, surface, optional atmosphere/clouds/rings/moon. */
+/** One planet: tilted spin group, surface, optional atmosphere/clouds/rings. */
 import * as THREE from 'three';
-import { type BodyDef, MOON, MOON_DIST_KM, MOON_PERIOD_DAYS, AU_KM } from '../data/bodies';
+import { type BodyDef, MOON_DIST_KM, AU_KM } from '../data/bodies';
 import { displayRadius, MOON_EXPLORER_DIST, TRUE_UNITS_PER_AU } from '../sim/scale';
 import type { BodySurface } from './textures';
 
@@ -70,6 +70,8 @@ export class Planet {
   readonly def: BodyDef;
   /** Root: positioned at the body's heliocentric location by the system. */
   readonly group = new THREE.Group();
+  /** Unscaled group in the planet's equatorial plane - satellites mount here. */
+  readonly satEquatorial = new THREE.Group();
   /** Everything sized in planet radii, scaled by display radius. */
   private sizeGroup = new THREE.Group();
   private tiltGroup = new THREE.Group();
@@ -77,10 +79,7 @@ export class Planet {
   private clouds?: THREE.Mesh;
   private atmoMat?: THREE.ShaderMaterial;
   readonly hit: THREE.Mesh;
-  private moonPivot?: THREE.Group;
   private ringMesh?: THREE.Mesh;
-  moonMesh?: THREE.Mesh;
-  moonHit?: THREE.Mesh;
   private spinPhase: number;
   private currentRadius = 1;
 
@@ -103,7 +102,8 @@ export class Planet {
     this.tiltGroup.add(this.surface);
     this.tiltGroup.rotation.z = -THREE.MathUtils.degToRad(def.facts.axialTiltDeg);
     this.sizeGroup.add(this.tiltGroup);
-    this.group.add(this.sizeGroup);
+    this.satEquatorial.rotation.z = this.tiltGroup.rotation.z;
+    this.group.add(this.sizeGroup, this.satEquatorial);
 
     if (surface.clouds) {
       this.clouds = new THREE.Mesh(
@@ -164,28 +164,6 @@ export class Planet {
     this.hit = new THREE.Mesh(sphereGeo, hitMat);
     this.hit.name = def.id;
     this.group.add(this.hit);
-
-    if (def.id === 'earth') this.buildMoon();
-  }
-
-  private buildMoon(): void {
-    this.moonPivot = new THREE.Group();
-    this.moonMesh = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({ roughness: 1 }));
-    this.moonMesh.name = 'moon';
-    const hitMat = new THREE.MeshBasicMaterial();
-    hitMat.visible = false;
-    this.moonHit = new THREE.Mesh(sphereGeo, hitMat);
-    this.moonHit.name = 'moon';
-    this.moonPivot.add(this.moonMesh, this.moonHit);
-    this.group.add(this.moonPivot);
-  }
-
-  /** Attach the generated moon texture (kept separate so Planet stays generic). */
-  setMoonTexture(map: THREE.Texture): void {
-    if (this.moonMesh) {
-      (this.moonMesh.material as THREE.MeshStandardMaterial).map = map;
-      (this.moonMesh.material as THREE.MeshStandardMaterial).needsUpdate = true;
-    }
   }
 
   /** Swap in a higher-quality surface map (progressive enhancement). */
@@ -229,27 +207,9 @@ export class Planet {
     const spin = this.spinPhase + (simDays * 24 / this.def.facts.rotationHours) * Math.PI * 2;
     this.surface.rotation.y = spin;
     if (this.clouds) this.clouds.rotation.y = spin * 0.88; // clouds lag the surface
-
-    if (this.moonPivot && this.moonMesh && this.moonHit) {
-      const moonR = displayRadius('moon', MOON.facts.diameterKm, scaleT);
-      const trueDist = (MOON_DIST_KM / AU_KM) * TRUE_UNITS_PER_AU;
-      const dist = MOON_EXPLORER_DIST * (1 - scaleT) + trueDist * scaleT;
-      const ang = (simDays / MOON_PERIOD_DAYS) * Math.PI * 2;
-      this.moonMesh.position.set(Math.cos(ang) * dist, 0, -Math.sin(ang) * dist);
-      this.moonMesh.scale.setScalar(moonR);
-      // tidal lock: same face always toward Earth
-      this.moonMesh.rotation.y = ang + Math.PI;
-      this.moonHit.position.copy(this.moonMesh.position);
-      this.moonHit.scale.setScalar(Math.max(moonR * 1.6, 0.3 * (1 - scaleT) + 0.1 * scaleT));
-    }
   }
 
   get radius(): number {
     return this.currentRadius;
-  }
-
-  /** World position of the moon (valid after update). */
-  moonWorldPosition(out: THREE.Vector3): THREE.Vector3 {
-    return this.moonMesh ? this.moonMesh.getWorldPosition(out) : out.copy(this.group.position);
   }
 }

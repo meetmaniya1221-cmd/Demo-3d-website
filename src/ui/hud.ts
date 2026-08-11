@@ -13,6 +13,11 @@ export interface HudCallbacks {
   onTour: () => void;
   onCompare: () => void;
   onGravity: () => void;
+  onSearch: () => void;
+  onAtlas: () => void;
+  onJourney: () => void;
+  onMissions: () => void;
+  onMeteors: () => void;
 }
 
 export class Hud {
@@ -40,7 +45,18 @@ export class Hud {
     actions.className = 'top-actions';
     actions.setAttribute('aria-label', 'Main actions');
 
+    const searchBtn = document.createElement('button');
+    searchBtn.className = 'chip search-chip';
+    searchBtn.innerHTML =
+      '<svg width="12" height="12" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.7"/><path d="M10.2 10.2L14 14"/></svg>Search<kbd>/</kbd>';
+    searchBtn.setAttribute('aria-label', 'Search everything (shortcut: /)');
+    searchBtn.addEventListener('click', () => cb.onSearch());
+
+    const atlasBtn = this.chip('Atlas', () => cb.onAtlas());
     const tourBtn = this.chip('Tour', () => cb.onTour());
+    const journeyBtn = this.chip('Journey', () => cb.onJourney());
+    const missionsBtn = this.chip('Missions', () => cb.onMissions());
+    const meteorsBtn = this.chip('Meteors', () => cb.onMeteors());
     const compareBtn = this.chip('Compare', () => cb.onCompare());
     const gravityBtn = this.chip('Gravity', () => cb.onGravity());
 
@@ -74,7 +90,18 @@ export class Hud {
     });
     syncMute();
 
-    actions.append(tourBtn, compareBtn, gravityBtn, scaleSwitch, muteBtn);
+    actions.append(
+      searchBtn,
+      atlasBtn,
+      tourBtn,
+      journeyBtn,
+      missionsBtn,
+      meteorsBtn,
+      compareBtn,
+      gravityBtn,
+      scaleSwitch,
+      muteBtn,
+    );
     parent.appendChild(actions);
 
     // planet rail

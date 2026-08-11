@@ -68,3 +68,51 @@ export function displayRadius(id: string, diameterKm: number, t: number): number
 
 /** Explorer-view distance of the Moon from Earth's centre (scene units). */
 export const MOON_EXPLORER_DIST = 1.9;
+
+/**
+ * Explorer-view orbital distance for a satellite: a log compression of the
+ * real distance-to-parent-radius ratio, so moon systems keep their true
+ * ordering and relative feel without outer moons (Phoebe: 214 Saturn radii)
+ * escaping into interplanetary space.
+ */
+export function moonExplorerDist(
+  aKm: number,
+  parentRadiusKm: number,
+  parentDisplayR: number,
+): number {
+  const ratio = Math.max(1.1, aKm / parentRadiusKm / 2.2);
+  return parentDisplayR * (1.35 + 0.42 * Math.log2(ratio));
+}
+
+/** True-scale orbital distance for a satellite (scene units). */
+export function moonTrueDist(aKm: number): number {
+  return (aKm / AU_KM) * TRUE_UNITS_PER_AU;
+}
+
+/** Blended satellite orbit distance. */
+export function moonDisplayDist(
+  aKm: number,
+  parentRadiusKm: number,
+  parentDisplayR: number,
+  t: number,
+): number {
+  return (
+    moonExplorerDist(aKm, parentRadiusKm, parentDisplayR) * (1 - t) + moonTrueDist(aKm) * t
+  );
+}
+
+/** Exaggerated display radius for a minor body (moons, dwarfs, asteroids). */
+export function minorExplorerRadius(diameterKm: number, floor = 0.09): number {
+  const rel = diameterKm / 2 / EARTH_RADIUS_KM;
+  return Math.max(floor, 0.92 * Math.pow(rel, 0.45));
+}
+
+/** Blended display radius for a minor body. */
+export function minorDisplayRadius(
+  id: string,
+  diameterKm: number,
+  t: number,
+  floor = 0.09,
+): number {
+  return minorExplorerRadius(diameterKm, floor) * (1 - t) + trueRadius(id, diameterKm) * t;
+}
