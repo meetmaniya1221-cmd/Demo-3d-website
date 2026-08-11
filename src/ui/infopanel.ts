@@ -17,6 +17,8 @@ import {
 
 export interface InfoPanelHost {
   onCompare: () => void;
+  /** Open the interior cross-section view for this body. */
+  onStructure: (id: string) => void;
   openMission: (missionId: string) => void;
   /** Live heliocentric distance for small bodies rendered by the scene. */
   liveAU: (id: string) => number | null;
@@ -307,6 +309,7 @@ export class InfoPanel {
       b.addEventListener('click', fn);
       actionsEl.appendChild(b);
     };
+    if (def.interior) mkAction('Interior ◔', () => this.host.onStructure(def.id));
     mkAction('Compare sizes', this.host.onCompare);
     if (def.parent && def.type === 'moon') {
       const parentName = catalogObject(def.parent)?.name ?? def.parent;

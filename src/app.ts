@@ -19,6 +19,7 @@ import { LayersPanel } from './ui/layerspanel';
 import { DistanceReadout } from './ui/distance';
 import { SkyNotes } from './ui/skynotes';
 import { CompareOverlay, GravityOverlay } from './ui/overlays';
+import { StructureOverlay } from './ui/structure';
 import { MissionsOverlay } from './ui/missions';
 import { MeteorsOverlay } from './ui/meteors';
 import { Search } from './ui/search';
@@ -49,6 +50,7 @@ export class App implements TourHost {
   private skyNotes: SkyNotes;
   private compare: CompareOverlay;
   private gravity: GravityOverlay;
+  private structure: StructureOverlay;
   private missions: MissionsOverlay;
   private meteors: MeteorsOverlay;
   private search: Search;
@@ -116,6 +118,7 @@ export class App implements TourHost {
     });
     this.compare = new CompareOverlay(root);
     this.gravity = new GravityOverlay(root);
+    this.structure = new StructureOverlay(root);
     this.missions = new MissionsOverlay(root, { selectObject: (id) => this.state.select(id) });
     this.meteors = new MeteorsOverlay(root, { selectObject: (id) => this.state.select(id) });
     this.search = new Search(root, {
@@ -143,6 +146,7 @@ export class App implements TourHost {
     });
     this.infoPanel = new InfoPanel(root, this.state, {
       onCompare: () => this.compare.open(),
+      onStructure: (id) => this.structure.openFor(id),
       openMission: (id) => this.missions.openAt(id),
       liveAU: (id) => this.system.heliocentricAU(id),
       cometActivity: (id) => this.system.smallBodies.cometActivity(id),
@@ -346,6 +350,7 @@ export class App implements TourHost {
       else if (this.layersPanel.isOpen) this.layersPanel.setOpen(false);
       else if (this.compare.isOpen) this.compare.close();
       else if (this.gravity.isOpen) this.gravity.close();
+      else if (this.structure.isOpen) this.structure.close();
       else if (this.missions.isOpen) this.missions.close();
       else if (this.meteors.isOpen) this.meteors.close();
       else if (this.journey.active) this.journey.end();
@@ -547,6 +552,7 @@ export class App implements TourHost {
       openMissions: () => this.missions.open(),
       openMeteors: () => this.meteors.open(),
       openAtlas: () => this.atlas.open(),
+      openStructure: (id: string) => this.structure.openFor(id),
       system: this.system,
       renderer: this.renderer,
       camera: this.rig.camera,

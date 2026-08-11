@@ -69,6 +69,28 @@ export interface TextureInfo {
   note?: string;
 }
 
+/** One shell of a body's interior model, ordered inner → outer. */
+export interface InteriorLayer {
+  name: string;
+  /** Outer edge of this layer as a fraction of the body's radius (0..1]. */
+  outerRadiusFraction: number;
+  color: number;
+  note: string;
+  /**
+   * observed = probed directly (seismology, helioseismology, libration);
+   * modelled = inferred from bulk density, gravity fields, magnetics.
+   * Rendered differently so users can tell knowledge from inference.
+   */
+  knowledge: 'observed' | 'modelled';
+}
+
+export interface Interior {
+  layers: InteriorLayer[];
+  /** How we know: one honest sentence about the evidence. */
+  evidence: string;
+  sources: SourceRef[];
+}
+
 export interface CometActivity {
   /** Perihelion distance q in AU; drives the tail-length model. */
   qAU: number;
@@ -108,6 +130,8 @@ export interface CatalogObject {
   sources: SourceRef[];
   texture?: TextureInfo;
   comet?: CometActivity; // only for type === 'comet'
+  /** Layered interior model for the cross-section view. */
+  interior?: Interior;
   /** Explicit uncertainty statement where measurements are estimates. */
   uncertainty?: string;
 }

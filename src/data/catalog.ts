@@ -15,6 +15,7 @@ import { DWARF_PLANETS, TNOS } from './catalog/dwarfs';
 import { ASTEROIDS, REGIONS } from './catalog/asteroids';
 import { COMETS } from './catalog/comets';
 import { MISSIONS } from './catalog/missions';
+import { INTERIORS } from './catalog/interiors';
 
 /** Attribution for the classic planet surfaces shipped since v1. */
 const PLANET_TEXTURE_CREDIT =
@@ -99,6 +100,13 @@ export const ALL_OBJECTS: CatalogObject[] = [
   ...SMALL_BODIES,
   ...REGIONS,
 ];
+
+// attach interior models to their bodies (kept in a separate file so the
+// cross-section data has one home instead of being spread over six files)
+for (const o of ALL_OBJECTS) {
+  const interior = INTERIORS[o.id];
+  if (interior) o.interior = interior;
+}
 
 const byId = new Map<string, CatalogObject>(ALL_OBJECTS.map((o) => [o.id, o]));
 

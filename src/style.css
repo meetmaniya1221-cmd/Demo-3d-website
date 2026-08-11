@@ -2915,3 +2915,98 @@ button.sim-date:hover {
   bottom: 0;
   left: 50%;
 }
+
+/* ------------------------------------------------------- structure view --- */
+
+.structure-picker {
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.structure-picker .chip.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.structure-main {
+  display: grid;
+  grid-template-columns: minmax(280px, 460px) minmax(260px, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.structure-canvas-wrap {
+  display: grid;
+  place-items: center;
+}
+
+.structure-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.structure-layer-row {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.structure-layer-row > i {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  margin-top: 3px;
+  border: 1px solid rgba(240, 246, 255, 0.25);
+}
+
+.structure-layer-row .layer-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.knowledge-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid;
+}
+
+.knowledge-tag.observed {
+  color: #38d996;
+  border-color: rgba(56, 217, 150, 0.5);
+}
+
+.knowledge-tag.modelled {
+  color: #d9a938;
+  border-color: rgba(217, 169, 56, 0.5);
+}
+
+.structure-layer-row .layer-extent {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 1px 0 2px;
+}
+
+.structure-layer-row .layer-note {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-mid, var(--text-dim));
+  margin: 0;
+}
+
+@media (max-width: 860px) {
+  .structure-main {
+    grid-template-columns: 1fr;
+  }
+}
