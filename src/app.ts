@@ -193,9 +193,11 @@ export class App implements TourHost {
       }
     });
     this.state.on('tour', () => this.updateViewOffset());
-    this.state.on('timejump', () =>
-      this.announce(`Simulation date set to ${fmtSimDate(this.state.simDays)}`),
-    );
+    this.state.on('timejump', () => {
+      this.announce(`Simulation date set to ${fmtSimDate(this.state.simDays)}`);
+      // refresh live readouts right away instead of waiting for the 1 Hz tick
+      this.liveTimer = 1;
+    });
     this.state.on('units', () => this.infoPanel.refresh());
     this.state.on('scale', (mode) => {
       this.scaleTarget = mode === 'true' ? 1 : 0;

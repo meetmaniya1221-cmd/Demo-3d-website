@@ -7,10 +7,14 @@ The in-app info panel repeats the relevant credit next to each object.
 
 | Data | Source | Notes |
 | --- | --- | --- |
-| Planetary physical data | [NASA Planetary Fact Sheets](https://nssdc.gsfc.nasa.gov/planetary/factsheet/) | Public domain (US Gov) |
+| Planetary physical data | [NASA Planetary Fact Sheets](https://nssdc.gsfc.nasa.gov/planetary/factsheet/) | Public domain (US Gov); includes density and geometric albedo |
 | Planet orbital elements | [JPL "Approximate Positions of the Planets"](https://ssd.jpl.nasa.gov/planets/approx_pos.html) | J2000 mean elements, Kepler two-body propagation |
-| Moon physical/orbital data | NASA fact sheets + [NASA Solar System Exploration](https://science.nasa.gov/solar-system/) | Moons drawn on circular orbits at mean distance; simplifications are disclosed per object |
-| Dwarf planets, TNOs, asteroids, comets | [JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html), NASA science pages | Orbit shape/orientation from published elements; position along orbit approximate (disclosed in-app) |
+| Planet spin epochs (W₀) | [IAU WGCCRE 2015 report](https://astrogeology.usgs.gov/groups/IAU-WGCCRE) | Prime-meridian angles at J2000; Earth's W tracks GMST so day/night follows UTC. Applied about the tilted axis in the ecliptic frame - accurate to a degree or two |
+| Moon physical/orbital data | NASA fact sheets + [NASA Solar System Exploration](https://science.nasa.gov/solar-system/) | Moons drawn on circular orbits at mean distance; simplifications are disclosed per object. Earth's Moon carries its real J2000 mean longitude (218.32° + 13.176°/day), so the simulated phase tracks the actual lunar cycle to a few degrees |
+| Dwarf planets, TNOs, asteroids, comets | [JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html), NASA science pages | Orbit shape/orientation from published elements; TNO perihelion epochs (tp) from SBDB solutions retrieved Aug 2026; position along orbit approximate (disclosed in-app) |
+| Interior structure models | NASA mission pages ([InSight](https://science.nasa.gov/mission/insight/), [Juno](https://science.nasa.gov/mission/juno/), [Cassini](https://science.nasa.gov/mission/cassini/), [Dawn](https://science.nasa.gov/mission/dawn/), GRAIL, MESSENGER...) | Every layer is tagged OBSERVED (seismology, helioseismology, libration) or MODELLED (inferred) in the UI |
+| Near stars | [NASA - Stars](https://science.nasa.gov/universe/stars/), [RECONS census](http://www.recons.org/) | Hipparcos/Gaia parallax distances; Deneb's genuinely uncertain distance is disclosed |
+| Deep-sky objects | [NASA/ESA Hubble Messier Catalog](https://science.nasa.gov/mission/hubble/science/explore-the-night-sky/hubble-messier-catalog/) | 16 Messier highlights + Sagittarius A*; J2000 positions, published distances |
 | Missions | Official NASA / ESA / JAXA mission pages | Linked from every mission card |
 | Habitable zone bounds | Kasting 1993 / Kopparapu et al. 2013 | Conservative limits, 0.95–1.67 AU |
 
@@ -61,6 +65,13 @@ equatorial coordinates (rounded to roughly 0.1 h / 1°, i.e. accurate to about
 a degree - fine for stick figures). The faint background starfield and the
 Milky Way band are procedural art, not a star catalog. The ecliptic reference
 grid marks true astronomical-unit distances in the current scale mode.
+
+The Observatory's night-sky chart computes altitude/azimuth from the same
+star catalog plus the app's own Kepler elements (planets), the lunar mean
+longitude (Moon) and the standard GMST expression - positions are good to a
+degree or two, not ephemeris-grade, and the chart says so. Deep-sky markers
+in the 3D scene sit at their real J2000 directions on the sky sphere; the
+objects themselves are of course far beyond it.
 
 ## Audio
 

@@ -3369,3 +3369,19 @@ button.sim-date:hover {
   color: var(--text-dim);
   margin-top: 2px;
 }
+
+/* On phones the date button stays (it is the time machine's entry point) -
+   only the redundant weekday spacing tightens. Override the legacy hide. */
+@media (max-width: 720px) {
+  .sim-date {
+    display: block;
+    font-size: 11px;
+    min-width: 0;
+    padding: 4px 6px;
+  }
+
+  .timebar .play.rewind {
+    width: 28px;
+    height: 28px;
+  }
+}

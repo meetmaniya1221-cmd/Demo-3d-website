@@ -33,9 +33,34 @@ see [SOURCES.md](SOURCES.md)). Where no map exists the app paints a
 seeded procedural surface and labels it *Artistic rendering* - it never
 passes art off as photography.
 
+**A real time machine.** Click the date to jump anywhere between 1900
+and 2100, run time backwards with the rewind button, or play at seven
+speeds from real time to a year per second. Planet spin phases are tied
+to the IAU J2000 prime-meridian angles - Earth's day/night tracks UTC -
+and the Moon rides its real mean longitude, so the simulated phase
+matches the actual lunar cycle (the Aug 2026 full moon lands within a
+day). Set 9 Feb 1986 and watch Halley blaze through perihelion.
+
+**Interior structure.** The classic quarter-cut cross-section for 16
+worlds, every layer tagged OBSERVED (Apollo seismometers, InSight
+marsquakes, helioseismology, Cassini's libration measurements) or
+MODELLED (gravity-field inference) - with the evidence spelled out.
+
+**The Observatory.** Three sky instruments: a live planetarium dome for
+any latitude showing the stars, Moon and naked-eye planets at the
+current simulation moment; the stellar neighbourhood mapped out to
+Deneb with real Gaia/Hipparcos distances; and the Messier highlights
+from the NASA/ESA Hubble catalog - which also render as a toggleable
+deep-sky layer on the main 3D sky.
+
+**Earth & Moon lab.** The lunar cycle as a live diagram: real sunlight
+direction, tonight's phase, days to the next full moon, spring vs neap
+tides, and why the 5.1° orbit tilt makes eclipses rare.
+
 **Search everything** (`/` or `Ctrl+K`). Type "Europa", "Halley",
-"Cassini" or "Kuiper" and the camera flies straight there - objects and
-missions share one index, no menu digging.
+"136199", "Andromeda" or "Cassini" and the right thing happens - objects
+fly the camera there, stars and Messier objects open the Observatory,
+missions open the timeline. One index, no menu digging.
 
 **The Atlas.** An expandable hierarchy of the whole system - Sun →
 planets → their moons → dwarf planets → TNOs → asteroids → comets →
@@ -81,10 +106,11 @@ over below a few projected pixels, which is also why comets don't flicker
 when you zoom out.
 
 **Plus** the guided tour (15 stops, now including Pluto and an active
-comet), size/distance comparison charts, the gravity lab, per-system moon
-orbits in the parent's equatorial plane (watch Uranus's moons roll with
-it), tidal locking, retrograde Triton, the tumbling Hyperion, and a
-GPU-orbiting asteroid belt.
+comet), size/distance comparison charts and a head-to-head mode that
+puts any two worlds side by side at one scale, the gravity lab, manual
+km/mi units, per-system moon orbits in the parent's equatorial plane
+(watch Uranus's moons roll with it), tidal locking, retrograde Triton,
+the tumbling Hyperion, and a GPU-orbiting asteroid belt.
 
 ## Architecture
 
