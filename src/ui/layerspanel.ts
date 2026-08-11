@@ -37,6 +37,7 @@ const GROUPS: Group[] = [
     rows: [
       { key: 'labels', label: 'Object labels' },
       { key: 'constellations', label: 'Constellations' },
+      { key: 'deepSky', label: 'Deep sky', hint: 'Messier objects' },
       { key: 'grid', label: 'Reference grid', hint: 'AU rings' },
       { key: 'distanceScale', label: 'Distance readout' },
       { key: 'habitableZone', label: 'Habitable zone' },

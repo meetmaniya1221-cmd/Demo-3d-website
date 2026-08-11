@@ -16,6 +16,8 @@ export interface Layers {
   beltDust: boolean; // aggregated asteroid/Kuiper belt particles
   labels: boolean;
   constellations: boolean;
+  /** Messier objects + galactic centre markers on the sky sphere. */
+  deepSky: boolean;
   grid: boolean;
   distanceScale: boolean;
   habitableZone: boolean;
@@ -31,6 +33,7 @@ export const DEFAULT_LAYERS: Layers = {
   beltDust: true,
   labels: true,
   constellations: true,
+  deepSky: false,
   grid: true,
   distanceScale: true,
   habitableZone: false,

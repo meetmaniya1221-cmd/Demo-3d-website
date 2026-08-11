@@ -14,6 +14,7 @@ interface ConstNote {
 export class SkyNotes {
   private container: HTMLElement;
   private constNotes: ConstNote[] = [];
+  private dsoNotes: ConstNote[] = [];
   private gridPool: HTMLElement[] = [];
   private v = new THREE.Vector3();
   private lastPlacedX = 0;
@@ -32,6 +33,14 @@ export class SkyNotes {
       el.style.display = 'none';
       this.container.appendChild(el);
       this.constNotes.push({ el, dir: fig.dir });
+    }
+    for (const dso of system.constellations.dsoLabels) {
+      const el = document.createElement('span');
+      el.className = 'skynote dso';
+      el.textContent = dso.name;
+      el.style.display = 'none';
+      this.container.appendChild(el);
+      this.dsoNotes.push({ el, dir: dso.dir });
     }
   }
 
@@ -58,6 +67,17 @@ export class SkyNotes {
       }
       this.v.copy(note.dir).multiplyScalar(CONSTELLATION_SKY_R).add(camera.position);
       if (!this.place(note.el, camera, w, h)) continue;
+    }
+
+    // deep-sky markers ride the same sky sphere behind their own layer
+    const showDso = state.layers.deepSky;
+    for (const note of this.dsoNotes) {
+      if (!showDso) {
+        note.el.style.display = 'none';
+        continue;
+      }
+      this.v.copy(note.dir).multiplyScalar(CONSTELLATION_SKY_R).add(camera.position);
+      this.place(note.el, camera, w, h);
     }
 
     // grid annotations: AU ladder up the 0° axis + cardinal degree marks

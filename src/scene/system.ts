@@ -186,6 +186,7 @@ export class SolarSystem {
     this.kuiperBelt.points.visible = layers.beltDust;
     this.grid.setVisible(layers.grid);
     this.constellations.setVisible(layers.constellations);
+    this.constellations.setDeepSkyVisible(layers.deepSky);
     this.hz.mesh.visible = layers.habitableZone;
   }
 

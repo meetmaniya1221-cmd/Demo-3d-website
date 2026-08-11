@@ -9,15 +9,16 @@
  * in SOURCES.md. Named stars render brighter than the procedural backdrop.
  */
 import * as THREE from 'three';
+import { DEEP_SKY } from '../data/catalog/deepsky';
 
-interface StarDef {
+export interface StarDef {
   id: string;
   raH: number; // right ascension, hours
   decDeg: number;
   mag: number;
 }
 
-const STARS: StarDef[] = [
+export const STARS: StarDef[] = [
   // Orion
   { id: 'betelgeuse', raH: 5.92, decDeg: 7.4, mag: 0.5 },
   { id: 'rigel', raH: 5.24, decDeg: -8.2, mag: 0.1 },
@@ -128,12 +129,12 @@ const STARS: StarDef[] = [
   { id: 'polaris', raH: 2.53, decDeg: 89.3, mag: 2.0 },
 ];
 
-interface Figure {
+export interface Figure {
   name: string;
   paths: string[][]; // sequences of star ids drawn as polylines
 }
 
-const FIGURES: Figure[] = [
+export const FIGURES: Figure[] = [
   {
     name: 'Orion',
     paths: [
@@ -262,9 +263,13 @@ export interface FigureLabel {
 export class Constellations {
   readonly group = new THREE.Group();
   readonly labels: FigureLabel[] = [];
+  /** Deep-sky object markers (own layer, off by default). */
+  readonly dsoLabels: FigureLabel[] = [];
   private lineMat: THREE.LineBasicMaterial;
   private lines!: THREE.LineSegments;
+  private dsoPoints!: THREE.Points;
   linesVisible = true;
+  dsoVisible = false;
 
   constructor() {
     const byId = new Map(STARS.map((s) => [s.id, s]));
@@ -313,6 +318,8 @@ export class Constellations {
           n++;
           starDirection(b.raH, b.decDeg, dir).multiplyScalar(SKY_R * 0.995);
           linePts.push(dir.x, dir.y, dir.z);
+          centroid.add(dir);
+          n++;
         }
       }
       if (n > 0) {
@@ -330,17 +337,64 @@ export class Constellations {
     this.lines.frustumCulled = false;
     this.lines.renderOrder = -9;
     this.group.add(this.lines);
+
+    // deep-sky markers: soft diffuse glows at the real J2000 directions.
+    // Directions are real; the objects themselves lie far beyond the sphere.
+    const dsoPos = new Float32Array(DEEP_SKY.length * 3);
+    const dsoSize = new Float32Array(DEEP_SKY.length);
+    DEEP_SKY.forEach((o, i) => {
+      starDirection(o.raH, o.decDeg, dir).multiplyScalar(SKY_R * 0.99);
+      dsoPos[i * 3] = dir.x;
+      dsoPos[i * 3 + 1] = dir.y;
+      dsoPos[i * 3 + 2] = dir.z;
+      dsoSize[i] = o.type.includes('galaxy') ? 10 : o.type.includes('cluster') ? 8 : 9;
+      this.dsoLabels.push({
+        name: o.m ? `${o.m} ${o.name}` : o.name,
+        dir: dir.clone().normalize(),
+      });
+    });
+    const dsoGeo = new THREE.BufferGeometry();
+    dsoGeo.setAttribute('position', new THREE.BufferAttribute(dsoPos, 3));
+    dsoGeo.setAttribute('aSize', new THREE.BufferAttribute(dsoSize, 1));
+    const dsoMat = new THREE.ShaderMaterial({
+      vertexShader: STAR_VERT,
+      fragmentShader: /* glsl */ `
+        precision highp float;
+        varying float vGlow;
+        void main() {
+          vec2 p = gl_PointCoord - 0.5;
+          float d = length(p) * 2.0;
+          float a = smoothstep(1.0, 0.0, d);
+          gl_FragColor = vec4(vec3(0.62, 0.72, 0.92), a * a * 0.55);
+        }
+      `,
+      uniforms: { uPr: { value: 1 } },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.dsoPoints = new THREE.Points(dsoGeo, dsoMat);
+    this.dsoPoints.frustumCulled = false;
+    this.dsoPoints.renderOrder = -9;
+    this.dsoPoints.visible = false;
+    this.group.add(this.dsoPoints);
   }
 
   setPixelRatio(pr: number): void {
     const stars = this.group.children[0] as THREE.Points;
     (stars.material as THREE.ShaderMaterial).uniforms.uPr.value = pr;
+    (this.dsoPoints.material as THREE.ShaderMaterial).uniforms.uPr.value = pr;
   }
 
   /** The real bright stars always shine; the toggle governs figures+names. */
   setVisible(v: boolean): void {
     this.linesVisible = v;
     this.lines.visible = v;
+  }
+
+  setDeepSkyVisible(v: boolean): void {
+    this.dsoVisible = v;
+    this.dsoPoints.visible = v;
   }
 }
 

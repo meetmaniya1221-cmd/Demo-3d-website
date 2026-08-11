@@ -1,12 +1,15 @@
-/** Global search palette (Ctrl/Cmd+K): every object and mission, one box.
- *  Selecting an object flies the camera straight there - no menu digging. */
+/** Global search palette (Ctrl/Cmd+K): every object, mission, star and
+ *  deep-sky target in one box. Objects fly the camera; stars and DSOs open
+ *  the Observatory. */
 import { ALL_OBJECTS, MISSIONS_SORTED } from '../data/catalog';
+import { NEAR_STARS } from '../data/catalog/stars';
+import { DEEP_SKY } from '../data/catalog/deepsky';
 import { TYPE_LABEL } from '../data/types';
 import { sound } from '../audio';
 
 interface SearchItem {
   id: string;
-  kind: 'object' | 'mission';
+  kind: 'object' | 'mission' | 'sky';
   name: string;
   detail: string;
   color: string;
@@ -17,6 +20,8 @@ interface SearchItem {
 export interface SearchHost {
   selectObject: (id: string) => void;
   openMission: (id: string) => void;
+  /** Open the Observatory focused on a star or deep-sky object. */
+  openSky: (id: string) => void;
 }
 
 const ALIASES: Record<string, string[]> = {
@@ -70,6 +75,26 @@ function buildIndex(): SearchItem[] {
       detail: `${m.agency} · ${m.craft} · ${m.launched}`,
       color: '#9db4cc',
       keys: [norm(m.name), norm(m.agency), norm(m.craft)],
+    });
+  }
+  for (const s of NEAR_STARS) {
+    items.push({
+      id: s.id,
+      kind: 'sky',
+      name: s.name,
+      detail: `Star · ${s.distanceLy < 100 ? s.distanceLy.toFixed(1) : Math.round(s.distanceLy)} light-years`,
+      color: '#cdd9ff',
+      keys: [norm(s.name), norm(s.spectral), 'star'],
+    });
+  }
+  for (const o of DEEP_SKY) {
+    items.push({
+      id: o.id,
+      kind: 'sky',
+      name: o.m ? `${o.m} · ${o.name}` : o.name,
+      detail: `${o.type[0].toUpperCase()}${o.type.slice(1)} · ${o.constellation}`,
+      color: '#b9c8f0',
+      keys: [norm(o.name), norm(o.m), norm(o.type), norm(o.constellation), 'messier'],
     });
   }
   return items;
@@ -224,7 +249,7 @@ export class Search {
           <i class="dot" style="background:${r.color}"></i>
           <span class="name">${r.name}</span>
           <span class="detail">${r.detail}</span>
-          <span class="go">${r.kind === 'mission' ? 'mission' : '→ fly'}</span>
+          <span class="go">${r.kind === 'mission' ? 'mission' : r.kind === 'sky' ? 'observatory' : '→ fly'}</span>
         </button>`,
       )
       .join('');
@@ -256,6 +281,7 @@ export class Search {
     if (!r) return;
     this.close();
     if (r.kind === 'mission') this.host.openMission(r.id);
+    else if (r.kind === 'sky') this.host.openSky(r.id);
     else this.host.selectObject(r.id);
   }
 }

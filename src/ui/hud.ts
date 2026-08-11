@@ -21,6 +21,7 @@ export interface HudCallbacks {
   onJourney: () => void;
   onMissions: () => void;
   onMeteors: () => void;
+  onObservatory: () => void;
 }
 
 export class Hud {
@@ -57,6 +58,8 @@ export class Hud {
     const atlasBtn = this.chip('Atlas', () => cb.onAtlas());
     const tourBtn = this.chip('Tour', () => cb.onTour());
     const journeyBtn = this.chip('Journey', () => cb.onJourney());
+    const skyBtn = this.chip('Sky', () => cb.onObservatory());
+    skyBtn.title = 'Observatory: night sky, near stars, deep sky';
     const missionsBtn = this.chip('Missions', () => cb.onMissions());
     const meteorsBtn = this.chip('Meteors', () => cb.onMeteors());
     const compareBtn = this.chip('Compare', () => cb.onCompare());
@@ -97,6 +100,7 @@ export class Hud {
       atlasBtn,
       tourBtn,
       journeyBtn,
+      skyBtn,
       missionsBtn,
       meteorsBtn,
       compareBtn,

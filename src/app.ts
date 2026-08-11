@@ -21,6 +21,7 @@ import { SkyNotes } from './ui/skynotes';
 import { CompareOverlay, GravityOverlay } from './ui/overlays';
 import { StructureOverlay } from './ui/structure';
 import { EarthMoonOverlay } from './ui/earthmoon';
+import { Observatory } from './ui/observatory';
 import { MissionsOverlay } from './ui/missions';
 import { MeteorsOverlay } from './ui/meteors';
 import { Search } from './ui/search';
@@ -53,6 +54,7 @@ export class App implements TourHost {
   private gravity: GravityOverlay;
   private structure: StructureOverlay;
   private earthMoon: EarthMoonOverlay;
+  private observatory: Observatory;
   private missions: MissionsOverlay;
   private meteors: MeteorsOverlay;
   private search: Search;
@@ -122,11 +124,13 @@ export class App implements TourHost {
     this.gravity = new GravityOverlay(root);
     this.structure = new StructureOverlay(root);
     this.earthMoon = new EarthMoonOverlay(root, this.state);
+    this.observatory = new Observatory(root, this.state);
     this.missions = new MissionsOverlay(root, { selectObject: (id) => this.state.select(id) });
     this.meteors = new MeteorsOverlay(root, { selectObject: (id) => this.state.select(id) });
     this.search = new Search(root, {
       selectObject: (id) => this.state.select(id),
       openMission: (id) => this.missions.openAt(id),
+      openSky: (id) => this.observatory.openFor(id),
     });
     this.atlas = new Atlas(root, this.state);
     this.journey = new Journey(root, {
@@ -146,6 +150,7 @@ export class App implements TourHost {
       onJourney: () => this.startJourney(),
       onMissions: () => this.missions.open(),
       onMeteors: () => this.meteors.open(),
+      onObservatory: () => this.observatory.open(),
     });
     this.infoPanel = new InfoPanel(root, this.state, {
       onCompare: (id) => (id ? this.compare.openWith(id) : this.compare.open()),
@@ -356,6 +361,7 @@ export class App implements TourHost {
       else if (this.gravity.isOpen) this.gravity.close();
       else if (this.structure.isOpen) this.structure.close();
       else if (this.earthMoon.isOpen) this.earthMoon.close();
+      else if (this.observatory.isOpen) this.observatory.close();
       else if (this.missions.isOpen) this.missions.close();
       else if (this.meteors.isOpen) this.meteors.close();
       else if (this.journey.active) this.journey.end();
@@ -559,6 +565,7 @@ export class App implements TourHost {
       openAtlas: () => this.atlas.open(),
       openStructure: (id: string) => this.structure.openFor(id),
       openEarthMoon: () => this.earthMoon.open(),
+      openObservatory: (id?: string) => (id ? this.observatory.openFor(id) : this.observatory.open()),
       system: this.system,
       renderer: this.renderer,
       camera: this.rig.camera,
