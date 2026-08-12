@@ -3709,6 +3709,344 @@ button.sim-date:hover {
   text-decoration: underline;
 }
 
+/* observing-site card + location picker */
+
+.obs-site-card {
+  border: 1px solid var(--line);
+  padding: 10px 12px 12px;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  background: rgba(102, 224, 255, 0.04);
+}
+
+.obs-site-name {
+  font-family: var(--display, var(--sans));
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  margin-top: 3px;
+}
+
+.obs-site-coords {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  margin: 2px 0 9px;
+}
+
+.obs-site-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.locpicker {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 5, 12, 0.82);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.locpicker.open {
+  opacity: 1;
+}
+
+/* display:grid above would otherwise beat the [hidden] default, leaving an
+   invisible full-screen layer swallowing every click */
+.locpicker[hidden] {
+  display: none;
+}
+
+.locpicker-card {
+  width: min(940px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  padding: 16px;
+  background: var(--panel-solid, #081120);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow), 0 0 30px rgba(102, 224, 255, 0.08);
+  clip-path: polygon(20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%, 0 20px);
+}
+
+.locpicker-cols {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.locpicker-list-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.loc-geo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 10px;
+  font-family: var(--display, var(--sans));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--line-strong);
+  background: rgba(102, 224, 255, 0.07);
+  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+  transition: background 0.2s;
+}
+
+.loc-geo:hover {
+  background: rgba(102, 224, 255, 0.16);
+}
+
+.loc-geo.busy {
+  opacity: 0.6;
+}
+
+.loc-geo.failed {
+  color: var(--danger);
+  border-color: rgba(255, 143, 107, 0.5);
+}
+
+.loc-filter {
+  width: 100%;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(102, 224, 255, 0.05);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  padding: 6px 9px;
+}
+
+.loc-filter:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.loc-list {
+  display: flex;
+  flex-direction: column;
+  height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  background: rgba(4, 10, 20, 0.5);
+}
+
+.loc-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(102, 224, 255, 0.07);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.loc-row small {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.loc-row:hover {
+  background: var(--accent-soft);
+}
+
+.loc-row.active {
+  background: rgba(102, 224, 255, 0.18);
+  color: var(--accent);
+}
+
+.loc-row.active small {
+  color: var(--accent);
+  opacity: 0.75;
+}
+
+.loc-empty {
+  padding: 14px 10px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.locpicker-map-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.loc-map {
+  display: block;
+  width: 100%;
+  cursor: crosshair;
+  border: 1px solid var(--line-strong);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  touch-action: none;
+}
+
+.loc-map:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.loc-site {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.loc-site b {
+  font-family: var(--display, var(--sans));
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.loc-site span {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--accent);
+}
+
+.locpicker-controls {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.loc-steppers {
+  flex: 1 1 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: rgba(102, 224, 255, 0.04);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+
+.loc-stepper-row {
+  display: grid;
+  grid-template-columns: 24px minmax(88px, 116px) 24px 24px 52px 24px 24px 52px 24px;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+}
+
+.loc-arrow {
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  color: var(--accent);
+  border: 1px solid var(--line);
+  background: rgba(102, 224, 255, 0.05);
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.loc-arrow:hover {
+  background: rgba(102, 224, 255, 0.2);
+  border-color: var(--line-strong);
+}
+
+.loc-hemi,
+.loc-num {
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  border: 1px solid var(--line);
+  background: rgba(4, 10, 20, 0.6);
+}
+
+.loc-hemi {
+  font-family: var(--display, var(--sans));
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+}
+
+.loc-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+}
+
+.loc-ok {
+  min-width: 108px;
+  padding: 12px 18px;
+  font-family: var(--display, var(--sans));
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--accent);
+  border: 1px solid var(--line-strong);
+  background: rgba(102, 224, 255, 0.1);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  transition: background 0.15s;
+}
+
+.loc-ok:hover {
+  background: rgba(102, 224, 255, 0.24);
+}
+
+.loc-cancel {
+  padding: 7px 18px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border: 1px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.loc-cancel:hover {
+  color: var(--danger);
+  border-color: rgba(255, 143, 107, 0.4);
+}
+
+@media (max-width: 720px) {
+  .locpicker-cols {
+    grid-template-columns: 1fr;
+  }
+
+  .loc-list {
+    height: 168px;
+  }
+
+  .loc-stepper-row {
+    grid-template-columns: 20px minmax(64px, 1fr) 20px 20px 42px 20px 20px 42px 20px;
+  }
+}
+
 /* deep-sky image lightbox */
 
 .dso-lightbox {
@@ -3847,4 +4185,10 @@ button.sim-date:hover {
     font-size: 10px;
     letter-spacing: 0;
   }
+}
+
+.loc-credit {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  line-height: 1.5;
 }

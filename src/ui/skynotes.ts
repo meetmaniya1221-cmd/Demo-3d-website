@@ -9,6 +9,7 @@ import type { AppState } from '../sim/state';
 interface ConstNote {
   el: HTMLElement;
   dir: THREE.Vector3;
+  rank: number;
 }
 
 export class SkyNotes {
@@ -26,13 +27,16 @@ export class SkyNotes {
     this.container.setAttribute('aria-hidden', 'true');
     parent.appendChild(this.container);
 
-    for (const fig of system.constellations.labels) {
+    // brightest constellations first: with all 88 on the sky, the placement
+    // pass below keeps the prominent names when they would collide
+    const figs = [...system.constellations.labels].sort((a, b) => a.rank - b.rank);
+    for (const fig of figs) {
       const el = document.createElement('span');
-      el.className = 'skynote constellation';
+      el.className = `skynote constellation rank${fig.rank}`;
       el.textContent = fig.name;
       el.style.display = 'none';
       this.container.appendChild(el);
-      this.constNotes.push({ el, dir: fig.dir });
+      this.constNotes.push({ el, dir: fig.dir, rank: fig.rank });
     }
     for (const dso of system.constellations.dsoLabels) {
       const el = document.createElement('span');
@@ -40,7 +44,7 @@ export class SkyNotes {
       el.textContent = dso.name;
       el.style.display = 'none';
       this.container.appendChild(el);
-      this.dsoNotes.push({ el, dir: dso.dir });
+      this.dsoNotes.push({ el, dir: dso.dir, rank: 1 });
     }
   }
 
@@ -58,8 +62,11 @@ export class SkyNotes {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
 
-    // constellation names ride the sky at optical infinity
+    // constellation names ride the sky at optical infinity. 88 of them would
+    // pile up, so a placed name blocks its neighbours - prominent figures
+    // were sorted first, so they win the space.
     const showConst = state.layers.constellations && system.constellations.linesVisible;
+    const placed: Array<[number, number]> = [];
     for (const note of this.constNotes) {
       if (!showConst) {
         note.el.style.display = 'none';
@@ -67,6 +74,13 @@ export class SkyNotes {
       }
       this.v.copy(note.dir).multiplyScalar(CONSTELLATION_SKY_R).add(camera.position);
       if (!this.place(note.el, camera, w, h)) continue;
+      const x = this.lastPlacedX;
+      const y = this.lastPlacedY;
+      if (placed.some(([px, py]) => Math.abs(px - x) < 96 && Math.abs(py - y) < 26)) {
+        note.el.style.display = 'none';
+        continue;
+      }
+      placed.push([x, y]);
     }
 
     // deep-sky markers ride the same sky sphere behind their own layer
