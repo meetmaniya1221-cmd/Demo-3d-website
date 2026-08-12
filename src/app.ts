@@ -20,6 +20,7 @@ import { DistanceReadout } from './ui/distance';
 import { SkyNotes } from './ui/skynotes';
 import { CompareOverlay, GravityOverlay } from './ui/overlays';
 import { StructureOverlay } from './ui/structure';
+import { CutawayOverlay } from './ui/cutaway';
 import { EarthMoonOverlay } from './ui/earthmoon';
 import { Observatory } from './ui/observatory';
 import { MissionsOverlay } from './ui/missions';
@@ -53,6 +54,7 @@ export class App implements TourHost {
   private compare: CompareOverlay;
   private gravity: GravityOverlay;
   private structure: StructureOverlay;
+  private cutaway: CutawayOverlay;
   private earthMoon: EarthMoonOverlay;
   private observatory: Observatory;
   private missions: MissionsOverlay;
@@ -122,7 +124,8 @@ export class App implements TourHost {
     });
     this.compare = new CompareOverlay(root);
     this.gravity = new GravityOverlay(root);
-    this.structure = new StructureOverlay(root);
+    this.cutaway = new CutawayOverlay(root);
+    this.structure = new StructureOverlay(root, (id) => this.cutaway.openFor(id));
     this.earthMoon = new EarthMoonOverlay(root, this.state);
     this.observatory = new Observatory(root, this.state);
     this.missions = new MissionsOverlay(root, { selectObject: (id) => this.state.select(id) });
@@ -385,6 +388,7 @@ export class App implements TourHost {
       else if (this.layersPanel.isOpen) this.layersPanel.setOpen(false);
       else if (this.compare.isOpen) this.compare.close();
       else if (this.gravity.isOpen) this.gravity.close();
+      else if (this.cutaway.isOpen) this.cutaway.close();
       else if (this.structure.isOpen) this.structure.close();
       else if (this.earthMoon.isOpen) this.earthMoon.close();
       else if (this.observatory.isOpen) this.observatory.close();
@@ -590,6 +594,7 @@ export class App implements TourHost {
       openMeteors: () => this.meteors.open(),
       openAtlas: () => this.atlas.open(),
       openStructure: (id: string) => this.structure.openFor(id),
+      openCutaway: (id: string) => this.cutaway.openFor(id),
       openEarthMoon: () => this.earthMoon.open(),
       openObservatory: (id?: string) => (id ? this.observatory.openFor(id) : this.observatory.open()),
       system: this.system,

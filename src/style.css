@@ -4192,3 +4192,309 @@ button.sim-date:hover {
   margin: 2px 0 0;
   line-height: 1.5;
 }
+
+/* ------------------------------------------------------ 3D cross-section --- */
+
+.cut3d {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.cut3d-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cut3d-head {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.cut3d-name {
+  font-family: var(--display, var(--sans));
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.cut3d-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-top: 3px;
+}
+
+.cut3d-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.cut3d-row {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  gap: 9px;
+  align-items: start;
+  text-align: left;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  background: rgba(102, 224, 255, 0.03);
+  clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.cut3d-row:hover {
+  background: var(--accent-soft);
+  border-color: var(--line);
+}
+
+.cut3d-row.active {
+  background: rgba(102, 224, 255, 0.14);
+  border-color: var(--line-strong);
+}
+
+.cut3d-row i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 4px;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.cut3d-row b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.cut3d-row small {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  margin: 1px 0 3px;
+}
+
+.cut3d-row em {
+  display: block;
+  font-style: normal;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+/* --- stage */
+
+.cut3d-stage {
+  position: relative;
+  min-height: min(60vh, 520px);
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(120% 90% at 50% 45%, rgba(102, 224, 255, 0.05), transparent 70%),
+    rgba(3, 8, 16, 0.5);
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+  overflow: hidden;
+}
+
+.cut3d-canvas,
+.cut3d-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.cut3d-canvas {
+  touch-action: none;
+  cursor: grab;
+}
+
+.cut3d-canvas:active {
+  cursor: grabbing;
+}
+
+.cut3d-lines {
+  pointer-events: none;
+}
+
+.cut3d-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.cut3d-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: auto;
+  display: block;
+  text-align: left;
+  padding: 5px 9px;
+  background: rgba(4, 12, 22, 0.82);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  transition: opacity 0.25s ease, background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.cut3d-label.shown {
+  opacity: 1;
+}
+
+.cut3d-label[data-side='left'] {
+  border-left: 1px solid var(--line);
+  border-right: 2px solid var(--accent);
+  transform-origin: right center;
+}
+
+.cut3d-label b {
+  display: block;
+  font-family: var(--display, var(--sans));
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.cut3d-label small {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-top: 1px;
+}
+
+.cut3d-label:hover,
+.cut3d-label.active {
+  background: rgba(10, 32, 52, 0.92);
+  border-color: var(--accent);
+}
+
+/* labels are anchored by their inner edge so the leader always meets the card */
+.cut3d-label[data-side='right'] {
+  translate: 0 -50%;
+}
+
+.cut3d-label[data-side='left'] {
+  translate: -100% -50%;
+}
+
+.cut3d-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.cut3d-controls {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: calc(100% - 20px);
+}
+
+.cut3d-cut {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  background: rgba(4, 12, 22, 0.8);
+  border: 1px solid var(--line);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.cut3d-cut input {
+  width: 92px;
+}
+
+.cut3d-rotate.active {
+  color: var(--accent);
+  border-color: var(--line-strong);
+  background: var(--accent-soft);
+}
+
+.structure-3d {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  color: var(--accent);
+  border-color: var(--line-strong);
+}
+
+.structure-3d:hover {
+  background: var(--accent-soft);
+}
+
+@media (max-width: 860px) {
+  .cut3d {
+    grid-template-columns: 1fr;
+  }
+
+  .cut3d-stage {
+    min-height: 48vh;
+    order: -1;
+  }
+
+  .cut3d-rows {
+    max-height: none;
+  }
+
+  .cut3d-label {
+    padding: 4px 7px;
+    /* a phone-width stage cannot hold a full-width callout on each side */
+    max-width: 46%;
+    white-space: normal;
+  }
+
+  .cut3d-label b {
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+  }
+
+  .cut3d-label small {
+    font-size: 8.5px;
+  }
+
+  .cut3d-hint {
+    display: none;
+  }
+
+  .cut3d-cut input {
+    width: 70px;
+  }
+}
+
+/* the 3D section opens over the 2D structure view that launches it */
+.overlay.overlay-cutaway {
+  z-index: 72;
+}

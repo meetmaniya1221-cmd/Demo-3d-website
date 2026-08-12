@@ -72,6 +72,9 @@ export interface TextureInfo {
 /** One shell of a body's interior model, ordered inner → outer. */
 export interface InteriorLayer {
   name: string;
+  /** Short caption for the 3D cross-section callout, e.g. "FUSION REACTIONS".
+   *  Optional: the callout falls back to the layer's measured extent. */
+  tagline?: string;
   /** Outer edge of this layer as a fraction of the body's radius (0..1]. */
   outerRadiusFraction: number;
   /** True thickness in km for the legend, when the drawn fraction is
