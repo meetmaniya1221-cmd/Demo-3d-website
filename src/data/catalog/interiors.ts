@@ -16,6 +16,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Core',
+        tagline: 'Fusion reactions · ~15 million °C',
         outerRadiusFraction: 0.25,
         color: 0xfff3c4,
         note: 'Hydrogen fuses into helium at ~15 million °C - the engine of the Solar System.',
@@ -23,6 +24,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Radiative zone',
+        tagline: 'Heat radiates outward',
         outerRadiusFraction: 0.7,
         color: 0xffc069,
         note: 'Photons random-walk outward for tens of thousands of years.',
@@ -30,6 +32,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Convective zone',
+        tagline: 'Heat circles in thermal columns',
         outerRadiusFraction: 0.99,
         color: 0xf08b3c,
         note: 'Hot plasma rises and sinks like water boiling in a pot.',
@@ -37,6 +40,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Photosphere',
+        tagline: 'Visible surface · ~5,500 °C',
         outerRadiusFraction: 1,
         thicknessKm: 400, // drawn thicker than true scale so it stays visible
         color: 0xffe9b8,

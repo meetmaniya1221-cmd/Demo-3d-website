@@ -33,9 +33,11 @@ export class StructureOverlay extends Overlay {
   private currentId = 'earth';
   private bodies: CatalogObject[];
   private pickerEl!: HTMLElement;
+  private onCutaway?: (id: string) => void;
 
-  constructor(parent: HTMLElement) {
+  constructor(parent: HTMLElement, onCutaway?: (id: string) => void) {
     super(parent, 'Interior structure', 'structure-title');
+    this.onCutaway = onCutaway;
     this.bodies = ORDER.map((id) => catalogObject(id)).filter(
       (o): o is CatalogObject => !!o?.interior,
     );
@@ -64,6 +66,10 @@ export class StructureOverlay extends Overlay {
       <div class="structure-main">
         <div class="structure-canvas-wrap"><canvas></canvas></div>
         <div class="structure-side">
+          <button class="chip structure-3d" data-sfx="none">
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="7" cy="7" r="6"/><path d="M7 1a6 6 0 0 1 0 12M7 1v12"/></svg>
+            Explore in 3D
+          </button>
           <div class="structure-legend"></div>
           <p class="overlay-note structure-evidence"><b>How we know:</b> ${interior.evidence}</p>
           <p class="fine-print structure-sources">Source: ${interior.sources
@@ -121,6 +127,13 @@ export class StructureOverlay extends Overlay {
           </div>`;
       })
       .join('');
+
+    const btn3d = this.bodyEl.querySelector<HTMLButtonElement>('.structure-3d')!;
+    if (this.onCutaway) {
+      btn3d.addEventListener('click', () => this.onCutaway!(this.currentId));
+    } else {
+      btn3d.remove();
+    }
 
     this.draw(def);
   }

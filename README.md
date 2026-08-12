@@ -46,6 +46,16 @@ worlds, every layer tagged OBSERVED (Apollo seismometers, InSight
 marsquakes, helioseismology, Cassini's libration measurements) or
 MODELLED (gravity-field inference) - with the evidence spelled out.
 
+**3D cross-section.** From any structure view, *Explore in 3D* opens the
+same layer model as a real sphere with a wedge sawn out of it: nested
+shells you can orbit, zoom and open or close with a cut slider, flat
+section faces showing the concentric bands, and callouts pinned to the
+layers they name - they travel with the model and drop out when the body
+turns in front of them. The Sun renders as live plasma (a white-hot
+fusing core, diffusing radiative zone, boiling convective cells,
+granulated photosphere with convection sparks riding the cut face);
+solid worlds render lit, so a rocky mantle never glows like a star.
+
 **The Observatory.** Three sky instruments: a first-person planetarium -
 stand anywhere on Earth (click the world map, pick from 89 cities, dial in
 degrees and minutes, or use your device's location), drag to look around a
