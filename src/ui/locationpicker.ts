@@ -86,7 +86,7 @@ export class LocationPicker {
               Find my location
             </button>
             <input class="loc-filter" type="search" placeholder="Filter places…" aria-label="Filter the place list" autocomplete="off" spellcheck="false" />
-            <div class="loc-list" role="listbox" aria-label="Places"></div>
+            <div class="loc-list" role="listbox" tabindex="0" aria-label="Places"></div>
           </div>
           <div class="locpicker-map-col">
             <canvas class="loc-map" tabindex="0" aria-label="World map - click or drag to choose a position"></canvas>
@@ -97,23 +97,23 @@ export class LocationPicker {
                   <button class="loc-arrow" data-act="hemi-prev" aria-label="Toggle north or south">◀</button>
                   <span class="loc-hemi" data-field="hemi">NORTH</span>
                   <button class="loc-arrow" data-act="hemi-next" aria-label="Toggle north or south">▶</button>
-                  <button class="loc-arrow" data-act="deg-dn" aria-label="Latitude degrees down">◀</button>
+                  <button class="loc-arrow" data-act="deg-dn" aria-label="One degree further south">◀</button>
                   <span class="loc-num" data-field="deg">00°</span>
-                  <button class="loc-arrow" data-act="deg-up" aria-label="Latitude degrees up">▶</button>
-                  <button class="loc-arrow" data-act="min-dn" aria-label="Latitude minutes down">◀</button>
+                  <button class="loc-arrow" data-act="deg-up" aria-label="One degree further north">▶</button>
+                  <button class="loc-arrow" data-act="min-dn" aria-label="One minute further south">◀</button>
                   <span class="loc-num" data-field="min">00′</span>
-                  <button class="loc-arrow" data-act="min-up" aria-label="Latitude minutes up">▶</button>
+                  <button class="loc-arrow" data-act="min-up" aria-label="One minute further north">▶</button>
                 </div>
                 <div class="loc-stepper-row" data-axis="lon">
                   <button class="loc-arrow" data-act="hemi-prev" aria-label="Toggle east or west">◀</button>
                   <span class="loc-hemi" data-field="hemi">EAST</span>
                   <button class="loc-arrow" data-act="hemi-next" aria-label="Toggle east or west">▶</button>
-                  <button class="loc-arrow" data-act="deg-dn" aria-label="Longitude degrees down">◀</button>
+                  <button class="loc-arrow" data-act="deg-dn" aria-label="One degree further west">◀</button>
                   <span class="loc-num" data-field="deg">00°</span>
-                  <button class="loc-arrow" data-act="deg-up" aria-label="Longitude degrees up">▶</button>
-                  <button class="loc-arrow" data-act="min-dn" aria-label="Longitude minutes down">◀</button>
+                  <button class="loc-arrow" data-act="deg-up" aria-label="One degree further east">▶</button>
+                  <button class="loc-arrow" data-act="min-dn" aria-label="One minute further west">◀</button>
                   <span class="loc-num" data-field="min">00′</span>
-                  <button class="loc-arrow" data-act="min-up" aria-label="Longitude minutes up">▶</button>
+                  <button class="loc-arrow" data-act="min-up" aria-label="One minute further east">▶</button>
                 </div>
               </div>
               <div class="loc-actions">
@@ -156,6 +156,21 @@ export class LocationPicker {
     this.root.querySelector('.loc-ok')!.addEventListener('click', () => this.apply());
     this.root.querySelector('.loc-geo')!.addEventListener('click', () => this.useDeviceLocation());
     this.filterEl.addEventListener('input', () => this.renderList());
+    // arrow-key navigation inside the listbox (ARIA listbox pattern)
+    this.listEl.addEventListener('keydown', (e) => {
+      const els = Array.from(this.listEl.querySelectorAll<HTMLButtonElement>('.loc-row'));
+      if (!els.length) return;
+      const cur = Math.max(0, els.findIndex((el) => el === document.activeElement || el.tabIndex === 0));
+      let next = cur;
+      if (e.key === 'ArrowDown') next = Math.min(els.length - 1, cur + 1);
+      else if (e.key === 'ArrowUp') next = Math.max(0, cur - 1);
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = els.length - 1;
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.rove(els, next, true);
+    });
 
     // map interaction: click or drag anywhere on Earth
     const setFromEvent = (e: PointerEvent) => {
@@ -198,17 +213,18 @@ export class LocationPicker {
         if (act === 'hemi-prev' || act === 'hemi-next') {
           v = -v0;
         } else {
-          // work in whole degrees + minutes so the display and the value stay
-          // in lockstep, and clamp at zero instead of flipping hemisphere
+          // the arrows move the position itself (north/east positive) in whole
+          // degrees and minutes, so stepping across the equator or the prime
+          // meridian just carries on into the other hemisphere - no dead spot
+          // at zero, and the display can never drift from the value
           const { deg, min, sign } = toDegMin(v0);
-          let total = deg * 60 + min;
+          let total = sign * (deg * 60 + min);
           if (act === 'deg-up') total += 60;
           else if (act === 'deg-dn') total -= 60;
           else if (act === 'min-up') total += 1;
           else if (act === 'min-dn') total -= 1;
           const limit = (isLat ? 90 : 180) * 60;
-          total = Math.max(0, Math.min(limit, total));
-          v = (sign * total) / 60;
+          v = Math.max(-limit, Math.min(limit, total)) / 60;
         }
         if (isLat) this.setSite(v, this.lon, '');
         else this.setSite(this.lat, v, '');
@@ -269,11 +285,13 @@ export class LocationPicker {
   }
 
   private setSite(lat: number, lon: number, name: string): void {
-    this.lat = Math.max(-90, Math.min(90, lat));
+    // "+ 0" normalises -0, which would otherwise test as >= 0 and label the
+    // southern hemisphere NORTH
+    this.lat = Math.max(-90, Math.min(90, lat)) + 0;
     // longitude wraps the globe; the +180 edge stays +180 so dragging to the
     // right edge of the map does not snap the crosshair to the left one
     const wrapped = ((lon + 180) % 360 + 360) % 360 - 180;
-    this.lon = wrapped === -180 && lon > 0 ? 180 : wrapped;
+    this.lon = (wrapped === -180 && lon > 0 ? 180 : wrapped) + 0;
     // only an explicit pick carries a place name; anything else is a free
     // position that the readout describes as "near <city>"
     this.name = name;
@@ -311,42 +329,52 @@ export class LocationPicker {
     this.listEl.innerHTML = rows.length
       ? rows
           .map(
-            (c) =>
-              `<button class="loc-row" role="option" aria-selected="false" data-name="${c.name}" data-sfx="none"><span>${c.name}</span><small>${countryName(c.cc)}</small></button>`,
+            (c, i) =>
+              `<button class="loc-row" role="option" aria-selected="false" tabindex="${i ? -1 : 0}" data-name="${c.name}" data-sfx="none"><span>${c.name}</span><small>${countryName(c.cc)}</small></button>`,
           )
           .join('')
       : '<div class="loc-empty">No place matches that.</div>';
-    for (const el of Array.from(this.listEl.querySelectorAll<HTMLButtonElement>('.loc-row'))) {
+    const els = Array.from(this.listEl.querySelectorAll<HTMLButtonElement>('.loc-row'));
+    for (const el of els) {
       el.addEventListener('click', () => {
         const c = CITIES.find((x) => x.name === el.dataset.name);
         if (!c) return;
         sound.play('click', 0.18);
+        this.rove(els, els.indexOf(el), false);
         this.setSite(c.lat, c.lon, c.name);
       });
     }
     this.syncFields();
   }
 
+  /** Roving tabindex: the list is a single tab stop, arrows walk the rows. */
+  private rove(els: HTMLButtonElement[], i: number, focus: boolean): void {
+    els.forEach((el, k) => (el.tabIndex = k === i ? 0 : -1));
+    if (focus) els[i]?.focus();
+  }
+
   private useDeviceLocation(): void {
     const btn = this.root.querySelector<HTMLButtonElement>('.loc-geo')!;
+    const label = (text: string, failed: boolean) => {
+      btn.classList.remove('busy');
+      btn.classList.toggle('failed', failed);
+      btn.lastChild!.textContent = text;
+    };
     if (!navigator.geolocation) {
-      btn.classList.add('failed');
-      btn.lastChild!.textContent = ' Location unavailable';
+      label(' Location unavailable', true);
       return;
     }
     sound.play('click', 0.18);
+    // clear any earlier refusal: this attempt gets to report its own result
+    label(' Find my location', false);
     btn.classList.add('busy');
     navigator.geolocation.getCurrentPosition(
       (p) => {
-        btn.classList.remove('busy');
+        label(' Find my location', false);
         this.setSite(p.coords.latitude, p.coords.longitude, '');
         sound.play('select', 0.35);
       },
-      () => {
-        btn.classList.remove('busy');
-        btn.classList.add('failed');
-        btn.lastChild!.textContent = ' Location denied';
-      },
+      () => label(' Location denied', true),
       { timeout: 8000, maximumAge: 600000 },
     );
   }
