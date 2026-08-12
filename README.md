@@ -47,10 +47,11 @@ marsquakes, helioseismology, Cassini's libration measurements) or
 MODELLED (gravity-field inference) - with the evidence spelled out.
 
 **The Observatory.** Three sky instruments: a first-person planetarium -
-stand at any latitude/longitude (16 city presets or custom), drag to look
-around a real horizon with all eight compass points, the Milky Way band,
-constellations, the Moon with its correct phase and the planets, all
-driven by the simulation clock; the stellar neighbourhood mapped out to
+stand anywhere on Earth (click the world map, pick from 89 cities, dial in
+degrees and minutes, or use your device's location), drag to look around a
+real horizon with all eight compass points, **5,044 catalogued stars, all 88
+constellations**, the real Milky Way band, the Moon with its correct phase
+and the planets, all driven by the simulation clock; the stellar neighbourhood mapped out to
 Deneb with real Gaia/Hipparcos distances (ly and parsecs), published
 temperatures and physically-derived star colours; and the Messier
 highlights with real Hubble / NOIRLab / EHT imagery - which also render
@@ -99,8 +100,9 @@ lie it is currently telling, and the guided tour ends by taking the lie
 away.
 
 **An astronomical navigator, not a landing page.** Text-only instrument
-labels, thin orbit paths, an ecliptic reference grid with AU rings, real
-constellation figures over ~70 real bright stars, and a right-edge
+labels, thin orbit paths, an ecliptic reference grid with AU rings, all 88
+constellation figures over 5,044 catalogued stars coloured by their real
+measured temperature, and a right-edge
 distance readout that picks its own unit (km → million km → AU). A View
 panel toggles every layer; the default view shows a clean eight-planet
 system and the deep catalog (asteroids, comets, dwarfs) is one checkbox

@@ -17,12 +17,26 @@
  *    observational imagery from Hubble, NOIRLab and the EHT.
  */
 import { PLANETS, keplerPosition } from '../data/bodies';
-import { STARS, FIGURES } from '../scene/constellations';
 import { NEAR_STARS, STAR_SOURCES, lyToPc, type NearStar } from '../data/catalog/stars';
 import { DEEP_SKY, DEEP_SKY_SOURCES, type DeepSkyObject } from '../data/catalog/deepsky';
+import {
+  FIGURES,
+  MILKY_WAY,
+  MILKY_WAY_COUNT,
+  NAMED_STARS,
+  STAR_COUNT,
+  STAR_DEC,
+  STAR_MAG,
+  STAR_RA,
+  STAR_TEMP,
+  tempToCss,
+  tempToRGB,
+} from '../data/catalog/skydata';
 import type { AppState } from '../sim/state';
 import { fmtSimDate, fmtSimTime } from './format';
 import { Overlay } from './overlays';
+import { LocationPicker, fmtLat, fmtLon, nearestCity, type SiteChoice } from './locationpicker';
+import { countryName } from '../data/catalog/worldmap';
 import { sound } from '../audio';
 
 const DEG = Math.PI / 180;
@@ -109,31 +123,6 @@ function fmtPc(ly: number): string {
   return `${(pc / 1e6).toFixed(2)} Mpc`;
 }
 
-/**
- * Approximate sRGB colour of a blackbody at temperature K - the honest way
- * to colour a star when no true-colour imagery exists (standard
- * Planckian-locus fit, clamped to the stellar range).
- */
-function tempToRGB(kelvin: number): [number, number, number] {
-  const t = Math.max(2000, Math.min(30000, kelvin)) / 100;
-  let r: number, g: number, b: number;
-  if (t <= 66) {
-    r = 255;
-    g = Math.max(0, Math.min(255, 99.47 * Math.log(t) - 161.12));
-    b = t <= 19 ? 0 : Math.max(0, Math.min(255, 138.52 * Math.log(t - 10) - 305.04));
-  } else {
-    r = Math.max(0, Math.min(255, 329.7 * Math.pow(t - 60, -0.1332)));
-    g = Math.max(0, Math.min(255, 288.12 * Math.pow(t - 60, -0.0755)));
-    b = 255;
-  }
-  return [r | 0, g | 0, b | 0];
-}
-
-function tempToCss(kelvin: number, alpha = 1): string {
-  const [r, g, b] = tempToRGB(kelvin);
-  return alpha >= 1 ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${alpha})`;
-}
-
 /** Relative display size for the near-star map from the luminosity class. */
 function starClassSize(spectral: string): number {
   if (/I[ab]|Ia|Ib(?!I)/.test(spectral) && !spectral.includes('III') && !spectral.includes('IV')) return 5.6; // supergiants
@@ -178,117 +167,132 @@ const PLANET_CHART: Array<{ id: string; label: string; color: string; nakedEye: 
   { id: 'neptune', label: 'Neptune', color: '#7fa8e8', nakedEye: false },
 ];
 
-/** Observer presets - a spread of latitudes so the sky visibly changes. */
-const LOCATIONS: Array<{ name: string; lat: number; lon: number }> = [
-  { name: 'Reykjavik, Iceland', lat: 64.1, lon: -21.9 },
-  { name: 'London, UK', lat: 51.5, lon: -0.1 },
-  { name: 'Paris, France', lat: 48.9, lon: 2.4 },
-  { name: 'New York, USA', lat: 40.7, lon: -74.0 },
-  { name: 'Tokyo, Japan', lat: 35.7, lon: 139.7 },
-  { name: 'Los Angeles, USA', lat: 34.1, lon: -118.2 },
-  { name: 'Cairo, Egypt', lat: 30.0, lon: 31.2 },
-  { name: 'Delhi, India', lat: 28.6, lon: 77.2 },
-  { name: 'Honolulu, USA', lat: 21.3, lon: -157.9 },
-  { name: 'Mexico City, Mexico', lat: 19.4, lon: -99.1 },
-  { name: 'Singapore', lat: 1.4, lon: 103.8 },
-  { name: 'Nairobi, Kenya', lat: -1.3, lon: 36.8 },
-  { name: 'Rio de Janeiro, Brazil', lat: -22.9, lon: -43.2 },
-  { name: 'Sydney, Australia', lat: -33.9, lon: 151.2 },
-  { name: 'Cape Town, South Africa', lat: -33.9, lon: 18.4 },
-  { name: 'Auckland, New Zealand', lat: -36.8, lon: 174.8 },
-];
-
 const WINDS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
 
 function windName(az: number): string {
   return WINDS[Math.round(((az % 360) + 360) % 360 / 22.5) % 16];
 }
 
-/** Faint background stars: fixed random RA/Dec so they rotate with the real
- *  sky. Procedural backdrop, not a catalog - the named stars are real. */
-interface FaintStar { raDeg: number; decDeg: number; mag: number }
-let FAINT_CACHE: FaintStar[] | null = null;
-function faintStars(): FaintStar[] {
-  if (FAINT_CACHE) return FAINT_CACHE;
-  let s = 20260812;
-  const rnd = () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-  const out: FaintStar[] = [];
-  for (let i = 0; i < 980; i++) {
-    out.push({
-      raDeg: rnd() * 360,
-      decDeg: Math.asin(2 * rnd() - 1) / DEG,
-      mag: 3.7 + rnd() * 2.7,
-    });
-  }
-  FAINT_CACHE = out;
-  return out;
+/** Equatorial unit vector for RA/Dec in degrees. */
+function eqVec(raDeg: number, decDeg: number, out: Float32Array, at: number): void {
+  const ra = raDeg * DEG;
+  const dec = decDeg * DEG;
+  const cd = Math.cos(dec);
+  out[at] = cd * Math.cos(ra);
+  out[at + 1] = cd * Math.sin(ra);
+  out[at + 2] = Math.sin(dec);
 }
 
 /**
- * Milky Way band: soft patches along the real galactic plane (J2000
- * galactic→equatorial rotation), brightest toward the Sagittarius bulge.
- * The glow texture is procedural; the band's position on the sky is real.
+ * Catalog geometry is fixed, so every direction is turned into an equatorial
+ * unit vector exactly once. Each frame then only rotates them into the
+ * observer's horizon frame - three dot products, no trigonometry per star,
+ * which is what makes 5,000 stars affordable at 60 fps.
  */
-interface MwBlob { raDeg: number; decDeg: number; r: number; a: number }
-let MW_CACHE: MwBlob[] | null = null;
-let MW_SPRITE: HTMLCanvasElement | null = null;
+const STAR_VEC = (() => {
+  const v = new Float32Array(STAR_COUNT * 3);
+  for (let i = 0; i < STAR_COUNT; i++) eqVec(STAR_RA[i], STAR_DEC[i], v, i * 3);
+  return v;
+})();
 
-/** 64px soft radial glow, rendered once and stamped for every band patch. */
+/**
+ * Stars batched by colour and magnitude. Filling 5,000 individual paths costs
+ * hundreds of milliseconds; grouping them into ~60 buckets lets each bucket
+ * be one path with one fill, and lets whole buckets be skipped when twilight
+ * washes the faint end of the catalog out.
+ */
+interface StarBucket {
+  color: string;
+  /** brightest magnitude in the bucket - the whole bucket is skipped above it */
+  magMin: number;
+  size: number;
+  alpha: number;
+  idx: Int32Array;
+}
+
+const STAR_BUCKETS: StarBucket[] = (() => {
+  const TEMP_BINS = [3200, 4000, 5000, 6000, 7500, 10000, 20000];
+  // colour with a representative temperature for each bin, not its upper edge
+  const BIN_TEMP = [2900, 3600, 4500, 5500, 6700, 8600, 14000];
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < STAR_COUNT; i++) {
+    let t = 0;
+    while (t < TEMP_BINS.length - 1 && STAR_TEMP[i] > TEMP_BINS[t]) t++;
+    const m = Math.min(11, Math.max(0, Math.floor((STAR_MAG[i] + 2) / 0.75)));
+    const key = t * 16 + m;
+    const list = groups.get(key);
+    if (list) list.push(i);
+    else groups.set(key, [i]);
+  }
+  const out: StarBucket[] = [];
+  for (const [key, list] of groups) {
+    const t = Math.floor(key / 16);
+    const m = key % 16;
+    const magMin = m * 0.75 - 2;
+    const magMid = magMin + 0.375;
+    const [r, g, b] = tempToRGB(BIN_TEMP[t]);
+    out.push({
+      // the dark-adapted eye sees little colour in faint points - wash to white
+      color: `rgb(${(r * 0.5 + 128) | 0},${(g * 0.5 + 128) | 0},${(b * 0.5 + 128) | 0})`,
+      magMin,
+      size: Math.max(0.45, 2.9 - magMid * 0.42),
+      alpha: Math.min(1, Math.max(0.12, 1.06 - magMid * 0.13)),
+      idx: Int32Array.from(list),
+    });
+  }
+  // brightest buckets last so they paint over the faint wash
+  return out.sort((a, b) => b.magMin - a.magMin);
+})();
+
+/** Constellation stick figures as vector pairs, plus their label anchors. */
+const FIGURE_VEC = FIGURES.map((f) => ({
+  id: f.id,
+  name: f.name,
+  rank: f.rank,
+  segments: f.segments.map((seg) => {
+    const n = seg.length / 2;
+    const v = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) eqVec(seg[i * 2], seg[i * 2 + 1], v, i * 3);
+    return v;
+  }),
+  label: (() => {
+    const v = new Float32Array(3);
+    eqVec(f.labelRa, f.labelDec, v, 0);
+    return v;
+  })(),
+}));
+
+/** Milky Way sample points: vector + brightness level. */
+const MW_VEC = (() => {
+  const v = new Float32Array(MILKY_WAY_COUNT * 3);
+  for (let i = 0; i < MILKY_WAY_COUNT; i++) {
+    eqVec(MILKY_WAY[i * 3], MILKY_WAY[i * 3 + 1], v, i * 3);
+  }
+  return v;
+})();
+
+/** 64px soft glow, stamped once per Milky Way sample. */
+let MW_SPRITE: HTMLCanvasElement | null = null;
 function mwSprite(): HTMLCanvasElement {
   if (MW_SPRITE) return MW_SPRITE;
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = c.getContext('2d')!;
-  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 32);
-  grad.addColorStop(0, 'rgba(200,214,238,0.9)');
-  grad.addColorStop(0.55, 'rgba(200,214,238,0.28)');
-  grad.addColorStop(1, 'rgba(200,214,238,0)');
+  const grad = g.createRadialGradient(32, 32, 1, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(206,220,244,0.85)');
+  grad.addColorStop(0.5, 'rgba(200,214,238,0.26)');
+  grad.addColorStop(1, 'rgba(198,212,238,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 64, 64);
   MW_SPRITE = c;
   return c;
 }
-function milkyWayBlobs(): MwBlob[] {
-  if (MW_CACHE) return MW_CACHE;
-  let s = 19640512;
-  const rnd = () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-  // galactic→equatorial rotation (transpose of the standard J2000
-  // equatorial→galactic matrix), applied row·vector below
-  const M = [
-    [-0.0548755604, 0.4941094279, -0.8676661490],
-    [-0.8734370902, -0.4448296300, -0.1980763734],
-    [-0.4838350155, 0.7469822445, 0.4559837762],
-  ];
-  const out: MwBlob[] = [];
-  for (let i = 0; i < 680; i++) {
-    const l = rnd() * 360;
-    // gaussian-ish latitude scatter, tighter near the plane
-    const b = (rnd() + rnd() + rnd() - 1.5) * 7;
-    const lr = l * DEG;
-    const br = b * DEG;
-    const g = [Math.cos(br) * Math.cos(lr), Math.cos(br) * Math.sin(lr), Math.sin(br)];
-    const ex = M[0][0] * g[0] + M[0][1] * g[1] + M[0][2] * g[2];
-    const ey = M[1][0] * g[0] + M[1][1] * g[1] + M[1][2] * g[2];
-    const ez = M[2][0] * g[0] + M[2][1] * g[1] + M[2][2] * g[2];
-    const eq = raDecOf(ex, ey, ez);
-    // the bulge toward l≈0 glows wider and brighter
-    const centre = 0.5 + 0.5 * Math.cos(lr);
-    out.push({
-      raDeg: eq.raDeg,
-      decDeg: eq.decDeg,
-      r: 9 + rnd() * 10 + centre * 9,
-      a: 0.02 + rnd() * 0.022 + centre * 0.032,
-    });
-  }
-  MW_CACHE = out;
-  return out;
-}
+
+/** Figures in labelling priority order (prominent constellations first). */
+const FIGURE_LABEL_ORDER = [...FIGURE_VEC].sort((a, b) => a.rank - b.rank);
+
+/** Named stars worth labelling, brightest first. */
+const LABEL_STARS = [...NAMED_STARS].sort((a, b) => STAR_MAG[a.i] - STAR_MAG[b.i]);
 
 interface SkyMarker { x: number; y: number; name: string; alt: number; az: number; info: string }
 
@@ -296,9 +300,9 @@ export class Observatory extends Overlay {
   private state: AppState;
   private tab: 'night' | 'stars' | 'deep' = 'night';
   private tabButtons: Record<string, HTMLButtonElement> = {};
-  private latDeg = 40.7;
-  private lonDeg = -74;
-  private locName = 'New York, USA';
+  private latDeg = 40.71;
+  private lonDeg = -74.01;
+  private locName = 'New York';
   private raf = 0;
   private selectedStar: string | null = 'proxima';
   private highlightDso: string | null = null;
@@ -311,6 +315,7 @@ export class Observatory extends Overlay {
   private markers: SkyMarker[] = [];
   private picked: SkyMarker | null = null;
   private lastDrawKey = '';
+  private readonly picker: LocationPicker;
   private lightbox: HTMLElement | null = null;
   private lightboxTrigger: HTMLElement | null = null;
   private lightboxKeyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -337,6 +342,10 @@ export class Observatory extends Overlay {
       this.tabButtons[key] = b;
     }
     slot.appendChild(tabs);
+    // the picker lives at the app root, not inside the dialog: an overlay
+    // with backdrop-filter is a containing block for fixed children, so a
+    // nested full-screen layer would be trapped inside the card
+    this.picker = new LocationPicker(parent);
   }
 
   /** Deep link from search: jump straight to a star or deep-sky object. */
@@ -358,12 +367,14 @@ export class Observatory extends Overlay {
   close(): void {
     cancelAnimationFrame(this.raf);
     this.closeLightbox(false);
+    this.picker.close(false);
     super.close();
   }
 
   private render(): void {
     cancelAnimationFrame(this.raf);
     this.closeLightbox(false);
+    this.picker.close(false);
     for (const [k, b] of Object.entries(this.tabButtons)) {
       b.classList.toggle('active', this.tab === k);
     }
@@ -376,9 +387,6 @@ export class Observatory extends Overlay {
   /* ---------------------------------------------------------- night sky -- */
 
   private renderNight(): void {
-    const locOptions = LOCATIONS.map(
-      (l) => `<option value="${l.name}"${l.name === this.locName ? ' selected' : ''}>${l.name}</option>`,
-    ).join('');
     this.bodyEl.innerHTML = `
       <div class="obs-night">
         <div class="obs-canvas-col obs-pano-col">
@@ -386,59 +394,32 @@ export class Observatory extends Overlay {
           <div class="obs-night-readout"></div>
         </div>
         <div class="obs-side">
-          <label class="obs-loc-label">
-            <span class="u-label">Observer location</span>
-            <select class="obs-loc-select" aria-label="Choose an observing location">
-              <option value="__custom"${LOCATIONS.some((l) => l.name === this.locName) ? '' : ' selected'}>Custom coordinates</option>
-              ${locOptions}
-            </select>
-          </label>
-          <label class="obs-slider">
-            <span class="u-label">Latitude <b class="lat-val"></b></span>
-            <input type="range" min="-90" max="90" step="0.5" value="${this.latDeg}" aria-label="Observer latitude" />
-          </label>
-          <label class="obs-slider">
-            <span class="u-label">Longitude <b class="lon-val"></b></span>
-            <input type="range" min="-180" max="180" step="0.5" value="${this.lonDeg}" aria-label="Observer longitude" />
-          </label>
+          <div class="obs-site-card">
+            <span class="u-label">Observing from</span>
+            <div class="obs-site-name"></div>
+            <div class="obs-site-coords"></div>
+            <button class="chip obs-site-btn" data-sfx="none">
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="6"/><path d="M1 7h12M7 1c3 3.4 3 8.6 0 12M7 1C4 4.4 4 9.6 7 13"/></svg>
+              Change location
+            </button>
+          </div>
           <p class="overlay-note">You are standing on Earth, looking at the real sky for this place and the simulation clock. <b>Drag</b> to look around, <b>scroll</b> to zoom, click any labelled object for its position. Play, rewind or pick a date and watch the sky turn. Positions are good to about a degree.</p>
           <p class="overlay-note obs-planets-legend"></p>
+          <p class="fine-print">${STAR_COUNT.toLocaleString('en-US')} stars to magnitude 6 and all 88 constellations - Yale Bright Star Catalogue / HYG via <a href="https://github.com/ofrohn/d3-celestial" target="_blank" rel="noopener">d3-celestial</a>.</p>
         </div>
       </div>
     `;
-    const [latSlider, lonSlider] = Array.from(
-      this.bodyEl.querySelectorAll<HTMLInputElement>('input[type=range]'),
-    );
-    const locSelect = this.bodyEl.querySelector<HTMLSelectElement>('.obs-loc-select')!;
-    const latVal = this.bodyEl.querySelector('.lat-val')!;
-    const lonVal = this.bodyEl.querySelector('.lon-val')!;
-    const syncText = () => {
-      latVal.textContent = `${Math.abs(this.latDeg).toFixed(1).replace(/\.0$/, '')}°${this.latDeg >= 0 ? 'N' : 'S'}`;
-      lonVal.textContent =
-        this.lonDeg === 0 ? '0°' : `${Math.abs(this.lonDeg).toFixed(1).replace(/\.0$/, '')}°${this.lonDeg > 0 ? 'E' : 'W'}`;
-    };
-    const fromSliders = () => {
-      this.latDeg = Number(latSlider.value);
-      this.lonDeg = Number(lonSlider.value);
-      this.locName = '__custom';
-      locSelect.value = '__custom';
-      syncText();
-    };
-    latSlider.addEventListener('input', fromSliders);
-    lonSlider.addEventListener('input', fromSliders);
-    locSelect.addEventListener('change', () => {
-      const loc = LOCATIONS.find((l) => l.name === locSelect.value);
-      if (!loc) return;
-      this.locName = loc.name;
-      this.latDeg = loc.lat;
-      this.lonDeg = loc.lon;
-      latSlider.value = String(loc.lat);
-      lonSlider.value = String(loc.lon);
-      this.picked = null;
-      syncText();
-      sound.play('click', 0.18);
+    this.syncSiteCard();
+    this.bodyEl.querySelector('.obs-site-btn')!.addEventListener('click', () => {
+      sound.play('click', 0.2);
+      this.picker.open({ lat: this.latDeg, lon: this.lonDeg, name: this.locName }, (site: SiteChoice) => {
+        this.latDeg = site.lat;
+        this.lonDeg = site.lon;
+        this.locName = site.name;
+        this.picked = null;
+        this.syncSiteCard();
+      });
     });
-    syncText();
 
     // --- look-around input
     const canvas = this.bodyEl.querySelector<HTMLCanvasElement>('.obs-pano')!;
@@ -497,6 +478,19 @@ export class Observatory extends Overlay {
     loop();
   }
 
+  /** Refresh the "observing from" card after a location change. */
+  private syncSiteCard(): void {
+    const nameEl = this.bodyEl.querySelector('.obs-site-name');
+    const coordEl = this.bodyEl.querySelector('.obs-site-coords');
+    if (!nameEl || !coordEl) return;
+    const city = nearestCity(this.latDeg, this.lonDeg);
+    const named = this.locName && city && city.name === this.locName ? city : null;
+    nameEl.textContent = named
+      ? `${named.name}, ${countryName(named.cc)}`
+      : this.locName || (city ? `near ${city.name}` : 'Open position');
+    coordEl.textContent = `${fmtLat(this.latDeg)} · ${fmtLon(this.lonDeg)}`;
+  }
+
   private pickSkyObject(canvas: HTMLCanvasElement, clientX: number, clientY: number): void {
     const rect = canvas.getBoundingClientRect();
     const x = clientX - rect.left;
@@ -533,12 +527,11 @@ export class Observatory extends Overlay {
     const uy = rx * fz - rz * fx;
     const uz = -rx * fy;
     const f = h / 2 / Math.tan((this.fovDeg / 2) * DEG);
-    return (altDeg: number, azDeg: number): [number, number] | null => {
-      const alt = altDeg * DEG;
-      const az = azDeg * DEG;
-      const dx = Math.sin(az) * Math.cos(alt);
-      const dy = Math.sin(alt);
-      const dz = Math.cos(az) * Math.cos(alt);
+    // shared scratch: the hot loops project thousands of points per frame and
+    // must not allocate a pair per point
+    const out: [number, number] = [0, 0];
+    /** Project a horizon-frame direction (east, up, north). */
+    const vec = (dx: number, dy: number, dz: number): [number, number] | null => {
       const cz = dx * fx + dy * fy + dz * fz;
       if (cz < 0.03) return null;
       const cx = dx * rx + dz * rz;
@@ -546,8 +539,37 @@ export class Observatory extends Overlay {
       const sx = w / 2 + (cx / cz) * f;
       const sy = h / 2 - (cy / cz) * f;
       if (sx < -160 || sx > w + 160 || sy < -160 || sy > h + 160) return null;
-      return [sx, sy];
+      out[0] = sx;
+      out[1] = sy;
+      return out;
     };
+    const altAzProject = (altDeg: number, azDeg: number): [number, number] | null => {
+      const alt = altDeg * DEG;
+      const az = azDeg * DEG;
+      const ca = Math.cos(alt);
+      const p = vec(Math.sin(az) * ca, Math.sin(alt), Math.cos(az) * ca);
+      return p ? [p[0], p[1]] : null;
+    };
+    return { project: altAzProject, vec };
+  }
+
+  /**
+   * Rotation from the equatorial frame into the observer's horizon frame.
+   * Rows are the east / zenith / north unit vectors, so one dot product per
+   * axis turns a catalog vector into (east, up, north).
+   */
+  private horizonBasis(latDeg: number, lstDeg: number): Float64Array {
+    const lat = latDeg * DEG;
+    const lst = lstDeg * DEG;
+    const sl = Math.sin(lat);
+    const cl = Math.cos(lat);
+    const ss = Math.sin(lst);
+    const cs = Math.cos(lst);
+    const m = new Float64Array(9);
+    m[0] = -ss; m[1] = cs; m[2] = 0;                    // east
+    m[3] = cl * cs; m[4] = cl * ss; m[5] = sl;          // zenith
+    m[6] = -sl * cs; m[7] = -sl * ss; m[8] = cl;        // north
+    return m;
   }
 
   /** Sky + ground colours for the current solar altitude. */
@@ -601,7 +623,17 @@ export class Observatory extends Overlay {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const lst = gmstDeg(d) + this.lonDeg;
-    const project = this.makeProjector(cssW, cssH);
+    const { project, vec } = this.makeProjector(cssW, cssH);
+    const B = this.horizonBasis(this.latDeg, lst);
+    /** Project a catalog vector straight from the equatorial frame. */
+    const projectEq = (v: Float32Array, at: number): [number, number] | null => {
+      const x = v[at], y = v[at + 1], z = v[at + 2];
+      return vec(
+        B[0] * x + B[1] * y + B[2] * z,
+        B[3] * x + B[4] * y + B[5] * z,
+        B[6] * x + B[7] * y + B[8] * z,
+      );
+    };
     this.markers = [];
 
     // ---- sun & daylight state
@@ -619,18 +651,19 @@ export class Observatory extends Overlay {
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, cssW, cssH);
 
-    // ---- Milky Way glow along the real galactic plane (soft sprite so the
-    // band reads as haze, not circles)
+    // ---- Milky Way: soft glows at points sampled from the real brightness
+    // contours of the galactic band (positions real, rendering stylised)
     const starAlpha = pal.starFade;
     if (starAlpha > 0.01) {
       const sprite = mwSprite();
-      for (const mw of milkyWayBlobs()) {
-        const aa = altAz(mw.raDeg, mw.decDeg, this.latDeg, lst);
-        if (aa.alt < -6) continue;
-        const p = project(aa.alt, aa.az);
+      const scale = cssH / 380;
+      for (let i = 0; i < MILKY_WAY_COUNT; i++) {
+        const p = projectEq(MW_VEC, i * 3);
         if (!p) continue;
-        ctx.globalAlpha = mw.a * starAlpha;
-        ctx.drawImage(sprite, p[0] - mw.r, p[1] - mw.r, mw.r * 2, mw.r * 2);
+        const level = MILKY_WAY[i * 3 + 2];
+        const r = (9 + level * 3.2) * scale;
+        ctx.globalAlpha = Math.min(0.22, (0.009 + level * 0.005) * starAlpha);
+        ctx.drawImage(sprite, p[0] - r, p[1] - r, r * 2, r * 2);
       }
       ctx.globalAlpha = 1;
     }
@@ -659,87 +692,119 @@ export class Observatory extends Overlay {
       ctx.setLineDash([]);
     }
 
-    // ---- faint procedural backdrop stars (rotate with the real sky)
-    if (starAlpha > 0.01) {
-      for (const fs of faintStars()) {
-        const aa = altAz(fs.raDeg, fs.decDeg, this.latDeg, lst);
-        if (aa.alt < -1) continue;
-        const p = project(aa.alt, aa.az);
-        if (!p) continue;
-        const r = Math.max(0.4, (6.9 - fs.mag) * 0.3);
-        ctx.fillStyle = `rgba(215,228,248,${(0.28 + (6.4 - fs.mag) * 0.16) * starAlpha})`;
-        ctx.fillRect(p[0] - r / 2, p[1] - r / 2, r, r);
-      }
-    }
-
-    // ---- constellation figures + real stars
-    const starPos = new Map<string, [number, number] | null>();
-    const starAlt = new Map<string, { alt: number; az: number }>();
-    for (const s of STARS) {
-      const aa = altAz(s.raH * 15, s.decDeg, this.latDeg, lst);
-      starAlt.set(s.id, aa);
-      starPos.set(s.id, aa.alt < -2 ? null : project(aa.alt, aa.az));
-    }
+    // ---- the 88 constellation figures
     if (starAlpha > 0.02) {
-      ctx.strokeStyle = `rgba(120,160,220,${0.4 * starAlpha})`;
+      ctx.strokeStyle = `rgba(120,160,220,${0.38 * starAlpha})`;
       ctx.lineWidth = 1;
-      for (const fig of FIGURES) {
-        let sumX = 0;
-        let sumY = 0;
-        let nSeg = 0;
-        for (const path of fig.paths) {
-          for (let i = 0; i < path.length - 1; i++) {
-            const a = starPos.get(path[i]);
-            const b = starPos.get(path[i + 1]);
-            if (!a || !b) continue;
-            ctx.beginPath();
-            ctx.moveTo(a[0], a[1]);
-            ctx.lineTo(b[0], b[1]);
-            ctx.stroke();
-            sumX += a[0] + b[0];
-            sumY += a[1] + b[1];
-            nSeg++;
+      ctx.beginPath();
+      for (const fig of FIGURE_VEC) {
+        for (const seg of fig.segments) {
+          let pen = false;
+          for (let i = 0; i < seg.length; i += 3) {
+            const p = projectEq(seg, i);
+            if (!p) {
+              pen = false;
+              continue;
+            }
+            if (pen) ctx.lineTo(p[0], p[1]);
+            else ctx.moveTo(p[0], p[1]);
+            pen = true;
           }
         }
-        if (nSeg >= 2) {
-          ctx.fillStyle = `rgba(126,164,224,${0.5 * starAlpha})`;
-          ctx.font = '600 10px Rajdhani, system-ui, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(fig.name.toUpperCase(), sumX / (2 * nSeg), sumY / (2 * nSeg));
-        }
       }
+      ctx.stroke();
 
-      for (const s of STARS) {
-        const p = starPos.get(s.id);
+      // figure names, thinned so they never pile up
+      const placed: Array<[number, number]> = [];
+      ctx.textAlign = 'center';
+      for (const fig of FIGURE_LABEL_ORDER) {
+        const p = projectEq(fig.label, 0);
         if (!p) continue;
-        const size = Math.max(0.7, 3.2 - s.mag * 0.72);
-        ctx.fillStyle = `rgba(235,242,255,${0.95 * starAlpha})`;
+        const x = p[0];
+        const y = p[1];
+        if (placed.some(([qx, qy]) => Math.abs(qx - x) < 74 && Math.abs(qy - y) < 20)) continue;
+        placed.push([x, y]);
+        ctx.font = fig.rank === 1
+          ? '700 10px Rajdhani, system-ui, sans-serif'
+          : '600 9px Rajdhani, system-ui, sans-serif';
+        ctx.fillStyle = `rgba(126,164,224,${(fig.rank === 1 ? 0.62 : 0.42) * starAlpha})`;
+        ctx.fillText(fig.name.toUpperCase(), x, y);
+      }
+    }
+
+    // ---- every naked-eye star, sized and tinted by its own measurements
+    if (starAlpha > 0.01) {
+      // the faintest stars fade out first as twilight brightens, exactly as
+      // they do for the eye
+      const limit = 6.2 - (1 - starAlpha) * 4.2;
+      const TAU = Math.PI * 2;
+      for (const bucket of STAR_BUCKETS) {
+        if (bucket.magMin > limit) continue;
+        const size = bucket.size;
+        ctx.globalAlpha = bucket.alpha * starAlpha;
+        ctx.fillStyle = bucket.color;
         ctx.beginPath();
-        ctx.arc(p[0], p[1], size, 0, Math.PI * 2);
-        ctx.fill();
-        if (size > 2.2) {
-          // subtle cross-glint on the brightest stars
-          ctx.strokeStyle = `rgba(220,232,255,${0.35 * starAlpha})`;
+        let drew = false;
+        for (let k = 0; k < bucket.idx.length; k++) {
+          const p = projectEq(STAR_VEC, bucket.idx[k] * 3);
+          if (!p) continue;
+          drew = true;
+          if (size < 0.9) {
+            ctx.rect(p[0] - size, p[1] - size, size * 2, size * 2);
+          } else {
+            ctx.moveTo(p[0] + size, p[1]);
+            ctx.arc(p[0], p[1], size, 0, TAU);
+          }
+        }
+        if (drew) ctx.fill();
+        // subtle cross-glint on the brightest handful
+        if (size > 2.0 && drew) {
+          ctx.globalAlpha = bucket.alpha * starAlpha * 0.4;
+          ctx.strokeStyle = bucket.color;
           ctx.lineWidth = 0.8;
           ctx.beginPath();
-          ctx.moveTo(p[0] - size * 2.4, p[1]);
-          ctx.lineTo(p[0] + size * 2.4, p[1]);
-          ctx.moveTo(p[0], p[1] - size * 2.4);
-          ctx.lineTo(p[0], p[1] + size * 2.4);
+          for (let k = 0; k < bucket.idx.length; k++) {
+            const p = projectEq(STAR_VEC, bucket.idx[k] * 3);
+            if (!p) continue;
+            ctx.moveTo(p[0] - size * 2.6, p[1]);
+            ctx.lineTo(p[0] + size * 2.6, p[1]);
+            ctx.moveTo(p[0], p[1] - size * 2.6);
+            ctx.lineTo(p[0], p[1] + size * 2.6);
+          }
           ctx.stroke();
         }
       }
-      // anchor names + pickable markers
+      ctx.globalAlpha = 1;
+
+      // proper names: more of them as you zoom in, never overlapping
+      const nameLimit = this.fovDeg < 40 ? 3.4 : this.fovDeg < 70 ? 2.4 : 1.8;
+      const placedNames: Array<[number, number]> = [];
       ctx.font = '600 9px ui-monospace, monospace';
       ctx.textAlign = 'center';
-      for (const id of ['sirius', 'vega', 'arcturus', 'capella', 'antares', 'polaris', 'canopus', 'betelgeuse', 'rigel', 'altair', 'deneb', 'spica', 'procyon', 'fomalhaut', 'aldebaran', 'pollux', 'regulus', 'acrux']) {
-        const p = starPos.get(id);
+      for (const star of LABEL_STARS) {
+        const mag = STAR_MAG[star.i];
+        if (mag > nameLimit) break; // sorted brightest first
+        const at = star.i * 3;
+        // zenith row of the horizon basis gives the altitude directly
+        const up = B[3] * STAR_VEC[at] + B[4] * STAR_VEC[at + 1] + B[5] * STAR_VEC[at + 2];
+        if (up <= 0) continue;
+        const p = projectEq(STAR_VEC, at);
         if (!p) continue;
-        const aa = starAlt.get(id)!;
-        const def = STARS.find((s) => s.id === id)!;
-        ctx.fillStyle = `rgba(158,189,255,${0.8 * starAlpha})`;
-        ctx.fillText(id.toUpperCase(), p[0], p[1] - 7);
-        this.markers.push({ x: p[0], y: p[1], name: id.toUpperCase(), alt: aa.alt, az: aa.az, info: `star · mag ${def.mag.toFixed(1)}` });
+        const x = p[0];
+        const y = p[1];
+        if (placedNames.some(([qx, qy]) => Math.abs(qx - x) < 60 && Math.abs(qy - y) < 16)) continue;
+        placedNames.push([x, y]);
+        ctx.fillStyle = `rgba(178,205,255,${0.78 * starAlpha})`;
+        ctx.fillText(star.n.toUpperCase(), x, y - 7);
+        const aa = altAz(STAR_RA[star.i], STAR_DEC[star.i], this.latDeg, lst);
+        this.markers.push({
+          x,
+          y,
+          name: star.n.toUpperCase(),
+          alt: aa.alt,
+          az: aa.az,
+          info: `star · mag ${mag.toFixed(1)} · ${Math.round(STAR_TEMP[star.i]).toLocaleString('en-US')} K`,
+        });
       }
     }
 

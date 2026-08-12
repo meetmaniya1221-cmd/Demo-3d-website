@@ -60,24 +60,78 @@ The USGS maps were retrieved from the USGS Astrogeology Science Center
 public archive (`planetarymaps.usgs.gov` / `asc-pds-services` mirror);
 the Pluto color map from NASA's science.nasa.gov asset library.
 
-## Sky
+## Sky catalog
 
-The 15 constellation stick figures and ~70 named bright stars use real J2000
-equatorial coordinates (rounded to roughly 0.1 h / 1°, i.e. accurate to about
-a degree - fine for stick figures). The faint background starfield and the
-Milky Way band are procedural art, not a star catalog. The ecliptic reference
-grid marks true astronomical-unit distances in the current scale mode.
+| Data | Source | Notes |
+| --- | --- | --- |
+| Naked-eye stars | Yale Bright Star Catalogue / HYG database, via [d3-celestial](https://github.com/ofrohn/d3-celestial) | 5,044 stars to visual magnitude 6.0 with B-V colour indices; J2000 positions quantised to 0.01° |
+| Constellation figures | IAU constellations, figure lines via [d3-celestial](https://github.com/ofrohn/d3-celestial) | All 88 constellations (Serpens drawn in its two traditional parts), with label anchors |
+| Milky Way band | Galactic-band brightness contours via [d3-celestial](https://github.com/ofrohn/d3-celestial) | Five nested brightness levels, rasterised and sampled into 3,361 points; the *positions* are the real contours, the soft glow used to draw them is stylised |
 
-The Observatory's first-person night sky computes altitude/azimuth from the
-same star catalog plus the app's own Kepler elements (planets), the leading
-terms of the lunar theory (Meeus - Moon position good to ~0.3°, phase from
-solar elongation) and the standard GMST expression - positions are good to
-about a degree, not ephemeris-grade, and the panel says so. Its Milky Way
-band lies along the real galactic plane (standard J2000 galactic→equatorial
-rotation) but the glow texture is procedural; the faint backdrop stars are
-procedural with fixed random RA/Dec so they rotate correctly with the sky.
-Deep-sky markers in the 3D scene sit at their real J2000 directions on the
-sky sphere; the objects themselves are of course far beyond it.
+Star colours are not decorative: each star's B-V index is converted to an
+effective temperature (Ballesteros 2012) and then to an sRGB colour along the
+Planckian locus, washed toward white because the dark-adapted eye sees little
+colour in faint points. Star size and opacity follow the catalogued visual
+magnitude, and the faint end drops out first as twilight brightens.
+
+The generated modules are `src/data/catalog/skydata.ts` and
+`src/data/catalog/worldmap.ts` - do not hand-edit them.
+
+### d3-celestial licence
+
+The star, constellation and Milky Way data are redistributed under the
+BSD-3-Clause licence:
+
+> Copyright (c) 2015, Olaf Frohn. All rights reserved.
+>
+> Redistribution and use in source and binary forms, with or without
+> modification, are permitted provided that the following conditions are met:
+>
+> 1. Redistributions of source code must retain the above copyright notice,
+>    this list of conditions and the following disclaimer.
+> 2. Redistributions in binary form must reproduce the above copyright notice,
+>    this list of conditions and the following disclaimer in the documentation
+>    and/or other materials provided with the distribution.
+> 3. Neither the name of the copyright holder nor the names of its
+>    contributors may be used to endorse or promote products derived from this
+>    software without specific prior written permission.
+>
+> THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+> AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+> IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+> ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+> LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+> CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+> SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+> INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+> CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+> ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+> POSSIBILITY OF SUCH DAMAGE.
+
+## Observing-location picker
+
+| Data | Source | Notes |
+| --- | --- | --- |
+| Coastlines | [Natural Earth](https://www.naturalearthdata.com/) 1:110m land, via the [world-atlas](https://github.com/topojson/world-atlas) TopoJSON build | Public domain. Decoded, cut at the antimeridian, simplified to ~0.3° and quantised to 0.05° - map detail for a picker, not for navigation |
+| City coordinates | [GeoNames](https://www.geonames.org/) (CC BY 4.0) | 89 curated observing sites; every coordinate was matched by name + country code against the GeoNames dump rather than typed by hand |
+
+"Find my location" uses the browser's own geolocation API, only on request,
+and the coordinate never leaves the page.
+
+## Sky rendering notes
+
+The night sky computes altitude/azimuth from the catalog above plus the app's
+own Kepler elements (planets), the leading terms of the lunar theory (Meeus -
+Moon position good to ~0.3°, phase from solar elongation) and the standard
+GMST expression - positions are good to about a degree, not ephemeris-grade,
+and the panel says so. Deep-sky markers in the 3D scene sit at their real
+J2000 directions on the sky sphere; the objects themselves are of course far
+beyond it. In the 3D orrery the faint background starfield, the Milky Way
+backdrop texture on the sky sphere and the ecliptic reference grid remain
+procedural art - only the night-sky view's band comes from the real contours
+described above. The in-app location picker credits Natural Earth and
+GeoNames directly, and the d3-celestial BSD-3 notice above is also carried
+into the built bundle as a preserved legal comment.
 
 ## Deep-sky imagery (`public/deepsky/`)
 
