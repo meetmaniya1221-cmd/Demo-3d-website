@@ -15,6 +15,7 @@ import type { CatalogObject } from '../data/types';
 import { CutawayScene, MAX_CUT } from '../scene/cutaway';
 import { fmtKm } from './format';
 import { Overlay } from './overlays';
+import { interiorBodies } from './structure';
 
 interface LabelEl {
   el: HTMLButtonElement;
@@ -34,6 +35,8 @@ export class CutawayOverlay extends Overlay {
   private canvas!: HTMLCanvasElement;
   private lineCanvas!: HTMLCanvasElement;
   private stage!: HTMLElement;
+  private tabsEl!: HTMLElement;
+  private tabs = new Map<string, HTMLButtonElement>();
   private labelWrap!: HTMLElement;
   private sideEl!: HTMLElement;
   private cutSlider!: HTMLInputElement;
@@ -45,15 +48,18 @@ export class CutawayOverlay extends Overlay {
   private lastW = 0;
   private lastH = 0;
   private projected = new THREE.Vector3();
+  private onBodyChange?: (id: string) => void;
 
-  constructor(parent: HTMLElement) {
+  constructor(parent: HTMLElement, onBodyChange?: (id: string) => void) {
     super(parent, '3D cross-section', 'cutaway-title');
+    this.onBodyChange = onBodyChange;
     // it opens on top of the 2D structure view it was launched from, so
     // Escape drops back to that view instead of all the way to the scene
     this.root.classList.add('overlay-cutaway');
     // built once: the WebGL canvas must survive re-opens, so only the side
     // panel and the labels are re-rendered per body
     this.bodyEl.innerHTML = `
+      <div class="cut3d-tabs chip-row" role="group" aria-label="Choose a body"></div>
       <div class="cut3d">
         <div class="cut3d-side"></div>
         <div class="cut3d-stage">
@@ -72,6 +78,7 @@ export class CutawayOverlay extends Overlay {
         </div>
       </div>
     `;
+    this.tabsEl = this.bodyEl.querySelector('.cut3d-tabs')!;
     this.stage = this.bodyEl.querySelector('.cut3d-stage')!;
     this.canvas = this.bodyEl.querySelector('.cut3d-canvas')!;
     this.lineCanvas = this.bodyEl.querySelector('.cut3d-lines')!;
@@ -107,6 +114,19 @@ export class CutawayOverlay extends Overlay {
       }
     });
     this.rotateBtn.classList.add('active');
+
+    // Body tabs. Picking one swaps the model outright - the previous body's
+    // geometry, materials and texture are released and the new one is built -
+    // so the viewer only ever holds the body you selected.
+    for (const b of interiorBodies()) {
+      const chip = document.createElement('button');
+      chip.className = 'chip';
+      chip.textContent = b.name;
+      chip.setAttribute('aria-pressed', 'false');
+      chip.addEventListener('click', () => this.showBody(b.id));
+      this.tabsEl.appendChild(chip);
+      this.tabs.set(b.id, chip);
+    }
   }
 
   /** Open on a specific body (any object with a published interior model). */
@@ -115,9 +135,39 @@ export class CutawayOverlay extends Overlay {
     this.open();
   }
 
+  /** The body currently loaded in the viewer. */
+  get bodyId(): string {
+    return this.currentId;
+  }
+
+  /** Diagnostic: which body is loaded, and how much geometry is in the scene. */
+  get info(): { body: string; layers: number; objects: number } {
+    const c = this.scene?.contents ?? { layers: 0, objects: 0 };
+    return { body: this.currentId, ...c };
+  }
+
   protected onOpen(): void {
-    const def = catalogObject(this.currentId);
-    if (!def?.interior) return;
+    // nothing to draw without an interior model, and no reason to spin a
+    // render loop over an empty scene
+    if (!this.showBody(this.currentId)) return;
+    this.lastT = performance.now();
+    cancelAnimationFrame(this.raf);
+    const loop = () => {
+      this.frame();
+      this.raf = requestAnimationFrame(loop);
+    };
+    loop();
+  }
+
+  /**
+   * Load a body into the viewer. This is a real model switch: setBody tears the
+   * previous body down completely before building the new one, so the scene
+   * never holds two bodies at once.
+   */
+  private showBody(id: string): boolean {
+    const def = catalogObject(id);
+    if (!def?.interior) return false;
+    this.currentId = id;
     if (!this.scene) this.scene = new CutawayScene(this.canvas);
     this.scene.setBody(def, `${import.meta.env.BASE_URL}textures/${def.texture?.file ?? `${def.id}.webp`}`);
     this.scene.resetView();
@@ -127,16 +177,16 @@ export class CutawayOverlay extends Overlay {
     this.cutSlider.value = '100';
     this.renderSide(def);
     this.buildLabels(def);
+    for (const [bid, chip] of this.tabs) {
+      const on = bid === id;
+      chip.classList.toggle('active', on);
+      chip.setAttribute('aria-pressed', String(on));
+    }
     // the section swings open on entry, so the cutaway reads as a 3D cut
     this.reveal = 0;
     this.scene.cutAngle = 0;
-    this.lastT = performance.now();
-    cancelAnimationFrame(this.raf);
-    const loop = () => {
-      this.frame();
-      this.raf = requestAnimationFrame(loop);
-    };
-    loop();
+    this.onBodyChange?.(id);
+    return true;
   }
 
   close(): void {
@@ -268,7 +318,7 @@ export class CutawayOverlay extends Overlay {
       const behind = this.projected.z > 1;
       const sx = (this.projected.x * 0.5 + 0.5) * w;
       const sy = (-this.projected.y * 0.5 + 0.5) * h;
-      const visible = !behind && scene.anchorVisible(a.position);
+      const visible = !behind && a.visible;
       lab.visible = visible;
       lab.anchorX = sx;
       lab.anchorY = sy;

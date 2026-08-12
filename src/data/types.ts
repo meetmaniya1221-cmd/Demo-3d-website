@@ -69,9 +69,34 @@ export interface TextureInfo {
   note?: string;
 }
 
+/**
+ * What a layer is physically made of. The 3D cross-section shades each one
+ * differently - fusing plasma does not look like liquid iron, and neither looks
+ * like water ice - so a body's section reads as the substances it is actually
+ * built from rather than as a stack of coloured bands.
+ */
+export type LayerMaterial =
+  | 'fusion-core'
+  | 'radiative-plasma'
+  | 'convective-plasma'
+  | 'photosphere'
+  | 'molten-metal'
+  | 'solid-metal'
+  | 'silicate-rock'
+  | 'water-ice'
+  | 'liquid-ocean'
+  | 'metallic-hydrogen'
+  | 'molecular-hydrogen'
+  | 'ice-giant-fluid'
+  | 'regolith-crust'
+  | 'volatile-ice';
+
 /** One shell of a body's interior model, ordered inner → outer. */
 export interface InteriorLayer {
   name: string;
+  /** Physical state, picking how the 3D cross-section shades this layer.
+   *  Optional: inferred from the layer's name when absent. */
+  material?: LayerMaterial;
   /** Short caption for the 3D cross-section callout, e.g. "FUSION REACTIONS".
    *  Optional: the callout falls back to the layer's measured extent. */
   tagline?: string;

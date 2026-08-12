@@ -4195,6 +4195,12 @@ button.sim-date:hover {
 
 /* ------------------------------------------------------ 3D cross-section --- */
 
+.cut3d-tabs {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
 .cut3d {
   display: grid;
   grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);

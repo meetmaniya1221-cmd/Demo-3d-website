@@ -16,6 +16,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Core',
+        material: 'fusion-core',
         tagline: 'Fusion reactions · ~15 million °C',
         outerRadiusFraction: 0.25,
         color: 0xfff3c4,
@@ -24,6 +25,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Radiative zone',
+        material: 'radiative-plasma',
         tagline: 'Heat radiates outward',
         outerRadiusFraction: 0.7,
         color: 0xffc069,
@@ -32,6 +34,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Convective zone',
+        material: 'convective-plasma',
         tagline: 'Heat circles in thermal columns',
         outerRadiusFraction: 0.99,
         color: 0xf08b3c,
@@ -40,6 +43,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Photosphere',
+        material: 'photosphere',
         tagline: 'Visible surface · ~5,500 °C',
         outerRadiusFraction: 1,
         thicknessKm: 400, // drawn thicker than true scale so it stays visible
@@ -57,6 +61,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Solid inner core',
+        material: 'solid-metal',
         outerRadiusFraction: 0.41,
         color: 0xffd9a0,
         note: 'A solid iron centre, suggested by MESSENGER spin and gravity data.',
@@ -64,6 +69,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Molten outer core',
+        material: 'molten-metal',
         outerRadiusFraction: 0.83,
         color: 0xe8a25c,
         note: 'Enormous for the planet’s size - 83% of the radius is metal.',
@@ -71,6 +77,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Mantle',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.99,
         color: 0x9b7f68,
         note: 'A comparatively thin rocky shell.',
@@ -78,6 +85,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Crust',
+        material: 'regolith-crust',
         outerRadiusFraction: 1,
         color: 0xb5a99a,
         note: 'Ancient, cratered, and laced with shrinkage scarps.',
@@ -93,6 +101,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Iron core',
+        material: 'molten-metal',
         outerRadiusFraction: 0.5,
         color: 0xffcf94,
         note: 'Probably similar to Earth’s; whether any of it is solid is unknown.',
@@ -100,6 +109,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Rocky mantle',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.99,
         color: 0xc27b4e,
         note: 'Hot silicate rock; sluggish convection may drive the volcanism.',
@@ -107,6 +117,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Basalt crust',
+        material: 'silicate-rock',
         outerRadiusFraction: 1,
         color: 0xe6c689,
         note: 'No plate tectonics - the whole surface seems to renew in rare global episodes.',
@@ -122,6 +133,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Inner core',
+        material: 'solid-metal',
         outerRadiusFraction: 0.19,
         color: 0xfff1b8,
         note: 'Solid iron-nickel, about the size of Pluto, at ~5,400 °C.',
@@ -129,6 +141,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Outer core',
+        material: 'molten-metal',
         outerRadiusFraction: 0.55,
         color: 0xffb35c,
         note: 'Flowing liquid metal - the dynamo that makes the magnetic field.',
@@ -136,6 +149,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Mantle',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.99,
         color: 0xc06a3e,
         note: 'Slowly convecting solid rock, driving plate tectonics above.',
@@ -143,6 +157,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Crust',
+        material: 'silicate-rock',
         outerRadiusFraction: 1,
         color: 0x6fa8dc,
         note: 'A skin 5-70 km thick - proportionally thinner than an apple’s peel.',
@@ -158,6 +173,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Solid inner core',
+        material: 'solid-metal',
         outerRadiusFraction: 0.14,
         color: 0xffe9c0,
         note: 'A small iron heart, ~480 km across.',
@@ -165,6 +181,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Fluid outer core',
+        material: 'molten-metal',
         outerRadiusFraction: 0.19,
         color: 0xe0a86e,
         note: 'A thin molten shell - too small to power a magnetic field today.',
@@ -172,6 +189,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Mantle',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.977,
         color: 0x8d8177,
         note: 'Solid rock, source of the ancient mare basalts.',
@@ -179,6 +197,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Crust',
+        material: 'regolith-crust',
         outerRadiusFraction: 1,
         color: 0xc9c9c9,
         note: '~40 km thick on the near side, thicker on the far side.',
@@ -194,6 +213,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Liquid core',
+        material: 'molten-metal',
         outerRadiusFraction: 0.54,
         color: 0xffcf94,
         note: 'Molten iron-nickel-sulfur, larger and lighter than models expected.',
@@ -201,6 +221,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Mantle',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.985,
         color: 0xa85a35,
         note: 'A single rocky shell; its dying convection once fed the giant volcanoes.',
@@ -208,6 +229,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Crust',
+        material: 'silicate-rock',
         outerRadiusFraction: 1,
         color: 0xd88a5e,
         note: '24-72 km thick, thicker in the southern highlands.',
@@ -223,6 +245,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Dilute core',
+        material: 'metallic-hydrogen',
         outerRadiusFraction: 0.4,
         color: 0xffe3ae,
         note: 'Not a solid ball: heavy elements smeared through hydrogen - a "fuzzy" core.',
@@ -230,6 +253,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Metallic hydrogen',
+        material: 'metallic-hydrogen',
         outerRadiusFraction: 0.8,
         color: 0xd9a06a,
         note: 'Hydrogen crushed until it conducts like a metal; source of the giant magnetic field.',
@@ -237,6 +261,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Molecular hydrogen envelope',
+        material: 'molecular-hydrogen',
         outerRadiusFraction: 1,
         color: 0xc9a67c,
         note: 'The visible clouds are just the top of this bottomless atmosphere.',
@@ -252,6 +277,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Dilute core',
+        material: 'metallic-hydrogen',
         outerRadiusFraction: 0.6,
         color: 0xffe9bd,
         note: 'Rock and ice mixed through hydrogen across 60% of the radius.',
@@ -259,6 +285,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Metallic hydrogen',
+        material: 'metallic-hydrogen',
         outerRadiusFraction: 0.75,
         color: 0xdcb078,
         note: 'A conducting layer that generates the strikingly axis-aligned magnetic field.',
@@ -266,6 +293,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Molecular hydrogen envelope',
+        material: 'molecular-hydrogen',
         outerRadiusFraction: 1,
         color: 0xe3ce9e,
         note: 'The least dense planet - it would float, if you could find the bathtub.',
@@ -281,6 +309,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Rocky core',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.2,
         color: 0xd8c39a,
         note: 'Roughly Earth-sized, under crushing pressure.',
@@ -288,6 +317,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Icy mantle',
+        material: 'ice-giant-fluid',
         outerRadiusFraction: 0.8,
         color: 0x6fb2c9,
         note: 'A hot, dense fluid of water, ammonia and methane - "ice" only to astronomers.',
@@ -295,6 +325,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Hydrogen-helium atmosphere',
+        material: 'molecular-hydrogen',
         outerRadiusFraction: 1,
         color: 0x9fd6dc,
         note: 'Methane up here absorbs red light - hence the blue-green color.',
@@ -310,6 +341,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Rocky core',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.25,
         color: 0xd8c39a,
         note: 'About one Earth mass of rock and metal.',
@@ -317,6 +349,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Icy mantle',
+        material: 'ice-giant-fluid',
         outerRadiusFraction: 0.8,
         color: 0x4f7ec9,
         note: 'Superionic water may form here - solid and liquid at once.',
@@ -324,6 +357,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Hydrogen-helium atmosphere',
+        material: 'molecular-hydrogen',
         outerRadiusFraction: 1,
         color: 0x7ba7e8,
         note: 'Home to the fastest winds measured on any planet.',
@@ -339,6 +373,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Rocky core',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.7,
         color: 0xb59a76,
         note: 'Dense rock making up most of Pluto’s mass.',
@@ -346,6 +381,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Possible liquid ocean',
+        material: 'liquid-ocean',
         outerRadiusFraction: 0.78,
         color: 0x4f7ec9,
         note: 'Sputnik Planitia’s position hints at liquid water under the ice - still debated.',
@@ -353,6 +389,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Water-ice mantle',
+        material: 'water-ice',
         outerRadiusFraction: 0.97,
         color: 0x9db8cc,
         note: 'At Pluto’s temperatures, water ice is as rigid as rock.',
@@ -360,6 +397,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Volatile ice surface',
+        material: 'volatile-ice',
         outerRadiusFraction: 1,
         color: 0xd9c7ad,
         note: 'Nitrogen and methane ices that sublime into the thin atmosphere.',
@@ -375,6 +413,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Metallic core',
+        material: 'solid-metal',
         outerRadiusFraction: 0.3,
         color: 0xd9b98c,
         note: 'An iron centre, size only loosely constrained.',
@@ -382,13 +421,17 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Rocky mantle',
-        outerRadiusFraction: 0.85,
+        material: 'silicate-rock',
+        // 0.92 puts the ice+ocean hydrosphere at ~125 km, inside the published
+        // 80-170 km (Anderson 1998) / 75-175 km (NASA Europa Clipper) range
+        outerRadiusFraction: 0.92,
         color: 0x9b7a5c,
         note: 'Seafloor rock in contact with the ocean - interesting chemistry for life.',
         knowledge: 'modelled',
       },
       {
         name: 'Salt-water ocean',
+        material: 'liquid-ocean',
         outerRadiusFraction: 0.97,
         color: 0x3f7ecf,
         note: 'Likely holds twice the water of all Earth’s oceans combined.',
@@ -396,6 +439,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Ice shell',
+        material: 'water-ice',
         outerRadiusFraction: 1,
         thicknessKm: 20, // midpoint of the 15-25 km estimate; drawing exaggerates
         color: 0xcfe0ea,
@@ -412,6 +456,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Iron core',
+        material: 'molten-metal',
         outerRadiusFraction: 0.25,
         color: 0xe0b98a,
         note: 'Molten enough to run a dynamo - Ganymede is the only moon with its own magnetic field.',
@@ -419,13 +464,17 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Rocky mantle',
-        outerRadiusFraction: 0.5,
+        material: 'silicate-rock',
+        // rock/ice interface at ~1,710 km: Vance et al. 2018 put the water
+        // layer near 900 km, and 0.50 would demand a core denser than iron
+        outerRadiusFraction: 0.65,
         color: 0x8d7156,
         note: 'Silicate rock between metal below and ice above.',
         knowledge: 'modelled',
       },
       {
         name: 'Ocean and high-pressure ice',
+        material: 'liquid-ocean',
         outerRadiusFraction: 0.97,
         color: 0x4a7fc0,
         note: 'Possibly several stacked oceans sandwiched between exotic ice phases.',
@@ -433,6 +482,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Ice crust',
+        material: 'water-ice',
         outerRadiusFraction: 1,
         color: 0xbeccd6,
         note: 'Old dark terrain and younger grooved bright terrain.',
@@ -448,6 +498,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Rocky core',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.8,
         color: 0xa08260,
         note: 'Hydrated silicate rock.',
@@ -455,6 +506,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'High-pressure ice',
+        material: 'water-ice',
         outerRadiusFraction: 0.87,
         color: 0x7d95ad,
         note: 'Ice compressed into dense crystal forms that sink rather than float.',
@@ -462,6 +514,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Water-ammonia ocean',
+        material: 'liquid-ocean',
         outerRadiusFraction: 0.95,
         color: 0x3f6fc0,
         note: 'A buried global ocean, salty and possibly ammonia-rich.',
@@ -469,6 +522,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Ice crust',
+        material: 'water-ice',
         outerRadiusFraction: 1,
         color: 0xc9a25c,
         note: 'Beneath the orange haze: ice bedrock, methane rivers and dunes.',
@@ -484,6 +538,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Porous rocky core',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.75,
         color: 0xa38d6d,
         note: 'Water likely circulates through the hot porous rock - hydrothermal vents.',
@@ -491,6 +546,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Global water ocean',
+        material: 'liquid-ocean',
         outerRadiusFraction: 0.87,
         color: 0x3f8fd0,
         note: 'Confirmed by the moon’s measured wobble - the shell floats free of the core.',
@@ -498,6 +554,7 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Ice shell',
+        material: 'water-ice',
         outerRadiusFraction: 1,
         color: 0xe8f2f5,
         note: 'A few km thin at the south pole, where geysers vent the ocean to space.',
@@ -513,6 +570,7 @@ export const INTERIORS: Record<string, Interior> = {
     layers: [
       {
         name: 'Rocky core',
+        material: 'silicate-rock',
         outerRadiusFraction: 0.6,
         color: 0x9a8468,
         note: 'Hydrated rock - water has altered it through and through.',
@@ -520,13 +578,16 @@ export const INTERIORS: Record<string, Interior> = {
       },
       {
         name: 'Briny ice-rock mantle',
-        outerRadiusFraction: 0.96,
+        material: 'water-ice',
+        // leaves a ~41 km crust, matching Ermakov et al. 2017 (41 +3.2/-4.7 km)
+        outerRadiusFraction: 0.913,
         color: 0x7791a8,
         note: 'Pockets of salty brine survive here - the source of the bright spots.',
         knowledge: 'modelled',
       },
       {
         name: 'Dusty crust',
+        material: 'regolith-crust',
         outerRadiusFraction: 1,
         color: 0x8d8478,
         note: 'A mix of clays, salts and ice, darkened by carbon-rich dust.',
