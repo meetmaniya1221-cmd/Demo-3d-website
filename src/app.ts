@@ -185,6 +185,7 @@ export class App implements TourHost {
       // picking a destination leaves the journey; mere deselection does not
       if (id && this.journey.active) this.journey.end();
       this.system.setHighlightedOrbit(id && catalogObject(id)?.type !== 'region' ? id : null);
+      this.system.setSelectedRegion(id && catalogObject(id)?.type === 'region' ? id : null);
       this.updateViewOffset();
       if (id) {
         // choosing a destination mid-tour means leaving the tour
@@ -236,7 +237,10 @@ export class App implements TourHost {
       sound.init();
       this.downPos = { x: e.clientX, y: e.clientY, t: performance.now() };
     });
-    // soft tick for generic UI buttons (bodies get their own select sound)
+    // one interaction-sound language for every button: generic taps tick,
+    // dismissals (cancel/close/back) share the 'back' tone, commits share
+    // 'select'. Buttons whose owner plays its own sound opt out via
+    // data-sfx="none".
     document.addEventListener('click', (e) => {
       const t = e.target;
       if (!(t instanceof HTMLElement)) return;
@@ -248,7 +252,11 @@ export class App implements TourHost {
         btn.blur();
       }
       if (btn.closest('.body-label') || btn.closest('.rail')) return;
-      sound.play('click', 0.22);
+      const sfx = btn.dataset.sfx;
+      if (sfx === 'none') return;
+      if (sfx === 'back') sound.play('back', 0.3);
+      else if (sfx === 'select') sound.play('select', 0.35);
+      else sound.play('click', 0.22);
     });
     canvas.addEventListener('pointerup', (e) => {
       if (!this.downPos) return;
@@ -302,9 +310,9 @@ export class App implements TourHost {
   focusRegion(id: string): void {
     const spec =
       id === 'kuiper-belt'
-        ? { rAU: 41, radius: 26, trueRadius: 320 }
+        ? { rAU: 43, radius: 30, trueRadius: 900 }
         : id === 'oort-cloud'
-          ? { rAU: 55, radius: 60, trueRadius: 1500 }
+          ? { rAU: 900, radius: 1500, trueRadius: 1500 }
           : id === 'trojans'
             ? { rAU: 5.2, radius: 18, trueRadius: 160 }
             : { rAU: 2.7, radius: 14, trueRadius: 55 };
@@ -321,10 +329,17 @@ export class App implements TourHost {
       },
       { distanceFactor: 3.2 },
     );
-    if (id === 'oort-cloud') {
+    if (id === 'kuiper-belt') {
+      // highlight the belt's famous residents alongside the particle swarm
+      if (!this.state.layers.dwarfs) this.state.setLayer('dwarfs', true);
       this.toast(
-        'The Oort cloud',
-        'It begins roughly 2,000 AU out - about 40× farther than the whole map you are looking at - and has never been observed directly.',
+        'The Kuiper belt',
+        'Cold classical bodies form the bright torus at 42-48 AU, plutinos cluster at Neptune’s 3:2 resonance, and a thin scattered disc trails outward. Notable residents - Pluto, Haumea, Makemake, Quaoar - are now shown.',
+      );
+    } else if (id === 'oort-cloud') {
+      this.toast(
+        'The Oort cloud (conceptual)',
+        'No telescope has ever seen it - its existence is inferred from long-period comet orbits. This sparse spherical swarm is a model visualization beginning ~2,000 AU out; zoom all the way out to find yourself inside it.',
       );
     }
   }
@@ -365,7 +380,8 @@ export class App implements TourHost {
   private onKey(e: KeyboardEvent): void {
     // Escape always works, even from inside inputs/sliders
     if (e.key === 'Escape') {
-      if (this.search.isOpen) this.search.close();
+      if (this.hud.datePicker.isOpen) this.hud.datePicker.close(true);
+      else if (this.search.isOpen) this.search.close(true);
       else if (this.layersPanel.isOpen) this.layersPanel.setOpen(false);
       else if (this.compare.isOpen) this.compare.close();
       else if (this.gravity.isOpen) this.gravity.close();
@@ -375,7 +391,7 @@ export class App implements TourHost {
       else if (this.missions.isOpen) this.missions.close();
       else if (this.meteors.isOpen) this.meteors.close();
       else if (this.journey.active) this.journey.end();
-      else if (this.atlas.isOpen) this.atlas.close();
+      else if (this.atlas.isOpen) this.atlas.close(true);
       else if (this.tour.active) this.tour.end();
       else if (this.state.selectedId) this.state.select(null);
       return;

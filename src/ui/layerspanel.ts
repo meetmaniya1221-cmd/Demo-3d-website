@@ -30,7 +30,9 @@ const GROUPS: Group[] = [
       { key: 'dwarfs', label: 'Dwarf planets & TNOs' },
       { key: 'asteroids', label: 'Asteroids' },
       { key: 'comets', label: 'Comets' },
-      { key: 'beltDust', label: 'Belt dust', hint: 'asteroid + Kuiper belts' },
+      { key: 'beltDust', label: 'Asteroid belt', hint: 'main-belt particles' },
+      { key: 'kuiperBelt', label: 'Kuiper belt', hint: 'beyond Neptune' },
+      { key: 'oortCloud', label: 'Oort cloud', hint: 'conceptual - zoom far out' },
     ],
   },
   {

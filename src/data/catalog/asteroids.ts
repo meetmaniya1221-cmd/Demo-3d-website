@@ -514,7 +514,8 @@ export const REGIONS: CatalogObject[] = [
       { label: 'NASA Science - Kuiper Belt', url: 'https://science.nasa.gov/solar-system/kuiper-belt/' },
       { label: 'NASA Science - Kuiper Belt Facts', url: 'https://science.nasa.gov/solar-system/kuiper-belt/facts/' },
     ],
-    uncertainty: 'Listed size is the belt’s radial extent from the Sun, not a body diameter.',
+    uncertainty:
+      'Listed size is the belt’s radial extent from the Sun, not a body diameter. The particle swarm shown in-app is an illustrative population drawn from the belt’s real orbital structure (classicals, plutinos, scattered disc), not individual catalogued objects.',
   },
   {
     id: 'oort-cloud',
@@ -545,6 +546,6 @@ export const REGIONS: CatalogObject[] = [
       { label: 'NASA Science - Oort Cloud Facts', url: 'https://science.nasa.gov/solar-system/oort-cloud/facts/' },
     ],
     uncertainty:
-      'The Oort cloud has never been observed directly; its existence is inferred from long-period comet orbits.',
+      'The Oort cloud has never been observed directly; its existence is inferred from long-period comet orbits. The in-app rendering is a conceptual model visualization, not observational data.',
   },
 ];

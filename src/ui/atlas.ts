@@ -58,13 +58,15 @@ export class Atlas {
     sound.play('click', 0.2);
   }
 
-  close(): void {
+  /** withSound: play the shared dismiss tone (explicit cancel paths only). */
+  close(withSound = false): void {
+    if (withSound && this.isOpen) sound.play('back', 0.25);
     this.root.classList.remove('open');
     this.root.inert = true;
   }
 
   toggle(): void {
-    this.isOpen ? this.close() : this.open();
+    this.isOpen ? this.close(true) : this.open();
   }
 
   private row(def: CatalogObject, depth: number, childCount = 0): string {

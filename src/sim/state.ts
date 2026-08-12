@@ -13,7 +13,9 @@ export interface Layers {
   dwarfs: boolean; // dwarf planets + TNOs
   asteroids: boolean; // named asteroids
   comets: boolean;
-  beltDust: boolean; // aggregated asteroid/Kuiper belt particles
+  beltDust: boolean; // aggregated main-belt particles
+  kuiperBelt: boolean; // trans-Neptunian particle populations
+  oortCloud: boolean; // conceptual far shell (fades in when zoomed way out)
   labels: boolean;
   constellations: boolean;
   /** Messier objects + galactic centre markers on the sky sphere. */
@@ -31,6 +33,8 @@ export const DEFAULT_LAYERS: Layers = {
   asteroids: false,
   comets: false,
   beltDust: true,
+  kuiperBelt: true,
+  oortCloud: true,
   labels: true,
   constellations: true,
   deepSky: false,
