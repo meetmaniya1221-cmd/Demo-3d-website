@@ -18,6 +18,21 @@ const ORDER = [
   'ceres', 'pluto', 'europa', 'ganymede', 'titan', 'enceladus',
 ];
 
+/**
+ * Every catalog body with a published interior model, in browse order. Shared
+ * so the 2D structure view and the 3D cross-section always offer the same set.
+ */
+export function interiorBodies(): CatalogObject[] {
+  const list = ORDER.map((id) => catalogObject(id)).filter(
+    (o): o is CatalogObject => !!o?.interior,
+  );
+  // anything with interior data but missing from ORDER still shows up
+  for (const o of ALL_OBJECTS) {
+    if (o.interior && !list.includes(o)) list.push(o);
+  }
+  return list;
+}
+
 function hex(color: number): string {
   return `#${color.toString(16).padStart(6, '0')}`;
 }
@@ -38,18 +53,23 @@ export class StructureOverlay extends Overlay {
   constructor(parent: HTMLElement, onCutaway?: (id: string) => void) {
     super(parent, 'Interior structure', 'structure-title');
     this.onCutaway = onCutaway;
-    this.bodies = ORDER.map((id) => catalogObject(id)).filter(
-      (o): o is CatalogObject => !!o?.interior,
-    );
-    // any catalog body with interior data but missing from ORDER still shows up
-    for (const o of ALL_OBJECTS) {
-      if (o.interior && !this.bodies.includes(o)) this.bodies.push(o);
-    }
+    this.bodies = interiorBodies();
   }
 
   openFor(id: string): void {
     if (catalogObject(id)?.interior) this.currentId = id;
     this.open();
+  }
+
+  /**
+   * Point this view at a body without opening or focusing it. The 3D
+   * cross-section sits on top of this one, so when you switch bodies up there
+   * and press Escape, the drawing you drop back to should be the same world.
+   */
+  syncBody(id: string): void {
+    if (!catalogObject(id)?.interior || id === this.currentId) return;
+    this.currentId = id;
+    if (this.isOpen) this.render();
   }
 
   protected onOpen(): void {

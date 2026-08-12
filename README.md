@@ -46,15 +46,33 @@ worlds, every layer tagged OBSERVED (Apollo seismometers, InSight
 marsquakes, helioseismology, Cassini's libration measurements) or
 MODELLED (gravity-field inference) - with the evidence spelled out.
 
-**3D cross-section.** From any structure view, *Explore in 3D* opens the
-same layer model as a real sphere with a wedge sawn out of it: nested
-shells you can orbit, zoom and open or close with a cut slider, flat
-section faces showing the concentric bands, and callouts pinned to the
-layers they name - they travel with the model and drop out when the body
-turns in front of them. The Sun renders as live plasma (a white-hot
-fusing core, diffusing radiative zone, boiling convective cells,
-granulated photosphere with convection sparks riding the cut face);
-solid worlds render lit, so a rocky mantle never glows like a star.
+**3D cross-section.** From any structure view - or straight from the body
+tabs inside it - *Explore in 3D* opens the same layer model as a real
+sphere with a quarter sawn out of it. Each shell is staged open a little
+wider than the one it encloses, so looking into the notch you see every
+inner layer's dome standing proud of the last, down to a core left whole;
+the section faces are flat annuli at each layer's true thickness, lit by
+a fixed key light with a cavity-occlusion falloff and a dark contact
+seam where each shell meets its own cut. The cut itself lives in the
+fragment shader, so it opens and closes smoothly at full geometric
+resolution and the silhouette stays round however far you zoom.
+
+The camera orbits a model that never moves, which keeps the lighting
+anchored to the world - turn the view and highlights sweep across the
+shells the way they would on a real object. Callouts are pinned to the
+layers they name and drop out when the body turns in front of them.
+
+Every layer declares what it is physically made of, and that picks the
+shading: fusing plasma, radiative plasma, convecting plasma and a
+granulated photosphere for the Sun (with a limb-hugging corona,
+prominence loops that only show off the limb, and convection sparks
+riding the cut face); molten and solid metal, silicate rock, water ice,
+liquid ocean, metallic and molecular hydrogen, ice-giant fluid, regolith
+and volatile frost for everyone else. Solid worlds wear their real
+mission mosaic on the outside and are lit, not emissive - a rocky mantle
+never glows like a star. Switching bodies is a real model switch: the
+previous body's geometry, materials and textures are released before the
+next is built, so only the body you picked is ever in the scene.
 
 **The Observatory.** Three sky instruments: a first-person planetarium -
 stand anywhere on Earth (click the world map, pick from 89 cities, dial in

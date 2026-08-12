@@ -124,7 +124,7 @@ export class App implements TourHost {
     });
     this.compare = new CompareOverlay(root);
     this.gravity = new GravityOverlay(root);
-    this.cutaway = new CutawayOverlay(root);
+    this.cutaway = new CutawayOverlay(root, (id) => this.structure?.syncBody(id));
     this.structure = new StructureOverlay(root, (id) => this.cutaway.openFor(id));
     this.earthMoon = new EarthMoonOverlay(root, this.state);
     this.observatory = new Observatory(root, this.state);
@@ -595,6 +595,7 @@ export class App implements TourHost {
       openAtlas: () => this.atlas.open(),
       openStructure: (id: string) => this.structure.openFor(id),
       openCutaway: (id: string) => this.cutaway.openFor(id),
+      cutawayInfo: () => this.cutaway.info,
       openEarthMoon: () => this.earthMoon.open(),
       openObservatory: (id?: string) => (id ? this.observatory.openFor(id) : this.observatory.open()),
       system: this.system,
