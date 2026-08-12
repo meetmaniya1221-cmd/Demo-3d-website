@@ -86,7 +86,7 @@ export class InfoPanel {
           <h2 class="infopanel-title"></h2>
           <span class="infopanel-kind"></span>
         </div>
-        <button class="icon-btn close" aria-label="Close panel">
+        <button class="icon-btn close" data-sfx="none" aria-label="Close panel">
           <svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M1 1l10 10M11 1L1 11"/></svg>
         </button>
       </div>

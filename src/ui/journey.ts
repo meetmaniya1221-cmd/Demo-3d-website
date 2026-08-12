@@ -82,7 +82,7 @@ export class Journey {
         </div>
         <div class="journey-progress">${ticks}<i class="fill"></i></div>
         <div class="journey-actions">
-          <button class="chip exit">End journey</button>
+          <button class="chip exit" data-sfx="back">End journey</button>
         </div>
       </div>
     `;

@@ -2,7 +2,8 @@
  *  search and the atlas; visibility lives in the View panel - the HUD stays
  *  out of the scene's way. */
 import { AppState, SPEED_PRESETS } from '../sim/state';
-import { fmtSimDate, fmtSimTime, simDateMs } from './format';
+import { fmtSimDate, fmtSimTime } from './format';
+import { DatePicker } from './datepicker';
 import { sound } from '../audio';
 
 const PLAY_ICON =
@@ -30,7 +31,7 @@ export class Hud {
   private speedSlider!: HTMLInputElement;
   private speedLabel!: HTMLElement;
   private dateEl!: HTMLElement;
-  private dateInput!: HTMLInputElement;
+  readonly datePicker: DatePicker;
   private scaleButtons: { explorer: HTMLButtonElement; true: HTMLButtonElement };
 
   constructor(parent: HTMLElement, state: AppState, cb: HudCallbacks) {
@@ -53,9 +54,12 @@ export class Hud {
     searchBtn.innerHTML =
       '<svg width="12" height="12" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.7"/><path d="M10.2 10.2L14 14"/></svg>Search<kbd>/</kbd>';
     searchBtn.setAttribute('aria-label', 'Search everything (shortcut: /)');
+    // search/atlas play their own open/close tones - skip the generic tick
+    searchBtn.dataset.sfx = 'none';
     searchBtn.addEventListener('click', () => cb.onSearch());
 
     const atlasBtn = this.chip('Atlas', () => cb.onAtlas());
+    atlasBtn.dataset.sfx = 'none';
     const tourBtn = this.chip('Tour', () => cb.onTour());
     const journeyBtn = this.chip('Journey', () => cb.onJourney());
     const skyBtn = this.chip('Sky', () => cb.onObservatory());
@@ -156,36 +160,10 @@ export class Hud {
     this.dateEl.className = 'sim-date';
     this.dateEl.title = 'Time machine: jump to any date';
     this.dateEl.setAttribute('aria-label', 'Simulation date - activate to pick another date');
-    this.dateInput = document.createElement('input');
-    this.dateInput.type = 'date';
-    this.dateInput.className = 'sim-date-input';
-    this.dateInput.min = '1900-01-01';
-    this.dateInput.max = '2100-12-31';
-    this.dateInput.setAttribute('aria-label', 'Set simulation date');
-    this.dateInput.tabIndex = -1;
-    this.dateEl.addEventListener('click', () => {
-      const d = new Date(simDateMs(state.simDays));
-      if (d.getUTCFullYear() >= 1900 && d.getUTCFullYear() <= 2100) {
-        this.dateInput.value = d.toISOString().slice(0, 10);
-      }
-      // showPicker needs a rendered input; fall back to focus for old engines
-      try {
-        this.dateInput.showPicker();
-      } catch {
-        this.dateInput.focus();
-      }
-    });
-    this.dateInput.addEventListener('change', () => {
-      const v = this.dateInput.value;
-      if (!v) return;
-      const [y, m, d] = v.split('-').map(Number);
-      // clamp typed years to the picker's advertised range; Date.UTC would
-      // otherwise remap 0-99 to 1900-1999 silently
-      const year = Math.min(2100, Math.max(1900, y));
-      const ms = Date.UTC(year, (m || 1) - 1, d || 1, 12);
-      state.setSimDate(ms);
-      if (year !== y) this.dateInput.value = new Date(ms).toISOString().slice(0, 10);
-    });
+    this.dateEl.setAttribute('aria-haspopup', 'dialog');
+    // the picker owns its open/close tones (open ticks, dismiss plays back)
+    this.dateEl.dataset.sfx = 'none';
+    this.dateEl.addEventListener('click', () => this.datePicker.toggle());
 
     const nowBtn = document.createElement('button');
     nowBtn.className = 'now-btn';
@@ -193,8 +171,9 @@ export class Hud {
     nowBtn.setAttribute('aria-label', 'Reset simulation to today');
     nowBtn.addEventListener('click', () => state.jumpToNow());
 
-    bar.append(rewindBtn, this.playBtn, speedGroup, this.dateEl, this.dateInput, nowBtn);
+    bar.append(rewindBtn, this.playBtn, speedGroup, this.dateEl, nowBtn);
     parent.appendChild(bar);
+    this.datePicker = new DatePicker(parent, this.dateEl, state);
 
     // reactive wiring
     state.on('pause', (p) => {

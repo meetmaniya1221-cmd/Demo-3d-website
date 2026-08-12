@@ -13,8 +13,10 @@ The in-app info panel repeats the relevant credit next to each object.
 | Moon physical/orbital data | NASA fact sheets + [NASA Solar System Exploration](https://science.nasa.gov/solar-system/) | Moons drawn on circular orbits at mean distance; simplifications are disclosed per object. Earth's Moon carries its real J2000 mean longitude (218.32° + 13.176°/day), so the simulated phase tracks the actual lunar cycle to a few degrees |
 | Dwarf planets, TNOs, asteroids, comets | [JPL Small-Body Database](https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html), NASA science pages | Orbit shape/orientation from published elements; TNO perihelion epochs (tp) from SBDB solutions retrieved Aug 2026; position along orbit approximate (disclosed in-app) |
 | Interior structure models | NASA mission pages ([InSight](https://science.nasa.gov/mission/insight/), [Juno](https://science.nasa.gov/mission/juno/), [Cassini](https://science.nasa.gov/mission/cassini/), [Dawn](https://science.nasa.gov/mission/dawn/), GRAIL, MESSENGER...) | Every layer is tagged OBSERVED (seismology, helioseismology, libration) or MODELLED (inferred) in the UI |
-| Near stars | [NASA - Stars](https://science.nasa.gov/universe/stars/), [RECONS census](http://www.recons.org/) | Hipparcos/Gaia parallax distances; Deneb's genuinely uncertain distance is disclosed |
+| Near stars | [NASA - Stars](https://science.nasa.gov/universe/stars/), [RECONS census](http://www.recons.org/) | Hipparcos/Gaia parallax distances (shown in both ly and pc); Deneb's genuinely uncertain distance is disclosed. Effective temperatures are published catalog values rounded to ~3 significant figures (primary component for multiples); star discs are rendered from that temperature via the Planckian locus - a physical representation, never fake imagery |
 | Deep-sky objects | [NASA/ESA Hubble Messier Catalog](https://science.nasa.gov/mission/hubble/science/explore-the-night-sky/hubble-messier-catalog/) | 16 Messier highlights + Sagittarius A*; J2000 positions, published distances |
+| Kuiper belt structure | [NASA Science - Kuiper Belt](https://science.nasa.gov/solar-system/kuiper-belt/), JPL SBDB | Particle swarm drawn from the published population structure: cold classicals (42-48 AU, low e/i, red), hot classicals, plutinos at the 3:2 resonance (39.4 AU), scattered disc with perihelia near Neptune; illustrative particles, not catalogued objects (disclosed in-app) |
+| Oort cloud | [NASA Science - Oort Cloud](https://science.nasa.gov/solar-system/oort-cloud/) | Conceptual model visualization (~2,000-60,000 AU shown, sparse spherical, inner Hills region flattened); the cloud has never been observed directly and the app says so |
 | Missions | Official NASA / ESA / JAXA mission pages | Linked from every mission card |
 | Habitable zone bounds | Kasting 1993 / Kopparapu et al. 2013 | Conservative limits, 0.95–1.67 AU |
 
@@ -66,12 +68,43 @@ a degree - fine for stick figures). The faint background starfield and the
 Milky Way band are procedural art, not a star catalog. The ecliptic reference
 grid marks true astronomical-unit distances in the current scale mode.
 
-The Observatory's night-sky chart computes altitude/azimuth from the same
-star catalog plus the app's own Kepler elements (planets), the lunar mean
-longitude (Moon) and the standard GMST expression - positions are good to a
-degree or two, not ephemeris-grade, and the chart says so. Deep-sky markers
-in the 3D scene sit at their real J2000 directions on the sky sphere; the
-objects themselves are of course far beyond it.
+The Observatory's first-person night sky computes altitude/azimuth from the
+same star catalog plus the app's own Kepler elements (planets), the leading
+terms of the lunar theory (Meeus - Moon position good to ~0.3°, phase from
+solar elongation) and the standard GMST expression - positions are good to
+about a degree, not ephemeris-grade, and the panel says so. Its Milky Way
+band lies along the real galactic plane (standard J2000 galactic→equatorial
+rotation) but the glow texture is procedural; the faint backdrop stars are
+procedural with fixed random RA/Dec so they rotate correctly with the sky.
+Deep-sky markers in the 3D scene sit at their real J2000 directions on the
+sky sphere; the objects themselves are of course far beyond it.
+
+## Deep-sky imagery (`public/deepsky/`)
+
+Real observational imagery, downsampled to web sizes (card ~460 px, viewer
+~900-1100 px webp). Every card links to the original release; credits are
+shown in the in-app viewer. ESA/Hubble, NOIRLab and ESO images are CC BY 4.0;
+NASA imagery is public domain.
+
+| Object | Image | Credit |
+| --- | --- | --- |
+| M31 Andromeda | KPNO ([noao-m31](https://noirlab.edu/public/images/noao-m31/)) | Local Group Galaxies Survey Team, NOIRLab/NSF/AURA |
+| M33 Triangulum | Hubble ([heic1901a](https://esahubble.org/images/heic1901a/)) | NASA, ESA, M. Durbin, J. Dalcanton, B.F. Williams (UW) |
+| M42 Orion Nebula | Hubble ([heic0601a](https://esahubble.org/images/heic0601a/)) | NASA, ESA, M. Robberto (STScI/ESA), HST Orion Treasury Team |
+| M45 Pleiades | KPNO ([noao-m45](https://noirlab.edu/public/images/noao-m45/)) | NOIRLab/NSF/AURA |
+| M44 Beehive | KPNO ([noao-m44](https://noirlab.edu/public/images/noao-m44/)) | NOIRLab/NSF/AURA |
+| M13 Hercules Cluster | Hubble ([potw1011a](https://esahubble.org/images/potw1011a/)) | ESA/Hubble & NASA |
+| M22 Sagittarius Cluster | KPNO ([noao-m22](https://noirlab.edu/public/images/noao-m22/)) | NOIRLab/NSF/AURA |
+| M8 Lagoon Nebula | Hubble ([heic1808a](https://esahubble.org/images/heic1808a/)) | NASA, ESA, STScI |
+| M16 Eagle Nebula | Hubble ([heic1501a](https://esahubble.org/images/heic1501a/)) | NASA, ESA, Hubble Heritage Team (STScI/AURA) |
+| M1 Crab Nebula | Hubble ([heic0515a](https://esahubble.org/images/heic0515a/)) | NASA, ESA, J. Hester, A. Loll (ASU) |
+| M27 Dumbbell Nebula | KPNO ([noao-m27](https://noirlab.edu/public/images/noao-m27/)) | NOIRLab/NSF/AURA |
+| M57 Ring Nebula | Hubble ([heic1310a](https://esahubble.org/images/heic1310a/)) | NASA, ESA, C.R. O'Dell (Vanderbilt) |
+| M51 Whirlpool | Hubble ([heic0506a](https://esahubble.org/images/heic0506a/)) | NASA, ESA, S. Beckwith (STScI), Hubble Heritage Team |
+| M81 Bode's Galaxy | KPNO ([noao-m81](https://noirlab.edu/public/images/noao-m81/)) | N.A. Sharp, NOIRLab/NSF/AURA |
+| M87 Virgo A | Hubble ([opo0020a](https://esahubble.org/images/opo0020a/)) | NASA, Hubble Heritage Team (STScI/AURA) |
+| M104 Sombrero | Hubble ([opo0328a](https://esahubble.org/images/opo0328a/)) | NASA, Hubble Heritage Team (STScI/AURA) |
+| Sagittarius A* | EHT ([eso2208-eht-mwa](https://www.eso.org/public/images/eso2208-eht-mwa/)) | EHT Collaboration |
 
 ## Audio
 

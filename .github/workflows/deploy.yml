@@ -6,6 +6,7 @@ on:
       - claude/solar-system-explorer-1ylnq2
       - claude/3d-solar-system-edu-rxmhpb
       - claude/solar-system-upgrade-4d9hwd
+      - claude/solar-system-ui-visuals-7kbu69
       - main
   workflow_dispatch:
 

@@ -8,7 +8,8 @@ import { DEFAULT_LAYERS, type Layers } from '../sim/state';
 import { Sun } from './sun';
 import { Planet } from './planet';
 import { Sky } from './sky';
-import { Belt, MAIN_BELT, KUIPER_BELT } from './belt';
+import { Belt, buildMainBelt, buildKuiperBelt, MAIN_BELT_STYLE, KUIPER_BELT_STYLE } from './belt';
+import { OortCloud } from './oort';
 import { OrbitLine, HabitableZone } from './orbits';
 import { SatelliteSystem } from './satellites';
 import { SmallBodies } from './smallbodies';
@@ -32,6 +33,7 @@ export class SolarSystem {
   private sky: Sky;
   private mainBelt: Belt;
   private kuiperBelt: Belt;
+  private oortCloud: OortCloud;
   private lastOrbitScaleT = -1;
   private lastSimDays = 0;
   private selectedId: string | null = null;
@@ -107,9 +109,10 @@ export class SolarSystem {
       this.pickables.push(...sats.pickables);
     }
 
-    this.mainBelt = new Belt(MAIN_BELT);
-    this.kuiperBelt = new Belt(KUIPER_BELT);
-    this.scene.add(this.mainBelt.points, this.kuiperBelt.points);
+    this.mainBelt = new Belt(buildMainBelt(), MAIN_BELT_STYLE);
+    this.kuiperBelt = new Belt(buildKuiperBelt(), KUIPER_BELT_STYLE);
+    this.oortCloud = new OortCloud();
+    this.scene.add(this.mainBelt.points, this.kuiperBelt.points, this.oortCloud.points);
 
     this.hz = new HabitableZone();
     this.hz.mesh.visible = false;
@@ -158,6 +161,7 @@ export class SolarSystem {
     this.grid.updateFocus(cameraPos);
     this.mainBelt.update(simDays, scaleT);
     this.kuiperBelt.update(simDays, scaleT);
+    this.oortCloud.update(scaleT, cameraPos.length());
     this.sky.update(elapsed);
 
     if (Math.abs(scaleT - this.lastOrbitScaleT) > 0.0005) {
@@ -182,8 +186,7 @@ export class SolarSystem {
     this.smallBodies.setOrbitsVisible(layers.planetOrbits);
     this.smallBodies.setLayers(layers);
     for (const sats of this.satSystems.values()) sats.setOrbitsVisible(layers.planetOrbits);
-    this.mainBelt.points.visible = layers.beltDust;
-    this.kuiperBelt.points.visible = layers.beltDust;
+    this.applyRegionVisibility();
     this.grid.setVisible(layers.grid);
     this.constellations.setVisible(layers.constellations);
     this.constellations.setDeepSkyVisible(layers.deepSky);
@@ -197,6 +200,23 @@ export class SolarSystem {
     return this.smallBodies.displayRadius(parentId);
   }
 
+  /** A selected region is always force-shown even if its layer is off
+   *  (search can reveal anything). Regions never reach setHighlightedOrbit
+   *  (the app filters them out of orbit highlighting), so they carry their
+   *  own selection channel. */
+  private selectedRegion: string | null = null;
+
+  setSelectedRegion(id: string | null): void {
+    this.selectedRegion = id;
+    this.applyRegionVisibility();
+  }
+
+  private applyRegionVisibility(): void {
+    this.mainBelt.points.visible = this.layers.beltDust || this.selectedRegion === 'main-belt';
+    this.kuiperBelt.points.visible = this.layers.kuiperBelt || this.selectedRegion === 'kuiper-belt';
+    this.oortCloud.setEnabled(this.layers.oortCloud || this.selectedRegion === 'oort-cloud');
+  }
+
   setHighlightedOrbit(id: string | null): void {
     this.selectedId = id;
     // while a body is focused, other orbits recede so they don't slice the shot
@@ -205,6 +225,7 @@ export class SolarSystem {
     // re-apply layers: a selected body is always force-shown even if its
     // category layer is off (search can reveal anything)
     this.smallBodies.setLayers(this.layers);
+    this.applyRegionVisibility();
     if (id) {
       for (const sats of this.satSystems.values()) {
         if (sats.has(id)) sats.activateMoon(id);
@@ -284,6 +305,7 @@ export class SolarSystem {
     this.sky.setPixelRatio(pr);
     this.mainBelt.setPixelRatio(pr);
     this.kuiperBelt.setPixelRatio(pr);
+    this.oortCloud.setPixelRatio(pr);
     this.smallBodies.setPixelRatio(pr);
   }
 }

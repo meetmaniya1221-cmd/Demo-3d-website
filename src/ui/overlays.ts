@@ -32,7 +32,7 @@ export abstract class Overlay {
         <div class="overlay-head">
           <div class="overlay-title" id="${titleId}">${title}</div>
           <div class="overlay-head-slot" style="display:flex;gap:10px;align-items:center"></div>
-          <button class="icon-btn close" aria-label="Close">
+          <button class="icon-btn close" data-sfx="none" aria-label="Close">
             <svg width="13" height="13" viewBox="0 0 12 12" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M1 1l10 10M11 1L1 11"/></svg>
           </button>
         </div>

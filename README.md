@@ -33,9 +33,9 @@ see [SOURCES.md](SOURCES.md)). Where no map exists the app paints a
 seeded procedural surface and labels it *Artistic rendering* - it never
 passes art off as photography.
 
-**A real time machine.** Click the date to jump anywhere between 1900
-and 2100, run time backwards with the rewind button, or play at seven
-speeds from real time to a year per second. Planet spin phases are tied
+**A real time machine.** Click the date to open the HUD-styled calendar
+and jump anywhere between 1900 and 2100, run time backwards with the
+rewind button, or play at seven speeds from real time to a year per second. Planet spin phases are tied
 to the IAU J2000 prime-meridian angles - Earth's day/night tracks UTC -
 and the Moon rides its real mean longitude, so the simulated phase
 matches the actual lunar cycle (the Aug 2026 full moon lands within a
@@ -46,12 +46,15 @@ worlds, every layer tagged OBSERVED (Apollo seismometers, InSight
 marsquakes, helioseismology, Cassini's libration measurements) or
 MODELLED (gravity-field inference) - with the evidence spelled out.
 
-**The Observatory.** Three sky instruments: a live planetarium dome for
-any latitude showing the stars, Moon and naked-eye planets at the
-current simulation moment; the stellar neighbourhood mapped out to
-Deneb with real Gaia/Hipparcos distances; and the Messier highlights
-from the NASA/ESA Hubble catalog - which also render as a toggleable
-deep-sky layer on the main 3D sky.
+**The Observatory.** Three sky instruments: a first-person planetarium -
+stand at any latitude/longitude (16 city presets or custom), drag to look
+around a real horizon with all eight compass points, the Milky Way band,
+constellations, the Moon with its correct phase and the planets, all
+driven by the simulation clock; the stellar neighbourhood mapped out to
+Deneb with real Gaia/Hipparcos distances (ly and parsecs), published
+temperatures and physically-derived star colours; and the Messier
+highlights with real Hubble / NOIRLab / EHT imagery - which also render
+as a toggleable deep-sky layer on the main 3D sky.
 
 **Earth & Moon lab.** The lunar cycle as a live diagram: real sunlight
 direction, tonight's phase, days to the next full moon, spring vs neap

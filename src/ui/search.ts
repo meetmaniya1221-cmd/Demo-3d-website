@@ -152,7 +152,7 @@ export class Search {
     parent.appendChild(this.root);
 
     this.root.addEventListener('pointerdown', (e) => {
-      if (e.target === this.root) this.close();
+      if (e.target === this.root) this.close(true);
     });
     this.input.addEventListener('input', () => this.refresh());
     this.input.addEventListener('keydown', (e) => {
@@ -170,14 +170,14 @@ export class Search {
         // don't let the global Escape handler also fire (it would deselect
         // the current body or end a journey underneath the palette)
         e.stopPropagation();
-        this.close();
+        this.close(true);
       }
     });
 
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        this.isOpen ? this.close() : this.open();
+        this.isOpen ? this.close(true) : this.open();
       } else if (
         e.key === '/' &&
         !this.isOpen &&
@@ -206,7 +206,10 @@ export class Search {
     sound.play('click', 0.2);
   }
 
-  close(): void {
+  /** withSound: play the shared dismiss tone (cancel paths); committing a
+   *  result closes silently - the destination plays its own sound. */
+  close(withSound = false): void {
+    if (withSound && this.openFlag) sound.play('back', 0.3);
     // logically closed NOW - only the visual fade lags behind
     this.openFlag = false;
     this.root.classList.remove('open');

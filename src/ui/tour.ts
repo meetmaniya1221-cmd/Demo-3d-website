@@ -137,7 +137,7 @@ export class Tour {
         <div class="tour-progress" aria-hidden="true"></div>
         <div class="group">
           <button class="chip back">Back</button>
-          <button class="chip exit">End tour</button>
+          <button class="chip exit" data-sfx="back">End tour</button>
           <button class="chip active next">Next</button>
         </div>
       </div>
