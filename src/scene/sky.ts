@@ -1,6 +1,17 @@
-/** Deep-space backdrop: ~7000 individually tinted stars + a Milky Way band. */
+/**
+ * Deep-space backdrop: a dense, galactically-distributed star field under the
+ * real Milky Way.
+ *
+ * Both halves share one model. The band is evaluated in galactic coordinates
+ * (see scene/galaxy), and the filler stars are scattered by the same density
+ * law - so the crowding toward the plane and the thinning toward the poles are
+ * the same phenomenon rather than two effects tuned separately to match. The
+ * catalogued naked-eye stars are drawn on top of this by scene/constellations;
+ * these are the faint multitude behind them.
+ */
 import * as THREE from 'three';
 import { mulberry32 } from './noise';
+import { galacticStarDensity, MilkyWay, sceneToGalacticMatrix } from './galaxy';
 
 const SKY_RADIUS = 6000;
 
@@ -45,33 +56,50 @@ const STAR_COLORS = [
 export class Sky {
   readonly group = new THREE.Group();
   private starMat: THREE.ShaderMaterial;
+  private milkyWay!: MilkyWay;
 
-  constructor(milkyWay: THREE.CanvasTexture) {
+  constructor() {
     const rnd = mulberry32(2024);
-    const count = 7000;
+    // Scene directions come out of the galactic frame, so build the inverse
+    // once: the matrix is orthonormal, so its transpose is its inverse.
+    const galToScene = sceneToGalacticMatrix().transpose();
+    const dir = new THREE.Vector3();
+    const count = 26000;
     const pos = new Float32Array(count * 3);
     const size = new Float32Array(count);
     const color = new Float32Array(count * 3);
 
     for (let i = 0; i < count; i++) {
-      // uniform on sphere, with extra density near the galactic band (y ~ 0 after tilt)
-      let x = 0, y = 0, z = 0, len = 0;
-      do {
-        x = rnd() * 2 - 1;
-        y = rnd() * 2 - 1;
-        z = rnd() * 2 - 1;
-        len = Math.hypot(x, y, z);
-      } while (len > 1 || len < 1e-4);
-      if (rnd() < 0.35) y *= 0.35; // concentrate a share of stars toward the band
-      const inv = SKY_RADIUS / Math.hypot(x, y, z);
-      pos[i * 3] = x * inv;
-      pos[i * 3 + 1] = y * inv;
-      pos[i * 3 + 2] = z * inv;
+      // Rejection-sample a galactic direction against the disc density, with a
+      // floor so the sky away from the plane is thin rather than empty. Every
+      // direction is drawn uniformly on the sphere first, so no pole is
+      // over-sampled the way naive spherical coordinates would.
+      let gx = 0, gy = 0, gz = 0;
+      for (let tries = 0; tries < 24; tries++) {
+        let x = 0, y = 0, z = 0, len = 0;
+        do {
+          x = rnd() * 2 - 1;
+          y = rnd() * 2 - 1;
+          z = rnd() * 2 - 1;
+          len = Math.hypot(x, y, z);
+        } while (len > 1 || len < 1e-4);
+        gx = x / len;
+        gy = y / len;
+        gz = z / len;
+        const p = 0.16 + 0.84 * galacticStarDensity(gx, gy, gz);
+        if (rnd() < p) break;
+      }
+      dir.set(gx, gy, gz).applyMatrix3(galToScene).multiplyScalar(SKY_RADIUS);
+      pos[i * 3] = dir.x;
+      pos[i * 3 + 1] = dir.y;
+      pos[i * 3 + 2] = dir.z;
 
-      const mag = Math.pow(rnd(), 3);
-      size[i] = 1.0 + mag * 3.2;
+      // A steep magnitude distribution: a great many faint stars, a handful of
+      // bright ones. Uniform sizes are what make a star field read as noise.
+      const mag = Math.pow(rnd(), 3.4);
+      size[i] = 0.7 + mag * 3.0;
       const tint = STAR_COLORS[Math.floor(Math.pow(rnd(), 1.4) * STAR_COLORS.length)];
-      const bright = 0.45 + mag * 0.55;
+      const bright = 0.34 + mag * 0.66;
       color[i * 3] = tint[0] * bright;
       color[i * 3 + 1] = tint[1] * bright;
       color[i * 3 + 2] = tint[2] * bright;
@@ -93,26 +121,23 @@ export class Sky {
     const stars = new THREE.Points(geo, this.starMat);
     stars.frustumCulled = false;
     stars.renderOrder = -10;
-    // the dense star band was generated around y=0; tilt it with the Milky Way
-    // sphere so the extra density actually lies along the visible galactic band
-    stars.rotation.set(0.45, 0.2, 0.35);
+    // no rotation: the positions are already in scene space, carrying the real
+    // galactic orientation rather than a tilt chosen to look right
     this.group.add(stars);
 
-    const mwGeo = new THREE.SphereGeometry(SKY_RADIUS * 0.98, 48, 32);
-    const mwMat = new THREE.MeshBasicMaterial({
-      map: milkyWay,
-      side: THREE.BackSide,
-      transparent: true,
-      depthWrite: false,
-    });
-    const mw = new THREE.Mesh(mwGeo, mwMat);
-    mw.rotation.set(0.45, 0.2, 0.35); // tilt the band across the sky
-    mw.renderOrder = -11;
-    this.group.add(mw);
+    this.milkyWay = new MilkyWay({ radius: SKY_RADIUS * 0.98, segments: 48 });
+    this.milkyWay.mesh.renderOrder = -11;
+    this.group.add(this.milkyWay.mesh);
   }
 
   update(elapsed: number): void {
     this.starMat.uniforms.uTime.value = elapsed;
+    this.milkyWay.update(elapsed);
+  }
+
+  /** Bake the galactic band once the renderer exists. */
+  bake(renderer: THREE.WebGLRenderer): void {
+    this.milkyWay.bake(renderer);
   }
 
   setPixelRatio(pr: number): void {

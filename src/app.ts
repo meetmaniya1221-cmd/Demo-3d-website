@@ -469,6 +469,8 @@ export class App implements TourHost {
 
   // --------------------------------------------------------------- frame --
 
+  private skyBaked = false;
+
   private frame(): void {
     const rawDt = this.clock.getDelta();
     const dt = Math.min(rawDt, 0.1);
@@ -495,6 +497,15 @@ export class App implements TourHost {
       this.state.scaleT += diff * (1 - Math.exp(-dt * 1.6));
     } else if (this.state.scaleT !== this.scaleTarget) {
       this.state.scaleT = this.scaleTarget;
+    }
+
+    if (!this.skyBaked) {
+      // One-off, before any mode branch: turn the galactic band into a cubemap
+      // so it stops costing a full-screen noise evaluation every frame. Doing
+      // it here rather than in a render path means it happens exactly once
+      // whichever view the session starts in.
+      this.skyBaked = true;
+      this.system.sky.bake(this.renderer);
     }
 
     this.system.update(this.state.simDays, this.state.scaleT, this.elapsed, this.rig.camera);

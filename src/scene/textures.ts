@@ -457,37 +457,6 @@ export function makeRingTexture(kind: 'saturn' | 'uranus'): THREE.CanvasTexture 
 
 // --------------------------------------------------------------- sky & fx --
 
-export function makeMilkyWayTexture(): THREE.CanvasTexture {
-  const w = 1024;
-  const h = 512;
-  const n = new ValueNoise(77);
-  const [c, ctx] = canvasOf(w, h);
-  const img = ctx.createImageData(w, h);
-  const d = img.data;
-  for (let y = 0; y < h; y++) {
-    const v = y / (h - 1);
-    for (let x = 0; x < w; x++) {
-      const u = x / w;
-      const drift = (n.noise2(u * 3, 0.5, 3) - 0.5) * 0.16;
-      const dist = Math.abs(v - 0.5 - drift);
-      const band = Math.exp(-dist * dist * 260);
-      const clump = n.fbm(u * 10, v * 10, 5, 2, 0.55, 10);
-      const dust = n.ridged(u * 7 + 30, v * 14 + 30, 4, 7);
-      let bright = band * (0.3 + clump * 0.9) * (1 - Math.min(0.92, dust * band * 1.3));
-      const core = Math.exp(-Math.pow((u - 0.5) * 4.5, 2)) * band * 0.5;
-      bright = Math.min(1, bright + core * clump * 0.8);
-      const warm = core * 1.6;
-      const i = (y * w + x) * 4;
-      d[i] = Math.round(180 + warm * 60);
-      d[i + 1] = Math.round(190 + warm * 30);
-      d[i + 2] = 235;
-      d[i + 3] = Math.round(Math.min(1, bright) * 62);
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  return toTexture(c);
-}
-
 /** Soft radial glow sprite (sun corona, selection halo). */
 export function makeGlowTexture(
   size: number,
@@ -507,7 +476,6 @@ export interface GeneratedTextures {
   bodies: Record<string, BodySurface>;
   saturnRing: THREE.CanvasTexture;
   uranusRing: THREE.CanvasTexture;
-  milkyWay: THREE.CanvasTexture;
 }
 
 const nextFrame = () => new Promise<void>((res) => requestAnimationFrame(() => res()));
@@ -551,10 +519,8 @@ export async function generateAllTextures(
   const saturnRing = makeRingTexture('saturn');
   const uranusRing = makeRingTexture('uranus');
   done++;
-  onProgress(done, total, 'Spilling the Milky Way…');
   await nextFrame();
-  const milkyWay = makeMilkyWayTexture();
   done++;
   onProgress(done, total, 'Ready');
-  return { bodies, saturnRing, uranusRing, milkyWay };
+  return { bodies, saturnRing, uranusRing };
 }
