@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { type BodyDef, MOON_DIST_KM, AU_KM } from '../data/bodies';
 import { displayRadius, MOON_EXPLORER_DIST, TRUE_UNITS_PER_AU } from '../sim/scale';
 import type { BodySurface } from './textures';
+import { EarthDetail } from './earth';
 
 const ATMO_VERT = /* glsl */ `
   varying vec3 vNormal;
@@ -51,6 +52,8 @@ const ATMOSPHERES: Record<string, AtmosphereSpec> = {
 };
 
 const sphereGeo = new THREE.SphereGeometry(1, 64, 32);
+/** Earth alone is approached closely enough for a 64-segment limb to show. */
+const earthGeo = new THREE.SphereGeometry(1, 192, 96);
 
 /**
  * Fine ring structure, revealed by proximity.
@@ -125,8 +128,11 @@ export class Planet {
   private spinPhase: number;
   private currentRadius = 1;
   private discVisible = true;
+  /** Earth only: the layered close-range treatment (see scene/earth.ts). */
+  readonly earth?: EarthDetail;
+  private readonly sunDir = new THREE.Vector3(1, 0, 0);
 
-  constructor(def: BodyDef, surface: BodySurface, ringTexture?: THREE.Texture) {
+  constructor(def: BodyDef, surface: BodySurface, ringTexture?: THREE.Texture, base = '/') {
     this.def = def;
     // epoch-tied spin phase (see w0Deg's doc in data/bodies.ts: GMST for
     // Earth so day/night follows UTC, IAU W0 for the rest), a stable hash
@@ -145,7 +151,8 @@ export class Planet {
       mat.roughnessMap = surface.roughnessMap;
       mat.roughness = 1;
     }
-    this.surface = new THREE.Mesh(sphereGeo, mat);
+    const isEarth = def.id === 'earth';
+    this.surface = new THREE.Mesh(isEarth ? earthGeo : sphereGeo, mat);
     this.surface.name = def.id;
 
     this.tiltGroup.add(this.surface);
@@ -154,7 +161,14 @@ export class Planet {
     this.satEquatorial.rotation.z = this.tiltGroup.rotation.z;
     this.group.add(this.sizeGroup, this.satEquatorial);
 
-    if (surface.clouds) {
+    // Earth replaces the generic cloud sheet and rim-glow shell wholesale: it
+    // gets a MODIS cloud deck that shadows the ground and a scattering
+    // atmosphere instead. Every other planet keeps exactly what it had.
+    if (isEarth) {
+      this.earth = new EarthDetail(this.surface, base);
+      this.tiltGroup.add(this.earth.cloudMesh);
+      this.sizeGroup.add(this.earth.atmoMesh);
+    } else if (surface.clouds) {
       this.clouds = new THREE.Mesh(
         sphereGeo,
         new THREE.MeshStandardMaterial({
@@ -168,7 +182,7 @@ export class Planet {
       this.tiltGroup.add(this.clouds);
     }
 
-    const atmo = ATMOSPHERES[def.id];
+    const atmo = isEarth ? undefined : ATMOSPHERES[def.id];
     if (atmo) {
       this.atmoMat = new THREE.ShaderMaterial({
         vertexShader: ATMO_VERT,
@@ -252,7 +266,7 @@ export class Planet {
     mat.needsUpdate = true;
   }
 
-  update(simDays: number, scaleT: number): void {
+  update(simDays: number, scaleT: number, cameraPos?: THREE.Vector3): void {
     const r = displayRadius(this.def.id, this.def.facts.diameterKm, scaleT);
     this.currentRadius = r;
     this.sizeGroup.scale.setScalar(r);
@@ -268,12 +282,13 @@ export class Planet {
     }
     this.hit.scale.setScalar(Math.max(r * 1.6, hitFloor));
 
-    // keep the atmosphere's day side pointed at the Sun (which sits at origin)
+    // the Sun sits at the origin, so the direction to it is just the body's
+    // own position, reversed
+    const p = this.group.position;
+    const len = p.length() || 1;
+    this.sunDir.set(-p.x / len, -p.y / len, -p.z / len);
     if (this.atmoMat) {
-      const p = this.group.position;
-      const len = p.length() || 1;
-      (this.atmoMat.uniforms.uSunDir.value as THREE.Vector3)
-        .set(-p.x / len, -p.y / len, -p.z / len);
+      (this.atmoMat.uniforms.uSunDir.value as THREE.Vector3).copy(this.sunDir);
     }
 
     // Sidereal spin. The axis orientation (axialTiltDeg > 90° flips the pole)
@@ -283,11 +298,17 @@ export class Planet {
     const hours = Math.abs(this.def.facts.rotationHours);
     const spin = this.spinPhase + ((simDays * 24) / hours) * Math.PI * 2;
     this.surface.rotation.y = spin;
-    if (this.clouds) {
-      const cloudHours = this.def.facts.cloudPeriodHours;
-      this.clouds.rotation.y = cloudHours
-        ? this.spinPhase + ((simDays * 24) / Math.abs(cloudHours)) * Math.PI * 2
-        : spin * 0.88; // default: clouds lag the surface slightly
+    const cloudHours = this.def.facts.cloudPeriodHours;
+    const cloudSpin = cloudHours
+      ? this.spinPhase + ((simDays * 24) / Math.abs(cloudHours)) * Math.PI * 2
+      : spin * 0.88; // default: clouds lag the surface slightly
+    if (this.clouds) this.clouds.rotation.y = cloudSpin;
+
+    if (this.earth && cameraPos) {
+      // apparent size, not scene distance: the same threshold then means the
+      // same thing in explorer view and at true scale
+      this.earth.setDistance(cameraPos.distanceTo(p) / Math.max(r, 1e-6));
+      this.earth.update(this.sunDir, cameraPos, spin, cloudSpin);
     }
   }
 

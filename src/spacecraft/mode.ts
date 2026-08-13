@@ -762,6 +762,35 @@ export class SpacecraftMode {
         this.ship.paused = v;
       },
       setTime: (i: number) => this.ship.setTimeIndex(i),
+      /**
+       * Park the ship on a chosen bearing relative to the Sun, at a chosen
+       * distance in body radii. teleportTo always approaches from the sunward
+       * side, which cannot show a night side or a terminator - and those are
+       * exactly the views the Earth lighting has to be checked against.
+       */
+      placeRelative: (
+        id: string,
+        bearing: 'day' | 'night' | 'terminator' | 'polar',
+        radii = 3,
+      ) => {
+        const target = bodyPositionTrue(id, this.simDays, new THREE.Vector3());
+        const sunward = target.clone().negate().normalize();
+        const up = new THREE.Vector3(0, 1, 0);
+        const dir =
+          bearing === 'day'
+            ? sunward
+            : bearing === 'night'
+              ? sunward.negate()
+              : bearing === 'terminator'
+                ? new THREE.Vector3().crossVectors(sunward, up).normalize()
+                : up;
+        this.ship.pos.copy(target).addScaledVector(dir, radii * bodyRadiusTrue(id));
+        this.ship.lookAtPoint(target);
+        this.ship.idle();
+        this.ship.startFollow(id, this.simDays);
+        this.ship.targetId = id;
+        this.ensureTargetVisible(id);
+      },
       teleportTo: (id: string, factor = 1) => {
         this.ship.placeNear(id, this.simDays, factor);
         this.ship.targetId = id;
