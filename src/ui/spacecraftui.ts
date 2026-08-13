@@ -527,11 +527,14 @@ export class SpacecraftUI {
     const vrow = el('div', 'sc-deck-row');
     const presets: Array<[string, number, number, string]> = [
       ['Front', 0, 0, 'Look straight ahead through the windscreen'],
-      ['Left', 78, 0, 'Look out of the port window'],
-      ['Right', -78, 0, 'Look out of the starboard window'],
-      ['Up', 0, 62, 'Look up through the overhead port'],
-      ['Down', 0, -48, 'Look down over the console'],
+      ['Left', 90, 0, 'Look out of the port glass'],
+      ['Right', -90, 0, 'Look out of the starboard glass'],
+      ['Aft', 180, 0, 'Turn right round and look astern, at where you have been'],
+      ['Up', 0, 80, 'Look up through the overhead canopy'],
+      ['Down', 0, -78, 'Look down through the floor port'],
     ];
+    // These are shortcuts, not the only bearings available: the head turns
+    // continuously through every direction between them.
     for (const [label, yaw, pitch, title] of presets) {
       const b = el('button', 'sc-step', label);
       b.title = title;
@@ -694,8 +697,10 @@ export class SpacecraftUI {
   show(): void {
     this.root.classList.add('on');
     this.root.setAttribute('aria-hidden', 'false');
-    // phones start with the glass clear; desktops have room for both panels
-    this.panelMode = isPhone() ? 0 : 1;
+    // Start with the glass clear on every device. This is an observation
+    // vessel: the universe outside is the instrument. The panels are one tap
+    // away on the Panels chip for when you actually need to navigate.
+    this.panelMode = 0;
     this.syncPanels();
     this.textTimer = 99;
     this.mapTimer = 99;

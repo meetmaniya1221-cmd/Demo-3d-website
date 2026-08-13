@@ -90,9 +90,15 @@ export const DEFAULT_TIME_INDEX = 4; // x10,000
 /** Fastest object humans have built, for honest context in the UI. */
 export const FASTEST_PROBE_KMS = 191; // Parker Solar Probe, Dec 2024 perihelion
 
-const MAX_HEAD_YAW = THREE.MathUtils.degToRad(148);
-const MAX_HEAD_PITCH_UP = THREE.MathUtils.degToRad(78);
-const MAX_HEAD_PITCH_DOWN = THREE.MathUtils.degToRad(66);
+/**
+ * The pilot's head turns freely all the way round: this is an observation
+ * vessel with glass on every side, so there is no direction the seat refuses to
+ * face. Yaw is unbounded and simply accumulates - turn left long enough and you
+ * come back to the windscreen having passed the port, aft and starboard glass
+ * in order. Only pitch is limited, and only to stop the horizon inverting.
+ */
+const MAX_HEAD_PITCH_UP = THREE.MathUtils.degToRad(88);
+const MAX_HEAD_PITCH_DOWN = THREE.MathUtils.degToRad(88);
 
 /** Wall-clock seconds the tail of an approach is stretched over. */
 const APPROACH_TAU = 1.4;
@@ -424,7 +430,7 @@ export class Ship {
   /** Drag input from the pointer, in radians. */
   look(dYaw: number, dPitch: number): void {
     this.gazeLock = false;
-    this.headYawTarget = THREE.MathUtils.clamp(this.headYawTarget + dYaw, -MAX_HEAD_YAW, MAX_HEAD_YAW);
+    this.headYawTarget += dYaw;
     this.headPitchTarget = THREE.MathUtils.clamp(
       this.headPitchTarget + dPitch,
       -MAX_HEAD_PITCH_DOWN,
@@ -435,11 +441,11 @@ export class Ship {
   /** Snap the pilot's head to a preset window. */
   lookPreset(yawDeg: number, pitchDeg: number): void {
     this.gazeLock = false;
-    this.headYawTarget = THREE.MathUtils.clamp(
-      THREE.MathUtils.degToRad(yawDeg),
-      -MAX_HEAD_YAW,
-      MAX_HEAD_YAW,
-    );
+    // presets are shortcuts, not the only reachable directions - take the
+    // shortest way round from wherever the head currently is
+    const want = THREE.MathUtils.degToRad(yawDeg);
+    const turns = Math.round((this.headYawTarget - want) / (Math.PI * 2));
+    this.headYawTarget = want + turns * Math.PI * 2;
     this.headPitchTarget = THREE.MathUtils.clamp(
       THREE.MathUtils.degToRad(pitchDeg),
       -MAX_HEAD_PITCH_DOWN,
@@ -451,6 +457,10 @@ export class Ship {
   alignHullToGaze(): void {
     const q = this.headQuaternion(this.tmpQ);
     this.quat.multiply(q);
+    // fold the accumulated turns away with the hull, so the head does not
+    // spin back through everything it just travelled
+    this.headYaw = 0;
+    this.headPitch = 0;
     this.headYawTarget = this.headPitchTarget = 0;
     this.event = 'Hull aligned to line of sight.';
   }
@@ -1182,7 +1192,11 @@ export class Ship {
       const rel = this.tmpB.copy(target).sub(this.pos).applyQuaternion(this.tmpQ.copy(this.quat).invert());
       const yaw = Math.atan2(-rel.x, -rel.z);
       const pitch = Math.atan2(rel.y, Math.hypot(rel.x, rel.z));
-      this.headYawTarget = THREE.MathUtils.clamp(yaw, -MAX_HEAD_YAW, MAX_HEAD_YAW);
+      // yaw accumulates without limit now, so fold the tracked bearing onto
+      // whichever turn the head is actually on - otherwise locking onto a body
+      // astern unwinds every revolution the pilot has made
+      const turns = Math.round((this.headYawTarget - yaw) / (Math.PI * 2));
+      this.headYawTarget = yaw + turns * Math.PI * 2;
       this.headPitchTarget = THREE.MathUtils.clamp(pitch, -MAX_HEAD_PITCH_DOWN, MAX_HEAD_PITCH_UP);
       // Structural members are real, and a head locked hard over can end up
       // staring straight at an A-pillar. Whenever the pilot is not committed to

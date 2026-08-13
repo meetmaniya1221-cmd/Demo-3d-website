@@ -273,9 +273,10 @@ export class Cockpit {
     // ---- side walls; shape x maps to -z on the left wall, +z on the right ----
     // The side glass runs almost to the windscreen at the front - the narrower
     // the A-pillar, the less often a tracked body disappears behind it - and
-    // well aft of the seat at the back, so that looking a full 90° out to the
-    // beam lands in the middle of a window rather than on the wall between two.
-    const sw = { z0: -0.985, z1: 0.46, y0: -0.44 * hy, y1: 0.74 * hy };
+    // all the way aft at the back, where it now meets the aft window. Looking
+    // 90° out to the beam lands in the middle of a pane, and carrying on round
+    // to astern crosses one pillar instead of running into a bulkhead.
+    const sw = { z0: -0.985, z1: 0.885, y0: -0.5 * hy, y1: 0.78 * hy };
     const sideR = Math.min(hy * 0.22, (sw.z1 - sw.z0) * 0.2);
     const leftHole = { x0: -sw.z1, y0: sw.y0, x1: -sw.z0, y1: sw.y1, r: sideR };
     const leftGeo = panel({ x0: -ZR, y0: -WYb, x1: -ZF, y1: WYt, r: 0.05 }, leftHole, T);
@@ -295,7 +296,7 @@ export class Cockpit {
 
     // ---- overhead panel with the observation port (shape y maps to -z) ------
     // a proper canopy: looking up should give sky, not ceiling
-    const tw = { x: 0.72 * hx, z0: -0.985, z1: -0.12 };
+    const tw = { x: 0.78 * hx, z0: -0.985, z1: 0.86 };
     const topHole = { x0: -tw.x, y0: -tw.z1, x1: tw.x, y1: -tw.z0, r: Math.min(hx * 0.12, tw.x * 0.3) };
     const ceilGeo = panel({ x0: -WX, y0: -ZR, x1: WX, y1: -ZF, r: 0.05 }, topHole, T);
     ceilGeo.rotateX(-Math.PI / 2);
@@ -307,14 +308,26 @@ export class Cockpit {
     // ---- floor with a forward footwell port (shape y maps to +z) -----------
     const floorGeo = panel(
       { x0: -WX, y0: ZF, x1: WX, y1: ZR, r: 0.05 },
-      { x0: -0.3 * hx, y0: -0.94, x1: 0.3 * hx, y1: -0.5, r: hx * 0.08 },
+      { x0: -0.46 * hx, y0: -0.95, x1: 0.46 * hx, y1: 0.42, r: hx * 0.1 },
       T,
     );
     floorGeo.rotateX(Math.PI / 2);
     add(floorGeo, trim).position.y = -WYb;
 
-    // ---- rear bulkhead -----------------------------------------------------
-    add(panel({ x0: -WX, y0: -WYb, x1: WX, y1: WYt, r: 0.05 }, null, T * 0.6), trim).position.z = ZR;
+    // ---- aft observation window --------------------------------------------
+    // A solid bulkhead here is what made the cabin a five-window cockpit. With
+    // glass astern the pilot can turn all the way round and watch where the
+    // ship has been - which, leaving a planet, is the half of the journey the
+    // forward windscreen never shows.
+    const aft = {
+      x0: -0.82 * hx,
+      y0: -0.66 * hy,
+      x1: 0.82 * hx,
+      y1: 0.8 * hy,
+      r: Math.min(hy * 0.26, 0.82 * hx * 0.24),
+    };
+    add(panel({ x0: -WX, y0: -WYb, x1: WX, y1: WYt, r: 0.05 }, aft, T * 0.6), shell).position.z = ZR;
+    add(gasket(aft, hy * 0.035), seal).position.z = ZR - T * 0.6;
 
     // ---- console -----------------------------------------------------------
     // A shallow deck under the windscreen, tilted so its leading edge just
