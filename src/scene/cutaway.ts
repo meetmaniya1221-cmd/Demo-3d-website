@@ -817,6 +817,8 @@ export class CutawayScene {
       this.timed.push(...materials);
     }
 
+    this.buildCavityLiner();
+
     if (this.isStar) {
       this.buildStarAtmosphere(new THREE.Color(this.defs[this.defs.length - 1].color));
       if (this.defs.length >= 3) {
@@ -855,6 +857,42 @@ export class CutawayScene {
     }
 
     this.applyCut();
+  }
+
+  /**
+   * Close the notch.
+   *
+   * The shells are surfaces, not solids, so a sight line that grazes in under
+   * the surface can enter the removed wedge and leave through it again without
+   * ever crossing material - and shows the background. That reads as a hole
+   * punched clean through the body, which is exactly what a cutaway must not
+   * look like.
+   *
+   * This is one more sphere at the body's own radius, uncut and drawn
+   * back-faces-only. Because the only place it can be seen is where a ray
+   * leaves the body, it is always the last surface along any line of sight: it
+   * can never hide a layer, and it fills every one of those escaping rays with
+   * the underside of the body's own surface. The cavity ends up lined with the
+   * body instead of with space.
+   */
+  private buildCavityLiner(): void {
+    const outer = this.layers[this.layers.length - 1];
+    if (!outer) return;
+    const mat = outer.materials[0].clone();
+    mat.side = THREE.BackSide;
+    // never cut: this surface is the far wall of the notch, not a shell
+    mat.uniforms.uCutA.value = 0;
+    mat.uniforms.uCutB.value = 0;
+    // no photographic map - a mirrored mosaic on the inside of the far wall
+    // would read as a second, wrong-way-round world
+    mat.uniforms.uHasMap.value = 0;
+    const seg = 128;
+    const liner = new THREE.Mesh(new THREE.SphereGeometry(outer.outer, seg, Math.round(seg * 0.55)), mat);
+    liner.renderOrder = -1;
+    this.group.add(liner);
+    this.extras.push(liner);
+    this.timed.push(mat);
+    this.furniture.push(mat);
   }
 
   /* ------------------------------------------------------- star furniture -- */
@@ -899,7 +937,7 @@ export class CutawayScene {
       side: THREE.BackSide,
     });
     const corona = new THREE.Mesh(new THREE.SphereGeometry(SPHERE_R * 2.6, 96, 56), coronaMat);
-    corona.renderOrder = -1;
+    corona.renderOrder = -2;
     this.group.add(corona);
     this.extras.push(corona);
     this.timed.push(coronaMat);
