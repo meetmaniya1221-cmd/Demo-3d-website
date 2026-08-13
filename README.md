@@ -113,6 +113,29 @@ surviving meteorite - with scientifically correct terminology throughout.
 Clipper - as a timeline, each mission linked both ways to the worlds it
 studied.
 
+**The observation craft.** *Cockpit* puts you inside a 360° glass cabin and
+hands you the throttle. It is one continuous shell, not six window modes:
+the head turns freely all the way round inside a frame welded to the hull,
+so front, rear, overhead and the floor opening are simply directions you
+happen to be facing. Turn 180° and you are looking at the real objects
+behind the ship through the rear glass - the same scene, from the other
+side, never a substitute backdrop. Look up through the canopy and the Sun
+is where the Sun actually is.
+
+Flight is physical and quoted in physical units: throttle to a 0.25 AU/s
+cruise, boost to the 0.5 AU/s structural ceiling, retro-brake to a dead
+stop, and flight assist you can switch off - with it on the ship goes where
+it points, with it off nothing damps anything and you keep every bit of
+sideways drift you built up. A prograde marker shows where you are actually
+going as opposed to where the nose is aimed, and targeting locks a body,
+swings the hull onto it and reads out true range in AU and an ETA.
+
+**Time compression is a separate system, and the cockpit is built to prove
+it.** The throttle moves the ship; time compression moves the planets. They
+have separate controls, separate readouts on opposite sides of the glass,
+and neither can touch the other - while you are flying, even the keyboard
+belongs to the ship, so the brake cannot nudge the simulation clock.
+
 **Distance journey.** A continuous camera ride from the Sun's doorstep to
 the Kuiper belt at true scale, with a live AU odometer, light-time
 readout, and an uncomfortable speedometer ("you are moving at 40× the
@@ -156,6 +179,7 @@ src/
   data/catalog.ts       assembles the full catalog + mission cross-index
   data/catalog/*.ts     moons, dwarfs, asteroids, comets, missions, regions
   sim/scale.ts          explorer ↔ true-scale mapping (single source of truth)
+  sim/flight.ts         ship flight model: AU/s throttle, brake, boost, assist
   sim/state.ts          app state + event emitter
   scene/                sun, planets, satellites, small bodies, comet tails,
                         belts, sky, orbit lines, lazy procedural surfaces

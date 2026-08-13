@@ -28,6 +28,7 @@ import { MeteorsOverlay } from './ui/meteors';
 import { Search } from './ui/search';
 import { Atlas } from './ui/atlas';
 import { Journey } from './ui/journey';
+import { CockpitMode } from './ui/cockpitmode';
 import { Tour, type TourHost } from './ui/tour';
 import { PLANETS } from './data/bodies';
 import { catalogObject } from './data/catalog';
@@ -62,6 +63,7 @@ export class App implements TourHost {
   private search: Search;
   private atlas: Atlas;
   private journey: Journey;
+  private cockpit: CockpitMode;
   private tour: Tour;
   private toastEl: HTMLElement;
   private liveRegion!: HTMLElement;
@@ -142,6 +144,14 @@ export class App implements TourHost {
         this.observatory.openFor(id);
       },
     });
+    this.cockpit = new CockpitMode({
+      camera: this.rig.camera,
+      canvas: this.renderer.domElement,
+      root,
+      state: this.state,
+      system: this.system,
+      onExit: () => this.leaveCockpit(),
+    });
     this.atlas = new Atlas(root, this.state);
     this.journey = new Journey(root, {
       state: this.state,
@@ -158,6 +168,7 @@ export class App implements TourHost {
       onSearch: () => this.search.open(),
       onAtlas: () => this.atlas.toggle(),
       onJourney: () => this.startJourney(),
+      onCockpit: () => this.enterCockpit(),
       onMissions: () => this.missions.open(),
       onMeteors: () => this.meteors.open(),
       onObservatory: () => this.observatory.open(),
@@ -347,6 +358,26 @@ export class App implements TourHost {
     }
   }
 
+  /** Board the observation craft: the orbit rig stands down for the duration. */
+  enterCockpit(): void {
+    if (this.cockpit.active) return;
+    if (this.journey.active) this.journey.end();
+    if (this.tour.active) this.tour.end();
+    this.rig.controls.enabled = false;
+    this.rig.controls.autoRotate = false;
+    this.cockpit.enter();
+  }
+
+  /** Hand the camera back to the orbit rig, looking where the ship left off. */
+  private leaveCockpit(): void {
+    const cam = this.rig.camera;
+    cam.getWorldDirection(this.tmpV);
+    // put the orbit target out in front so the handover does not swing the view
+    const reach = Math.max(6, cam.position.length() * 0.25);
+    this.rig.controls.target.copy(cam.position).addScaledVector(this.tmpV, reach);
+    this.rig.controls.enabled = true;
+  }
+
   startJourney(): void {
     if (this.tour.active) this.tour.dismiss();
     this.atlas.close();
@@ -383,7 +414,8 @@ export class App implements TourHost {
   private onKey(e: KeyboardEvent): void {
     // Escape always works, even from inside inputs/sliders
     if (e.key === 'Escape') {
-      if (this.hud.datePicker.isOpen) this.hud.datePicker.close(true);
+      if (this.cockpit.active) this.cockpit.exit();
+      else if (this.hud.datePicker.isOpen) this.hud.datePicker.close(true);
       else if (this.search.isOpen) this.search.close(true);
       else if (this.layersPanel.isOpen) this.layersPanel.setOpen(false);
       else if (this.compare.isOpen) this.compare.close();
@@ -452,7 +484,9 @@ export class App implements TourHost {
     this.system.update(this.state.simDays, this.state.scaleT, this.elapsed, this.rig.camera);
     // camera flights advance on wall-clock time so they finish on schedule
     // even when the GPU is struggling
-    if (this.journey.active) {
+    if (this.cockpit.active) {
+      this.cockpit.update(Math.min(rawDt, 0.5));
+    } else if (this.journey.active) {
       this.journey.update(Math.min(rawDt, 0.5));
     } else {
       this.rig.update(Math.min(rawDt, 0.5));
@@ -527,6 +561,7 @@ export class App implements TourHost {
     }
 
     this.composer.render();
+    this.cockpit.render(this.renderer);
   }
 
   private setPixelRatio(value: number): void {
@@ -596,6 +631,10 @@ export class App implements TourHost {
       openStructure: (id: string) => this.structure.openFor(id),
       openCutaway: (id: string) => this.cutaway.openFor(id),
       cutawayInfo: () => this.cutaway.info,
+      enterCockpit: () => this.enterCockpit(),
+      cockpitInfo: () => this.cockpit.info,
+      cockpitLook: (y: number, p: number) => this.cockpit.lookTo(y, p),
+      shipPos: () => this.rig.camera.position.toArray(),
       openEarthMoon: () => this.earthMoon.open(),
       openObservatory: (id?: string) => (id ? this.observatory.openFor(id) : this.observatory.open()),
       system: this.system,

@@ -4504,3 +4504,252 @@ button.sim-date:hover {
 .overlay.overlay-cutaway {
   z-index: 72;
 }
+
+/* ------------------------------------------------- observation cockpit --- */
+
+/* In the cabin the universe is the point: the app's own chrome stands down and
+   the ship's instruments take over, kept to the edges of the glass. */
+.in-cockpit .top-actions,
+.in-cockpit .timebar,
+.in-cockpit .rail,
+.in-cockpit .infopanel,
+.in-cockpit .distance-readout,
+.in-cockpit #landing,
+.in-cockpit .landing-hint,
+.in-cockpit .hints {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ckpt {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  font-family: var(--sans);
+  color: var(--text);
+}
+
+.ckpt[hidden] { display: none; }
+
+/* the nose datum: where the hull points, which is not always where you look */
+.ckpt-nose {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border: 1.5px solid rgba(102, 224, 255, 0.75);
+  border-radius: 50%;
+  box-shadow: inset 0 0 12px rgba(102, 224, 255, 0.2), 0 0 10px rgba(0, 0, 0, 0.55);
+}
+.ckpt-nose::before,
+.ckpt-nose::after {
+  content: '';
+  position: absolute;
+  background: rgba(102, 224, 255, 0.5);
+}
+.ckpt-nose::before { left: 50%; top: -9px; width: 1px; height: 7px; }
+.ckpt-nose::after { top: 50%; left: -9px; height: 1px; width: 7px; }
+
+.ckpt-mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+.ckpt-mark.show { opacity: 1; }
+.ckpt-mark span {
+  position: absolute;
+  display: block;
+  transform: translate(-50%, -50%);
+}
+/* prograde: where the ship is actually going, which under Newtonian flight is
+   emphatically not where it is pointing */
+.ckpt-prograde span {
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid rgba(126, 255, 190, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(126, 255, 190, 0.35);
+}
+.ckpt-prograde span::before,
+.ckpt-prograde span::after {
+  content: '';
+  position: absolute;
+  background: rgba(126, 255, 190, 0.9);
+}
+.ckpt-prograde span::before { left: 50%; top: -7px; width: 1.5px; height: 7px; }
+.ckpt-prograde span::after { top: 50%; left: 50%; width: 1.5px; height: 7px; transform: translateX(-50%); }
+
+.ckpt-tgt span {
+  width: 26px;
+  height: 26px;
+  border: 1.5px solid rgba(255, 190, 92, 0.95);
+  box-shadow: 0 0 10px rgba(255, 170, 60, 0.35);
+  clip-path: polygon(0 0, 34% 0, 34% 8%, 8% 8%, 8% 34%, 0 34%,
+                     100% 100%, 66% 100%, 66% 92%, 92% 92%, 92% 66%, 100% 66%);
+}
+
+.ckpt-panel {
+  position: absolute;
+  bottom: 26px;
+  padding: 11px 14px 12px;
+  min-width: 176px;
+  background: rgba(4, 10, 18, 0.62);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(7px);
+  clip-path: polygon(11px 0, 100% 0, 100% calc(100% - 11px), calc(100% - 11px) 100%, 0 100%, 0 11px);
+}
+
+.ckpt-flight { left: 26px; }
+.ckpt-time { right: 26px; max-width: 232px; }
+
+.ckpt-speed {
+  font-family: var(--mono);
+  font-size: 25px;
+  line-height: 1.1;
+  color: var(--accent);
+  margin-top: 3px;
+}
+.ckpt-speed i { font-size: 12px; font-style: normal; color: var(--text-dim); }
+.ckpt-kms { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+
+.ckpt-thr {
+  position: relative;
+  height: 7px;
+  margin-top: 9px;
+  background: rgba(102, 224, 255, 0.1);
+  border: 1px solid var(--line);
+}
+.ckpt-thr-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: linear-gradient(90deg, rgba(102, 224, 255, 0.65), rgba(126, 255, 190, 0.9));
+  transition: width 0.1s linear;
+}
+/* the line where cruise ends and boost territory begins */
+.ckpt-thr-cruise {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: rgba(255, 190, 92, 0.7);
+}
+.ckpt-thr-label { font-size: 10.5px; letter-spacing: 0.06em; color: var(--text-dim); margin-top: 5px; }
+.ckpt-thr-label b { color: var(--text); font-family: var(--mono); }
+
+.ckpt-flags { display: flex; gap: 6px; margin-top: 7px; }
+.ckpt-flags span {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  color: rgba(180, 200, 224, 0.4);
+}
+.ckpt-flags span.on {
+  color: #061018;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ckpt-boost.on { background: #ffbe5c; border-color: #ffbe5c; }
+
+.ckpt-tc {
+  font-family: var(--mono);
+  font-size: 17px;
+  color: #ffbe5c;
+  margin-top: 3px;
+}
+.ckpt-tc-note {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  margin-top: 5px;
+}
+
+.ckpt-target {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.ckpt-target.show { opacity: 1; }
+.ckpt-target b {
+  display: block;
+  font-family: var(--display, var(--sans));
+  font-size: 17px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #ffbe5c;
+}
+.ckpt-target span { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
+
+.ckpt-flash {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, 42px);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0;
+}
+.ckpt-flash.show { animation: ckptflash 1.8s ease-out forwards; }
+@keyframes ckptflash {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.ckpt-keys {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 13px;
+  max-width: min(560px, 46vw);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: rgba(180, 200, 224, 0.5);
+}
+.ckpt-keys kbd {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  padding: 1px 4px;
+  margin-right: 2px;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+}
+
+.ckpt-exit {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  pointer-events: auto;
+}
+
+@media (max-width: 760px) {
+  .ckpt-panel { bottom: 14px; padding: 8px 10px 9px; min-width: 132px; }
+  .ckpt-flight { left: 12px; }
+  .ckpt-time { right: 12px; max-width: 44vw; }
+  .ckpt-speed { font-size: 19px; }
+  .ckpt-tc { font-size: 13px; }
+  .ckpt-tc-note { font-size: 9px; }
+  /* on a phone the key legend is noise - the touch drag is the control */
+  .ckpt-keys { display: none; }
+  .ckpt-target b { font-size: 14px; }
+}

@@ -23,6 +23,7 @@ export interface HudCallbacks {
   onMissions: () => void;
   onMeteors: () => void;
   onObservatory: () => void;
+  onCockpit: () => void;
 }
 
 export class Hud {
@@ -62,6 +63,8 @@ export class Hud {
     atlasBtn.dataset.sfx = 'none';
     const tourBtn = this.chip('Tour', () => cb.onTour());
     const journeyBtn = this.chip('Journey', () => cb.onJourney());
+    const cockpitBtn = this.chip('Cockpit', () => cb.onCockpit());
+    cockpitBtn.title = 'Fly the observation craft: 360° cabin, throttle and targeting';
     const skyBtn = this.chip('Sky', () => cb.onObservatory());
     skyBtn.title = 'Observatory: night sky, near stars, deep sky';
     const missionsBtn = this.chip('Missions', () => cb.onMissions());
@@ -104,6 +107,7 @@ export class Hud {
       atlasBtn,
       tourBtn,
       journeyBtn,
+      cockpitBtn,
       skyBtn,
       missionsBtn,
       meteorsBtn,
