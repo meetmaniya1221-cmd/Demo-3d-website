@@ -271,9 +271,11 @@ export class Cockpit {
     add(gasket(front, hy * 0.035), seal).position.z = ZF + T;
 
     // ---- side walls; shape x maps to -z on the left wall, +z on the right ----
-    // the side glass runs almost to the windscreen: the narrower the A-pillar,
-    // the less often a body you are tracking disappears behind it
-    const sw = { z0: -0.985, z1: -0.08, y0: -0.44 * hy, y1: 0.74 * hy };
+    // The side glass runs almost to the windscreen at the front - the narrower
+    // the A-pillar, the less often a tracked body disappears behind it - and
+    // well aft of the seat at the back, so that looking a full 90° out to the
+    // beam lands in the middle of a window rather than on the wall between two.
+    const sw = { z0: -0.985, z1: 0.46, y0: -0.44 * hy, y1: 0.74 * hy };
     const sideR = Math.min(hy * 0.22, (sw.z1 - sw.z0) * 0.2);
     const leftHole = { x0: -sw.z1, y0: sw.y0, x1: -sw.z0, y1: sw.y1, r: sideR };
     const leftGeo = panel({ x0: -ZR, y0: -WYb, x1: -ZF, y1: WYt, r: 0.05 }, leftHole, T);

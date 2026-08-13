@@ -20,6 +20,17 @@
 import * as THREE from 'three';
 import { catalogObject } from '../data/catalog';
 import {
+  BURN_AXES,
+  BURN_LABEL,
+  MAX_BURN_FRACTION,
+  type BurnAxis,
+  type OrbitalElements,
+  burnDirection,
+  circularSpeed,
+  elementsFrom,
+  propagateWithThrust,
+} from './orbit';
+import {
   KM_PER_UNIT,
   NEIGHBOUR_IDS,
   UNITS_PER_KM,
@@ -35,6 +46,14 @@ import {
 /** Gravitational constant in km³ kg⁻¹ s⁻². */
 const G_KM = 6.6743e-20;
 
+/** Compact duration for autopilot messages. */
+function fmtHours(sec: number): string {
+  if (!Number.isFinite(sec)) return 'unbound';
+  if (sec < 5400) return `${(sec / 60).toFixed(1)} min`;
+  if (sec < 172_800) return `${(sec / 3600).toFixed(1)} h`;
+  return `${(sec / 86_400).toFixed(1)} days`;
+}
+
 export type FlightMode = 'free' | 'transit' | 'orbit' | 'flyby' | 'follow';
 
 /** Commanded physical velocities, in km/s. */
@@ -42,6 +61,28 @@ export const THROTTLE_STEPS = [0, 1, 10, 50, 150, 400, 1000] as const;
 
 /** Simulated seconds per real second. */
 export const TIME_STEPS = [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000] as const;
+
+/**
+ * What the same seven throttle notches mean in orbit: main-engine acceleration
+ * in m/s², not a commanded velocity.
+ *
+ * A velocity setpoint is meaningless on an orbital trajectory - what changes an
+ * orbit is delta-v, and delta-v is acceleration times time. The ladder is
+ * geometric and spans four orders of magnitude because the useful range genuinely
+ * does.
+ *
+ * With the legibility cap holding one revolution to 22 real seconds, the time to
+ * reach escape velocity from a circular orbit is 9.11·v/(a·T) real seconds. At
+ * the 20 mm/s² notch that is 11.6 s at Earth (50,000 km), 7.8 s at Mars
+ * (20,000 km), 2.8 s at Saturn (1,000,000 km) and 36.7 s at Jupiter
+ * (500,000 km) - one notch that works everywhere, with the neighbouring ones for
+ * fine trim and for leaving in a hurry. These figures are frame-rate independent
+ * by construction; see stepOrbit for why that took substepping to achieve.
+ */
+export const THRUST_STEPS_MS2 = [0, 0.001, 0.005, 0.02, 0.1, 0.5, 2.0] as const;
+
+/** Attitude the flight computer holds while orbiting. */
+export type AttitudeHold = BurnAxis | 'target' | null;
 
 export const DEFAULT_THROTTLE_INDEX = 3; // 50 km/s
 export const DEFAULT_TIME_INDEX = 4; // x10,000
@@ -72,6 +113,27 @@ const UP = new THREE.Vector3(0, 1, 0);
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const ORIGIN = new THREE.Vector3(0, 0, 0);
 
+export interface OrbitTelemetry {
+  bodyName: string;
+  radiusKm: number;
+  altitudeKm: number;
+  speedKms: number;
+  periodSec: number;
+  eccentricity: number;
+  inclinationDeg: number;
+  semiMajorKm: number;
+  periapsisKm: number;
+  apoapsisKm: number;
+  periapsisAltKm: number;
+  apoapsisAltKm: number;
+  trueAnomalyDeg: number;
+  escaping: boolean;
+  dvSpentKms: number;
+  thrustMs2: number;
+  hold: AttitudeHold;
+  impactPredicted: boolean;
+}
+
 export interface ProximityWarning {
   id: string;
   name: string;
@@ -84,14 +146,29 @@ interface TransitPlan {
   standoff: number;
 }
 
+/**
+ * A genuine orbital state, not a scripted circle.
+ *
+ * The ship carries a body-centred state vector and the trajectory is whatever
+ * that vector implies. Burns change the vector; the orbit changes because the
+ * physics says so. This is what makes orbit mode manoeuvrable: there is no
+ * prescribed path to fight.
+ */
 interface OrbitPlan {
-  u: THREE.Vector3; // in-plane basis, ship starts here
-  w: THREE.Vector3; // in-plane basis, 90° ahead
-  radius: number; // scene units from the body's centre
-  theta: number;
-  omega: number; // radians per simulated second
-  periodSec: number;
-  speedKms: number;
+  /** Body-centred position, km. */
+  r: THREE.Vector3;
+  /** Body-centred velocity, km/s. */
+  v: THREE.Vector3;
+  /** Gravitational parameter of the anchor, km³/s². */
+  mu: number;
+  /** Elements refreshed every step, for the HUD and the trajectory preview. */
+  el: OrbitalElements;
+  /** Total delta-v spent since insertion, km/s. */
+  dvSpent: number;
+  /** Whether the escape announcement has already fired. */
+  escapeAnnounced: boolean;
+  /** Radius the hull may not go below, km. */
+  safeRadiusKm: number;
 }
 
 interface FlybyPlan {
@@ -175,6 +252,12 @@ export class Ship {
   private frameA = new THREE.Vector3();
   private frameB = new THREE.Vector3();
 
+  /** Attitude the flight computer holds while orbiting. */
+  hold: AttitudeHold = null;
+  /** Scratch state for the propagator, so a step allocates nothing. */
+  private orbitOut = { r: new THREE.Vector3(), v: new THREE.Vector3() };
+  private orbitUp = new THREE.Vector3();
+
   private transit: TransitPlan | null = null;
   private orbit: OrbitPlan | null = null;
   private flyby: FlybyPlan | null = null;
@@ -221,8 +304,77 @@ export class Ship {
   setThrottleIndex(i: number): void {
     this.throttleIndex = THREE.MathUtils.clamp(i, 0, THROTTLE_STEPS.length - 1);
     this.cmdKms = THROTTLE_STEPS[this.throttleIndex];
-    // a manual throttle change means the pilot is flying, not the autopilot
+    // A throttle change means the pilot is flying, not the autopilot - except in
+    // orbit, where the throttle IS the pilot's control over the trajectory and
+    // aborting would be exactly the lock-out this mode is meant not to have.
     if (this.mode === 'transit' || this.mode === 'flyby') this.abort('Autopilot released - manual throttle.');
+  }
+
+  /** Main-engine acceleration at the current notch, m/s² (orbit mode). */
+  get thrustMs2(): number {
+    return THRUST_STEPS_MS2[this.throttleIndex] ?? 0;
+  }
+
+  /** Set the attitude the flight computer holds. */
+  setHold(hold: AttitudeHold): void {
+    this.hold = hold;
+    this.event = hold
+      ? `Attitude hold: ${hold === 'target' ? 'target' : BURN_LABEL[hold].toLowerCase()}.`
+      : 'Attitude hold released - manual control.';
+  }
+
+  /** Step through the manoeuvre axes; used by the keyboard. */
+  cycleHold(): void {
+    const order: AttitudeHold[] = [...BURN_AXES, 'target', null];
+    const i = order.indexOf(this.hold);
+    this.setHold(order[(i + 1) % order.length]);
+  }
+
+  /**
+   * Leave the orbit for free flight, keeping the state vector intact.
+   *
+   * Position is untouched and the velocity is preserved by pointing the nose
+   * along it and commanding exactly the speed the ship already had, so the hull
+   * carries straight on out of the orbit instead of being teleported or having
+   * its motion quietly zeroed.
+   */
+  releaseOrbit(): void {
+    if (this.mode !== 'orbit' || !this.orbit) return;
+    const name = this.nameOf(this.anchorId);
+    const speed = this.handOverToFreeFlight();
+    this.event =
+      `Orbit released at ${name} - free flight, holding ${speed.toFixed(2)} km/s along the ` +
+      `velocity vector. Position and velocity unchanged.`;
+  }
+
+  /**
+   * Move from an orbital state into free flight without disturbing the hull.
+   *
+   * Position is not touched at all. Velocity is preserved by pointing the nose
+   * along the current velocity vector and commanding exactly the speed the ship
+   * already has, so the velocity-hold computer takes over holding what physics
+   * had it doing rather than braking it to a stop or snapping it somewhere new.
+   * Returns the preserved speed in km/s.
+   */
+  private handOverToFreeFlight(): number {
+    const plan = this.orbit;
+    const speed = plan ? plan.v.length() : this.speedKms;
+    if (plan && speed > 1e-9) {
+      this.lookAtPoint(this.tmpC.copy(this.pos).addScaledVector(plan.v, UNITS_PER_KM));
+    }
+    this.speedKms = speed;
+    this.cmdKms = speed;
+    // the chip ladder no longer describes this value, so no chip is lit
+    this.throttleIndex = -1;
+    this.orbit = null;
+    this.hold = null;
+    // Gaze lock has to go too. In free flight it drives the attitude assist,
+    // which would immediately swing the nose off the velocity vector and back
+    // onto the body - and since free flight travels along the nose, "continue
+    // naturally out of the orbit" would become "fly into the planet".
+    this.gazeLock = false;
+    this.mode = 'free';
+    return speed;
   }
 
   setTimeIndex(i: number): void {
@@ -231,10 +383,26 @@ export class Ship {
   }
 
   nudgeThrottle(dir: 1 | -1): void {
+    // after a hand-over the throttle holds a custom value with no chip lit;
+    // stepping from there picks the nearest notch in the requested direction
+    if (this.throttleIndex < 0) {
+      let i = THROTTLE_STEPS.findIndex((v) => v > this.cmdKms);
+      if (i < 0) i = THROTTLE_STEPS.length - 1;
+      this.setThrottleIndex(dir > 0 ? i : Math.max(0, i - 1));
+      return;
+    }
     this.setThrottleIndex(this.throttleIndex + dir);
   }
 
   fullStop(): void {
+    // In orbit "all stop" can only mean cutting the engine: you cannot stop
+    // dead on a trajectory, and pretending otherwise would be the same lie the
+    // kinematic version told.
+    if (this.mode === 'orbit') {
+      this.idle();
+      this.event = 'Main engine cut. Coasting on the current trajectory.';
+      return;
+    }
     this.idle();
     // an all-stop while station-keeping keeps the station: that IS stopped
     if (this.mode !== 'follow' || !this.anchorId) {
@@ -340,48 +508,66 @@ export class Ship {
     this.cmdKms = THROTTLE_STEPS[this.throttleIndex];
   }
 
-  /** Enter a real circular orbit around a body. */
+  /**
+   * Insert into orbit around a body.
+   *
+   * The insertion burn is implied: station-keeping means ~zero velocity
+   * relative to the body, so entering orbit has to hand the hull the orbital
+   * velocity it needs. From there nothing is scripted - the trajectory is
+   * whatever the state vector says, and every control still works.
+   */
   startOrbit(id: string, simDays: number): void {
     const target = bodyPositionTrue(id, simDays, this.tmpA);
-    const gm = this.gmOf(id);
-    let radius = Math.max(arrivalDistance(id) * 0.8, minSafeDistance(id) * 1.5);
-    const rel = this.tmpB.copy(this.pos).sub(target);
-    // if the ship is already close, orbit where it is rather than jumping out
-    if (rel.length() > minSafeDistance(id) * 1.2 && rel.length() < radius * 2.5) radius = rel.length();
+    const mu = this.gmOf(id);
+    const safeKm = minSafeDistance(id) * KM_PER_UNIT;
 
-    // Plane choice: tilt away from the body's equator so ring systems are seen
-    // at an angle instead of edge-on. The ship joins at the point of its own
-    // current bearing, so entering orbit never teleports it across the sky.
-    const north = WORLD_UP.clone();
+    // orbit where the ship already is when that is sensible, otherwise at the
+    // standard arrival shell - either way it never teleports across the sky
+    const rel = this.tmpB.copy(this.pos).sub(target);
+    let radius = Math.max(arrivalDistance(id) * 0.8, minSafeDistance(id) * 1.5);
+    if (rel.length() > minSafeDistance(id) * 1.2 && rel.length() < radius * 2.5) {
+      radius = rel.length();
+    }
     let u = rel.clone();
     if (u.lengthSq() < 1e-16) u.set(1, 0, 0);
     u.normalize();
-    let n = new THREE.Vector3().crossVectors(u, north);
+
+    // Plane: tilted off the pole so a ring system is seen at an angle rather
+    // than edge-on. The ship joins at its own current bearing.
+    let n = new THREE.Vector3().crossVectors(u, WORLD_UP);
     if (n.lengthSq() < 1e-8) n.set(1, 0, 0).cross(u);
-    n.normalize();
-    // 42° inclination relative to the plane that contains the world pole
-    n.applyAxisAngle(u, THREE.MathUtils.degToRad(42)).normalize();
+    n.normalize().applyAxisAngle(u, THREE.MathUtils.degToRad(42)).normalize();
     const w = new THREE.Vector3().crossVectors(n, u).normalize();
 
     const rKm = radius * KM_PER_UNIT;
-    const speedKms = Math.sqrt(gm / rKm);
-    const omega = speedKms / rKm; // rad per simulated second
+    const speed = circularSpeed(mu, rKm);
+    const r = u.clone().multiplyScalar(rKm);
+    const v = w.clone().multiplyScalar(speed);
+
     this.orbit = {
-      u,
-      w,
-      radius,
-      theta: 0,
-      omega,
-      periodSec: (2 * Math.PI) / omega,
-      speedKms,
+      r,
+      v,
+      mu,
+      el: elementsFrom(r, v, mu),
+      dvSpent: 0,
+      escapeAnnounced: false,
+      safeRadiusKm: safeKm,
     };
     this.transit = this.flyby = null;
     this.targetId = id;
     this.anchorId = id;
     this.mode = 'orbit';
     this.gazeLock = true;
+    this.hold = 'prograde';
+    this.idle(); // engine off: the pilot decides when to change the orbit
     this.pos.copy(target).addScaledVector(u, radius);
-    this.event = `Orbit insertion at ${this.nameOf(id)} complete.`;
+    // start in the orbital attitude straight away rather than slewing into it
+    this.tmpM.lookAt(ORIGIN, w, n);
+    this.quat.setFromRotationMatrix(this.tmpM);
+    this.event =
+      `Orbit insertion at ${this.nameOf(id)} complete - ` +
+      `${speed.toFixed(2)} km/s circular, period ${fmtHours(this.orbit.el.period)}. ` +
+      `Throttle up to change it.`;
   }
 
   /** Set up and run a cinematic pass. */
@@ -441,8 +627,26 @@ export class Ship {
   /**
    * Advance the vessel. `dt` is real seconds; returns the number of SIMULATED
    * seconds that elapsed, which the caller folds into the simulation clock.
+   *
+   * Long frames are split. Several of the flight computer's loops are closed on
+   * real time - the attitude slew, the throttle ramp, and above all the orbital
+   * time-compression limiter, which is a function of the very orbit the burn is
+   * changing. Sampling that feedback once per frame makes the outcome depend on
+   * the frame rate: the same burn under-delivers by roughly a fifth at 2 fps
+   * against 60. Capping the sub-step at 50 ms costs a handful of extra
+   * evaluations on a struggling machine and makes the physics the pilot's, not
+   * the GPU's.
    */
   update(dt: number, simDays: number): number {
+    const parts = Math.min(12, Math.max(1, Math.ceil(dt / 0.05)));
+    if (parts === 1) return this.step(dt, simDays);
+    let total = 0;
+    const h = dt / parts;
+    for (let i = 0; i < parts; i++) total += this.step(h, simDays + total / 86_400);
+    return total;
+  }
+
+  private step(dt: number, simDays: number): number {
     this.prevPos.copy(this.pos);
     this.applyManualAttitude(dt);
     this.updateLocalFrame(simDays);
@@ -453,8 +657,7 @@ export class Ship {
       if (this.mode === 'transit' && this.transit) {
         effT = Math.min(effT, this.transitTimeLimit(simDays));
       } else if (this.mode === 'orbit' && this.orbit) {
-        // never let a whole orbit flash past in under ~22 s of real time
-        effT = Math.min(effT, Math.max(1, this.orbit.periodSec / 22));
+        effT = Math.min(effT, this.orbitTimeLimit(dt));
       } else if (this.mode === 'flyby' && this.flyby) {
         effT = Math.min(effT, this.flybyTimeLimit(simDays));
       }
@@ -550,16 +753,30 @@ export class Ship {
   private applyManualAttitude(dt: number): void {
     const { yaw, pitch, roll } = this.input;
     if (yaw === 0 && pitch === 0 && roll === 0) return;
-    // manual attitude input takes the ship off autopilot heading control
+    // manual attitude input takes the ship off autopilot heading control. In
+    // orbit that means dropping the attitude hold, not dropping the orbit.
     if (this.mode === 'transit' || this.mode === 'flyby') this.abort('Manual attitude - autopilot released.');
+    else if (this.mode === 'orbit' && this.hold) this.hold = null;
     const e = new THREE.Euler(pitch * RCS_ROT_RATE * dt, yaw * RCS_ROT_RATE * dt, roll * RCS_ROT_RATE * dt, 'YXZ');
     this.quat.multiply(this.tmpQ.setFromEuler(e));
   }
 
-  /** Rate-limited slew of the nose toward a world direction. */
-  private slewTo(dir: THREE.Vector3, dt: number, rate = SLEW_RATE): number {
+  /**
+   * Rate-limited slew of the nose toward a world direction.
+   *
+   * `up` picks the roll. It matters in orbit: pointing the nose prograde with
+   * the orbit normal as "up" puts the body squarely out of the port window,
+   * which is how an orbiting spacecraft is actually flown and the only way the
+   * planet ends up somewhere the pilot can see it.
+   */
+  private slewTo(
+    dir: THREE.Vector3,
+    dt: number,
+    rate = SLEW_RATE,
+    up: THREE.Vector3 = WORLD_UP,
+  ): number {
     if (dir.lengthSq() < 1e-20) return 0;
-    this.tmpM.lookAt(ORIGIN, dir, WORLD_UP);
+    this.tmpM.lookAt(ORIGIN, dir, up);
     this.tmpQ.setFromRotationMatrix(this.tmpM);
     const before = this.quat.angleTo(this.tmpQ);
     this.quat.rotateTowards(this.tmpQ, rate * dt);
@@ -675,28 +892,168 @@ export class Ship {
     }
   }
 
-  private stepOrbit(_dt: number, simDt: number, simDays: number): void {
+  /**
+   * One orbital step: burn, coast, burn.
+   *
+   * The coast is an exact closed-form Kepler propagation, so it is correct at
+   * any step size - which matters, because a single frame here can cover more
+   * than a whole orbit. Thrust is split around it (Strang splitting) so a burn
+   * does not systematically bias the resulting trajectory.
+   */
+  private stepOrbit(dt: number, simDt: number, simDays: number): void {
     const plan = this.orbit;
     if (!plan || !this.anchorId) {
       this.mode = 'free';
       return;
     }
-    plan.theta += plan.omega * simDt;
+
+    // ---- attitude: hold an orbital axis, or leave the nose to the pilot ----
+    this.applyAttitudeHold(dt, simDays, plan);
+
+    // ---- thrust: the nose direction, at the throttle's acceleration --------
+    const accel = this.tmpC.set(0, 0, 0);
+    const mainMs2 = THRUST_STEPS_MS2[this.throttleIndex] ?? 0;
+    if (mainMs2 > 0) {
+      accel.addScaledVector(this.forward(this.tmpB), mainMs2 * 1e-3); // m/s² → km/s²
+    }
+    // RCS translation gives fine control at a fraction of main-engine authority
+    const rcs = Math.max(mainMs2, 0.005) * 0.35 * 1e-3;
+    if (this.input.strafeX !== 0) {
+      accel.addScaledVector(this.tmpB.copy(RIGHT).applyQuaternion(this.quat), this.input.strafeX * rcs);
+    }
+    if (this.input.strafeY !== 0) {
+      accel.addScaledVector(this.tmpB.copy(UP).applyQuaternion(this.quat), this.input.strafeY * rcs);
+    }
+
+    if (simDt !== 0) {
+      // Split the frame until each sub-burn is small against the local orbital
+      // speed. The alternative - capping time compression so one frame's delta-v
+      // stays small - would tie how fast the orbit responds to the frame rate:
+      // the same notch held for the same wall-clock time would deliver 72x more
+      // delta-v at 144 fps than at 2 fps. Substepping keeps the integration
+      // honest while the delivered delta-v per REAL second stays a property of
+      // the engine and the orbit, which is what the pilot is entitled to assume.
+      const dvTotal = accel.length() * Math.abs(simDt);
+      const speed = Math.max(plan.v.length(), 1e-9);
+      const sub = Math.min(64, Math.max(1, Math.ceil(dvTotal / (MAX_BURN_FRACTION * speed))));
+      const h = simDt / sub;
+      for (let i = 0; i < sub; i++) {
+        propagateWithThrust(plan.r, plan.v, plan.mu, h, accel, this.orbitOut);
+        plan.r.copy(this.orbitOut.r);
+        plan.v.copy(this.orbitOut.v);
+      }
+      plan.dvSpent += dvTotal;
+    }
+
+    // ---- the floor: never inside the body -------------------------------
+    const rMag = plan.r.length();
+    if (rMag < plan.safeRadiusKm) {
+      plan.r.setLength(plan.safeRadiusKm);
+      // shed the inward radial component so the hull skims rather than digs in
+      const radial = this.tmpB.copy(plan.r).normalize();
+      const vr = plan.v.dot(radial);
+      if (vr < 0) plan.v.addScaledVector(radial, -vr);
+      this.event = `Proximity limit at ${this.nameOf(this.anchorId)}. Trajectory held at the safe radius.`;
+    }
+
+    plan.el = elementsFrom(plan.r, plan.v, plan.mu);
+
+    // ---- escape detection -------------------------------------------------
+    if (plan.el.escaping && !plan.escapeAnnounced) {
+      plan.escapeAnnounced = true;
+      this.event =
+        `ESCAPE TRAJECTORY - eccentricity ${plan.el.e.toFixed(2)}. ` +
+        `You are no longer bound to ${this.nameOf(this.anchorId)}.`;
+    } else if (!plan.el.escaping && !plan.el.marginallyBound && plan.escapeAnnounced) {
+      plan.escapeAnnounced = false;
+      this.event = `Recaptured - closed orbit around ${this.nameOf(this.anchorId)} restored.`;
+    }
+
+    // ---- place the hull ---------------------------------------------------
     const target = bodyPositionTrue(this.anchorId, simDays, this.tmpA);
-    const c = Math.cos(plan.theta);
-    const s = Math.sin(plan.theta);
-    this.pos
-      .copy(target)
-      .addScaledVector(plan.u, c * plan.radius)
-      .addScaledVector(plan.w, s * plan.radius);
-    // nose prograde, the way an orbiting spacecraft actually flies
-    const prograde = this.tmpB
-      .copy(plan.u)
-      .multiplyScalar(-s)
-      .addScaledVector(plan.w, c);
-    this.slewTo(prograde, _dt, SLEW_RATE * 2);
-    this.speedKms = plan.speedKms;
-    this.cmdKms = plan.speedKms;
+    this.pos.copy(target).addScaledVector(plan.r, UNITS_PER_KM);
+    // NOTE: no carryFrame here. The anchor's own heliocentric motion is already
+    // in `target`; adding it again would double-count it and fling the ship out.
+
+    this.speedKms = plan.v.length();
+
+    // Once an unbound trajectory has genuinely left the body's neighbourhood,
+    // two-body maths about that body stops meaning anything - hand the state
+    // vector over to free flight, untouched.
+    if (plan.el.escaping) {
+      const def = catalogObject(this.anchorId);
+      const reachKm = bodyRadiusKm(this.anchorId) * (def?.type === 'planet' ? 260 : 90);
+      if (plan.el.r > reachKm) {
+        const name = this.nameOf(this.anchorId);
+        const speed = this.handOverToFreeFlight();
+        this.event =
+          `Left ${name}'s neighbourhood on the escape trajectory - ` +
+          `free flight at ${speed.toFixed(2)} km/s.`;
+      }
+    }
+  }
+
+  /**
+   * Point the nose where the flight computer is told to hold it, and roll the
+   * hull so the body being orbited stays in a window.
+   *
+   * The reference "up" is the orbit normal. With the nose prograde that puts
+   * the planet exactly abeam to port - the classic orbital attitude, and the
+   * reason the view out of the side glass is of the planet rather than of a
+   * bulkhead. For a normal/anti-normal hold the normal IS the nose, so the
+   * velocity vector takes over as the roll reference instead.
+   */
+  private applyAttitudeHold(dt: number, simDays: number, plan: OrbitPlan): void {
+    if (!this.hold) return;
+    const normalHold = this.hold === 'normal' || this.hold === 'anti-normal';
+    const up = this.orbitUp;
+    if (normalHold) up.copy(plan.v);
+    else up.crossVectors(plan.r, plan.v);
+    if (up.lengthSq() < 1e-18) up.copy(WORLD_UP);
+    else up.normalize();
+
+    if (this.hold === 'target') {
+      if (!this.targetId) return;
+      const t = bodyPositionTrue(this.targetId, simDays, this.tmpA);
+      this.slewTo(this.tmpB.copy(t).sub(this.pos), dt, SLEW_RATE, up);
+      return;
+    }
+    burnDirection(this.hold, plan.r, plan.v, this.tmpB);
+    this.slewTo(this.tmpB, dt, SLEW_RATE, up);
+  }
+
+  /**
+   * How fast simulated time may run while orbiting.
+   *
+   * Analytic propagation is exact at any step size, so none of these caps are
+   * about the coast being wrong. They are about the three things a big step
+   * still breaks:
+   *
+   *  - LEGIBILITY: an orbit that completes in under ~22 s of real time is not
+   *    something a person can watch or fly.
+   *  - TUNNELLING: the hull is a point sample once per frame. Moving a large
+   *    fraction of the orbital radius in one step can carry it clean through a
+   *    planet between samples, so the step is capped at a fifth of the current
+   *    radius. Near periapsis the radius is small and the speed high, so this
+   *    tightens exactly where it needs to.
+   * Burn accuracy is deliberately NOT handled here. Capping the clock to keep
+   * one frame's delta-v small would make orbital authority proportional to
+   * frame rate; stepOrbit substeps the burn instead, which keeps the
+   * integration accurate without touching how fast the orbit may evolve.
+   */
+  private orbitTimeLimit(dt: number): number {
+    const plan = this.orbit;
+    if (!plan) return this.timeScale;
+    const speed = Math.max(plan.v.length(), 1e-9);
+    const step = Math.max(dt, 1e-4);
+
+    // legibility (closed orbits only - a hyperbola has no period)
+    let limit = Number.isFinite(plan.el.period) ? plan.el.period / 22 : Infinity;
+
+    // tunnelling: never cross more than a fifth of the current radius per frame
+    limit = Math.min(limit, (0.2 * plan.r.length()) / speed / step);
+
+    return Math.max(1, limit);
   }
 
   private flybyTimeLimit(simDays: number): number {
@@ -789,6 +1146,12 @@ export class Ship {
   private enforceProximity(simDays: number): void {
     this.warning = null;
     const near = nearestBodies(this.pos, simDays, 4);
+    // In orbit the trajectory owns the hull's position, and stepOrbit already
+    // holds it at the safe radius. Snapping this.pos here would desynchronise
+    // the state vector from the rendered position, and cutting the throttle on
+    // every low periapsis pass would take the controls away exactly when the
+    // pilot is using them - so orbit keeps the warning and skips the grab.
+    const advisoryOnly = this.mode === 'orbit';
     for (const n of near) {
       const limit = minSafeDistance(n.id);
       if (n.dist > limit * 4) continue;
@@ -796,7 +1159,7 @@ export class Ship {
       if (!this.warning || sev > this.warning.severity) {
         this.warning = { id: n.id, name: n.name, severity: sev };
       }
-      if (n.dist < limit) {
+      if (!advisoryOnly && n.dist < limit) {
         // hard stop: slide the hull back out along the radial direction
         const body = bodyPositionTrue(n.id, simDays, this.tmpA);
         const out = this.tmpB.copy(this.pos).sub(body);
@@ -843,7 +1206,8 @@ export class Ship {
 
   // ---------------------------------------------------------------- utils --
 
-  private nameOf(id: string): string {
+  private nameOf(id: string | null): string {
+    if (!id) return 'the body';
     return catalogObject(id)?.name ?? id;
   }
 
@@ -858,16 +1222,6 @@ export class Ship {
     return G_KM * volumeKm3 * 2.0e12;
   }
 
-  /** Orbital telemetry for the HUD (null unless orbiting). */
-  get orbitInfo(): { periodSec: number; speedKms: number; radiusKm: number } | null {
-    if (this.mode !== 'orbit' || !this.orbit) return null;
-    return {
-      periodSec: this.orbit.periodSec,
-      speedKms: this.orbit.speedKms,
-      radiusKm: this.orbit.radius * KM_PER_UNIT,
-    };
-  }
-
   /** Name of the body the active flight mode is attached to. */
   get anchorName(): string | null {
     return this.anchorId ? this.nameOf(this.anchorId) : null;
@@ -876,6 +1230,41 @@ export class Ship {
   /** Name of the body whose frame the hull is riding, if any. */
   get frameName(): string | null {
     return this.frameId && this.frameWeight > 0.25 ? this.nameOf(this.frameId) : null;
+  }
+
+  /** Everything the HUD needs about the current trajectory. */
+  get orbitInfo(): OrbitTelemetry | null {
+    if (this.mode !== 'orbit' || !this.orbit) return null;
+    const p = this.orbit;
+    const el = p.el;
+    const bodyR = this.anchorId ? bodyRadiusKm(this.anchorId) : 0;
+    return {
+      bodyName: this.nameOf(this.anchorId),
+      radiusKm: el.r,
+      altitudeKm: el.r - bodyR,
+      speedKms: el.speed,
+      periodSec: el.period,
+      eccentricity: el.e,
+      inclinationDeg: THREE.MathUtils.radToDeg(el.inc),
+      semiMajorKm: el.a,
+      periapsisKm: el.rp,
+      apoapsisKm: el.ra,
+      periapsisAltKm: el.rp - bodyR,
+      apoapsisAltKm: Number.isFinite(el.ra) ? el.ra - bodyR : Infinity,
+      trueAnomalyDeg: THREE.MathUtils.radToDeg(el.nu),
+      escaping: el.escaping,
+      dvSpentKms: p.dvSpent,
+      thrustMs2: this.thrustMs2,
+      hold: this.hold,
+      /** True when the predicted periapsis would hit the body. */
+      impactPredicted: el.rp < p.safeRadiusKm && el.r > p.safeRadiusKm * 1.001,
+    };
+  }
+
+  /** Body-centred state, for the trajectory preview. Returns null off-orbit. */
+  get orbitState(): { r: THREE.Vector3; v: THREE.Vector3; mu: number; anchorId: string } | null {
+    if (this.mode !== 'orbit' || !this.orbit || !this.anchorId) return null;
+    return { r: this.orbit.r, v: this.orbit.v, mu: this.orbit.mu, anchorId: this.anchorId };
   }
 
   /** Apparent travel rate: physical velocity multiplied by time compression. */

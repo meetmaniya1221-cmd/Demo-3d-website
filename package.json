@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test:flight": "node scripts/flighttest.mjs"
+    "test:flight": "node scripts/flighttest.mjs",
+    "test:orbit": "node --experimental-strip-types scripts/orbittest.mts",
+    "test:orbitflight": "node scripts/orbitflight.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

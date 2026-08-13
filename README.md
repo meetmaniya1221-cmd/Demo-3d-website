@@ -14,8 +14,10 @@ npm run dev      # develop at http://localhost:5173
 npm run build    # type-check + production build into dist/
 npm run preview  # serve the production build
 
-npm run test:flight   # headless flight check of spacecraft mode
-                      # (needs `npm run preview` running on :4173)
+npm run test:orbit      # two-body maths checks (no browser needed)
+npm run test:flight     # headless flight check of spacecraft mode
+npm run test:orbitflight # headless orbital-manoeuvring check
+                        # the last two need `npm run preview` running on :4173
 ```
 
 ## What's inside
@@ -152,6 +154,16 @@ Saturn's rings fill the windows on approach and reveal their fine ringlet
 structure only when you are close enough to resolve it. Nothing is
 enlarged to look good.
 
+Orbit is a real trajectory, not a scripted path. The ship carries a
+body-centred state vector, propagated in closed form with universal-variable
+Kepler propagation - exact at any step size, which matters when one frame can
+cover more than a whole revolution. Every control modifies that state: burn
+prograde and the far side of the orbit rises, retrograde and it falls, radial
+changes the shape, normal tilts the plane, and enough delta-v gives you a
+hyperbolic escape the HUD names as such. Attitude holds for all six manoeuvre
+axes, a live 3D trajectory preview that deforms as you burn, and a release that
+hands your exact position and velocity to free flight without a teleport.
+
 Physical velocity (km/s) and time compression (simulated seconds per real
 second) are shown as separate quantities everywhere, because they are
 separate things - the hull moves at a plausible probe velocity while the
@@ -186,11 +198,14 @@ src/
   scene/                sun, planets, satellites, small bodies, comet tails,
                         belts, sky, orbit lines, lazy procedural surfaces
   spacecraft/           first-person mode: true-scale ephemeris, flight
-                        computer, cockpit geometry, mode orchestration
+                        computer, two-body orbital mechanics, trajectory
+                        preview, cockpit geometry, mode orchestration
   ui/                   HUD, info panel, labels, search, atlas, missions,
                         meteor lab, journey, overlays, guided tour
 scripts/
   flighttest.mjs        headless Chromium flight check (npm run test:flight)
+  orbitflight.mjs       headless orbital-manoeuvring check (npm run test:orbitflight)
+  orbittest.mts         numerical two-body checks, no browser (npm run test:orbit)
 ```
 
 Spacecraft mode adds one observer to the existing world rather than a
@@ -232,6 +247,11 @@ camera near-plane tracks zoom depth. Initial payload is one JS bundle +
   are then quoted relative to it - the Location panel names the frame in
   use. The Sun's near-field corona and prominences are procedural, informed
   by coronagraph imagery rather than derived from it, and say so on screen.
+- Orbits are genuine two-body trajectories: circular-orbit speed really is
+  √(GM/r), the reported period really is 2π√(a³/μ), and a burn changes the orbit
+  because it changed the state vector. Perturbations are not modelled - no third
+  bodies, no oblateness, no drag - so an orbit here is a Keplerian idealisation,
+  which is the same idealisation the rest of the app's orbits use.
 
 ## Data sources & credits
 
