@@ -13,6 +13,9 @@ npm install
 npm run dev      # develop at http://localhost:5173
 npm run build    # type-check + production build into dist/
 npm run preview  # serve the production build
+
+npm run test:flight   # headless flight check of spacecraft mode
+                      # (needs `npm run preview` running on :4173)
 ```
 
 ## What's inside
@@ -138,6 +141,29 @@ away. Sub-pixel bodies never rasterise - a stable fixed-size marker takes
 over below a few projected pixels, which is also why comets don't flicker
 when you zoom out.
 
+**First-person spacecraft mode.** Board a research vessel and fly the
+Solar System from inside its cockpit. This is not a free camera with a
+frame drawn over it: the world is pinned to true scale, so a scene unit is
+a fixed 1,495,978.707 km and a body's apparent size is nothing but its
+real radius over its real distance. Earth swells to 16° across at a
+50,000 km standoff and shrinks to a point when you leave; the Sun is a
+13° furnace from 6 million km out and a magnitude −19 star from Neptune;
+Saturn's rings fill the windows on approach and reveal their fine ringlet
+structure only when you are close enough to resolve it. Nothing is
+enlarged to look good.
+
+Physical velocity (km/s) and time compression (simulated seconds per real
+second) are shown as separate quantities everywhere, because they are
+separate things - the hull moves at a plausible probe velocity while the
+whole simulation, planets included, runs fast enough to make an
+interplanetary cruise watchable. Navigate to any catalogued object with
+smart arrival distances, then orbit it with real circular-orbit mechanics
+(v = √(GM/r)), run a cinematic fly-by, or hold station and close in by
+hand. A compact HUD carries velocity, bearing, apparent size, brightness,
+altitude, ETA, region and a schematic ecliptic map; drag to look around
+the cabin, and the side, overhead and forward glazing are all real
+openings you can see through.
+
 **Plus** the guided tour (15 stops, now including Pluto and an active
 comet), size/distance comparison charts and a head-to-head mode that
 puts any two worlds side by side at one scale, the gravity lab, manual
@@ -159,9 +185,21 @@ src/
   sim/state.ts          app state + event emitter
   scene/                sun, planets, satellites, small bodies, comet tails,
                         belts, sky, orbit lines, lazy procedural surfaces
+  spacecraft/           first-person mode: true-scale ephemeris, flight
+                        computer, cockpit geometry, mode orchestration
   ui/                   HUD, info panel, labels, search, atlas, missions,
                         meteor lab, journey, overlays, guided tour
+scripts/
+  flighttest.mjs        headless Chromium flight check (npm run test:flight)
 ```
+
+Spacecraft mode adds one observer to the existing world rather than a
+second world: same Kepler solver, same catalog, same meshes, same LOD.
+Three things are layered on for it - a cockpit rendered in its own pass
+with a cleared depth buffer (no depth buffer spans a 30 m window frame and
+a 200 AU far plane), naked-eye point rendering for bodies that are
+genuinely sub-pixel from where the ship is, and a near plane that tracks
+the nearest surface so you can sit 130 km off the cloud tops.
 
 Performance strategy: shared geometries; textures stream lazily (flat
 colour → real map only when you approach or select a body); moon systems
@@ -184,6 +222,16 @@ camera near-plane tracks zoom depth. Initial payload is one JS bundle +
 - Pluto is a dwarf planet here, meteors are events not objects, grayscale
   mosaics are labelled as such, display tints are disclosed, and estimated
   values carry explicit uncertainty notes.
+- In spacecraft mode, apparent size is never adjusted by hand - it always
+  falls out of radius, distance and field of view, and the HUD shows the
+  angular diameter so you can check it. Physical velocity and time
+  compression are labelled separately and never multiplied into a single
+  "speed"; throttle settings above 191 km/s are flagged as faster than any
+  vehicle humans have built. Inside a body's neighbourhood the hull rides
+  that body's motion the way a real spacecraft there would, and velocities
+  are then quoted relative to it - the Location panel names the frame in
+  use. The Sun's near-field corona and prominences are procedural, informed
+  by coronagraph imagery rather than derived from it, and say so on screen.
 
 ## Data sources & credits
 

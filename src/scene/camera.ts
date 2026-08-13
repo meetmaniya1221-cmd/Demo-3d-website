@@ -115,6 +115,25 @@ export class CameraRig {
     return this.flight !== null;
   }
 
+  /** Hand the camera to another owner (spacecraft mode): drop any flight or
+   *  follow in progress and stop the orbit controls from touching it. */
+  release(): void {
+    this.flight = null;
+    this.follow = null;
+    this.controls.enabled = false;
+    this.controls.autoRotate = false;
+  }
+
+  /** Take the camera back, re-aiming the orbit controls at `target`. */
+  resume(target: THREE.Vector3): void {
+    this.flight = null;
+    this.follow = null;
+    this.controls.target.copy(target);
+    this.controls.minDistance = 0.01;
+    this.controls.enabled = true;
+    this.controls.update();
+  }
+
   update(dt: number): void {
     if (this.flight) {
       const f = this.flight;

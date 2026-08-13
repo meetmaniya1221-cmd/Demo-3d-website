@@ -4504,3 +4504,939 @@ button.sim-date:hover {
 .overlay.overlay-cutaway {
   z-index: 72;
 }
+
+/* ================================================================ spacecraft
+   First-person cockpit mode. Everything hugs an edge: the middle of the screen
+   is the window, and the window is the point.
+   ------------------------------------------------------------------------- */
+
+body.spacecraft-mode .brand,
+body.spacecraft-mode .top-actions,
+body.spacecraft-mode .timebar,
+body.spacecraft-mode .view-cluster,
+body.spacecraft-mode .distance-readout,
+body.spacecraft-mode #labels,
+body.spacecraft-mode #skynotes,
+body.spacecraft-mode .toast,
+body.spacecraft-mode .rail {
+  display: none !important;
+}
+
+.chip.feature {
+  color: var(--accent);
+  border-color: rgba(127, 212, 255, 0.42);
+  background: rgba(127, 212, 255, 0.09);
+}
+
+.sc-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  background: #01030a;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s linear;
+}
+.sc-veil.on {
+  pointer-events: auto;
+}
+
+.sc-hud {
+  position: fixed;
+  inset: 0;
+  z-index: 58;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s ease;
+  font-family: var(--sans);
+  --sc-panel: rgba(6, 11, 21, 0.82);
+  --sc-line: rgba(127, 212, 255, 0.18);
+}
+.sc-hud.on {
+  opacity: 1;
+  visibility: visible;
+}
+.sc-hud > * {
+  pointer-events: auto;
+}
+.sc-hud button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------- top strip -- */
+
+.sc-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, rgba(3, 6, 14, 0.86), rgba(3, 6, 14, 0));
+  pointer-events: none;
+}
+.sc-top > * {
+  pointer-events: auto;
+}
+.sc-badge {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  padding-right: 14px;
+  border-right: 1px solid var(--sc-line);
+}
+.sc-badge b {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  color: var(--accent);
+}
+.sc-badge span {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+.sc-strip {
+  display: flex;
+  gap: 18px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.sc-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sc-stat i {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.sc-stat b {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.sc-top-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sc-chip {
+  border: 1px solid var(--line);
+  background: var(--sc-panel);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.sc-chip:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.sc-chip.active {
+  color: var(--accent);
+  border-color: rgba(127, 212, 255, 0.5);
+  background: var(--accent-soft);
+}
+.sc-fov {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--sc-panel);
+}
+.sc-fov i {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  color: var(--text-faint);
+}
+.sc-fov b {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 28px;
+}
+.sc-fov input[type='range'] {
+  width: 74px;
+  accent-color: var(--accent);
+}
+.sc-exit {
+  border: 1px solid rgba(255, 143, 107, 0.4);
+  background: rgba(255, 143, 107, 0.1);
+  color: #ffb79c;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.sc-exit:hover {
+  background: rgba(255, 143, 107, 0.2);
+  color: #fff;
+}
+
+/* -------------------------------------------------------------- messages -- */
+
+.sc-event,
+.sc-warn {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 16px;
+  border-radius: 999px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: 70vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-event {
+  top: 68px;
+  background: var(--sc-panel);
+  border: 1px solid var(--sc-line);
+  color: var(--text);
+}
+.sc-warn {
+  top: 104px;
+  background: rgba(60, 18, 10, 0.8);
+  border: 1px solid rgba(255, 143, 107, 0.45);
+  color: #ffc2ad;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+.sc-warn.critical {
+  animation: sc-pulse 0.9s ease-in-out infinite;
+}
+.sc-event.show,
+.sc-warn.show {
+  opacity: 1;
+}
+@keyframes sc-pulse {
+  0%, 100% { background: rgba(60, 18, 10, 0.8); }
+  50% { background: rgba(120, 32, 18, 0.9); }
+}
+
+/* --------------------------------------------------------------- panels -- */
+
+.sc-panel {
+  position: absolute;
+  top: 88px;
+  width: 286px;
+  max-height: calc(100vh - 300px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--sc-panel);
+  border: 1px solid var(--sc-line);
+  border-radius: var(--radius);
+  backdrop-filter: blur(9px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.sc-nav {
+  left: 14px;
+}
+.sc-loc {
+  right: 14px;
+}
+.sc-hud.panels-hidden .sc-panel {
+  opacity: 0;
+  pointer-events: none;
+}
+.sc-hud.panels-hidden .sc-nav {
+  transform: translateX(-14px);
+}
+.sc-hud.panels-hidden .sc-loc {
+  transform: translateX(14px);
+}
+.sc-panel h2 {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.sc-panel h3 {
+  margin: 4px 0 0;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.sc-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: rgba(2, 5, 12, 0.7);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+}
+.sc-search:focus {
+  outline: none;
+  border-color: rgba(127, 212, 255, 0.45);
+}
+
+.sc-list {
+  max-height: 188px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid rgba(158, 189, 255, 0.08);
+  border-radius: 7px;
+  padding: 3px;
+}
+.sc-list-row {
+  display: grid;
+  grid-template-columns: 8px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim);
+  text-align: left;
+  font-size: 12px;
+}
+.sc-list-row:hover {
+  background: rgba(127, 212, 255, 0.09);
+  color: var(--text);
+}
+.sc-list-row.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sc-list-row .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.sc-list-row b {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sc-list-row i {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+.sc-empty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.sc-target-title {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 6px;
+}
+.sc-target-title b {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+}
+.sc-target-title i {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.sc-kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 11.5px;
+}
+.sc-kv dt {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.sc-kv dd {
+  margin: 0;
+  font-family: var(--mono);
+  color: var(--text);
+  text-align: right;
+  font-size: 11px;
+}
+
+.sc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+.sc-actions.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.sc-act {
+  flex: 1 1 auto;
+  min-width: 68px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: rgba(10, 16, 28, 0.7);
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+.sc-act:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.sc-act.primary {
+  flex-basis: 100%;
+  color: #04101a;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.sc-act.primary:hover {
+  background: #a5e2ff;
+}
+.sc-act.danger {
+  color: #ffb79c;
+  border-color: rgba(255, 143, 107, 0.32);
+}
+.sc-act:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sc-region {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: 7px;
+  background: rgba(127, 212, 255, 0.06);
+  border: 1px solid rgba(127, 212, 255, 0.12);
+}
+.sc-region b {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+.sc-region i {
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.sc-near {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.sc-near button {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-dim);
+  text-align: left;
+  font-size: 11.5px;
+}
+.sc-near button:hover {
+  background: rgba(127, 212, 255, 0.09);
+  color: var(--text);
+}
+.sc-near b {
+  font-weight: 500;
+}
+.sc-near i,
+.sc-near span {
+  font-family: var(--mono);
+  font-style: normal;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.sc-solar {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 10px;
+  border-radius: 7px;
+  background: rgba(255, 196, 107, 0.06);
+  border: 1px solid rgba(255, 196, 107, 0.16);
+}
+.sc-solar.show {
+  display: flex;
+}
+.sc-solar h3 {
+  margin: 0;
+  color: var(--warm);
+}
+.sc-note {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+
+/* --------------------------------------------------------- throttle deck -- */
+
+.sc-deck {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--sc-panel);
+  border: 1px solid var(--sc-line);
+  border-radius: var(--radius);
+  backdrop-filter: blur(9px);
+  max-width: calc(100vw - 28px);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.sc-deck-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sc-deck-label {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sc-deck-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.sc-step {
+  padding: 5px 9px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: rgba(9, 14, 26, 0.7);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+.sc-step:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.sc-step.active {
+  color: #04101a;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.sc-cmd {
+  padding: 5px 11px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: rgba(9, 14, 26, 0.7);
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.sc-cmd:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.sc-cmd.active {
+  color: var(--warm);
+  border-color: rgba(255, 196, 107, 0.4);
+  background: rgba(255, 196, 107, 0.1);
+}
+.sc-rate {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.sc-rate span {
+  display: flex;
+  flex-direction: column;
+}
+.sc-rate i {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sc-rate b {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------- nav map --- */
+
+.sc-map {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--sc-panel);
+  border: 1px solid var(--sc-line);
+  border-radius: var(--radius);
+  backdrop-filter: blur(9px);
+}
+.sc-map-label {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sc-map canvas {
+  width: 170px;
+  height: 170px;
+  border-radius: 6px;
+  display: block;
+}
+.sc-map-zoom {
+  display: flex;
+  gap: 3px;
+}
+.sc-map-zoom .sc-step {
+  flex: 1;
+  padding: 3px 0;
+  text-align: center;
+  font-size: 9.5px;
+}
+
+/* ------------------------------------------------------- reticle/bracket -- */
+
+.sc-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 60px;
+  margin: -30px 0 0 -30px;
+  color: rgba(160, 205, 240, 0.55);
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.sc-reticle.hidden {
+  opacity: 0;
+}
+.sc-reticle svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sc-bracket {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  color: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.sc-bracket.show {
+  opacity: 0.9;
+}
+.sc-bracket.offscreen {
+  color: var(--warm);
+}
+.sc-bracket svg {
+  width: 100%;
+  height: 100%;
+}
+.sc-bracket-label {
+  position: absolute;
+  left: 50%;
+  top: 44px;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+/* ----------------------------------------------------------------- help -- */
+
+.sc-help {
+  position: absolute;
+  right: 14px;
+  top: 88px;
+  width: 300px;
+  padding: 14px 16px;
+  background: rgba(4, 8, 16, 0.94);
+  border: 1px solid var(--sc-line);
+  border-radius: var(--radius);
+  backdrop-filter: blur(9px);
+  display: none;
+  z-index: 3;
+}
+.sc-help.open {
+  display: block;
+}
+.sc-help h3 {
+  margin: 0 0 9px;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.sc-help ul {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+.sc-help kbd {
+  display: inline-block;
+  min-width: 15px;
+  padding: 1px 5px;
+  margin-right: 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgba(158, 189, 255, 0.07);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  text-align: center;
+}
+.sc-help p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+
+/* ----------------------------------------------------------- responsive -- */
+
+.sc-hud.nav-hidden .sc-nav,
+.sc-hud.loc-hidden .sc-loc {
+  opacity: 0;
+  pointer-events: none;
+}
+.sc-hud.nav-hidden .sc-nav {
+  transform: translateX(-14px);
+}
+.sc-hud.loc-hidden .sc-loc {
+  transform: translateX(14px);
+}
+
+@media (max-width: 1180px) {
+  .sc-strip .sc-stat:nth-child(n + 4) {
+    display: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .sc-panel {
+    width: 250px;
+    max-height: calc(100vh - 340px);
+  }
+  .sc-map canvas {
+    width: 130px;
+    height: 130px;
+  }
+}
+
+/* Phones: the window wins. Panels become a single bottom sheet the pilot
+   cycles through, the deck collapses to scrollable rows, and the map goes. */
+@media (max-width: 760px) {
+  .sc-top {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 7px 9px;
+  }
+  .sc-badge {
+    padding-right: 9px;
+  }
+  .sc-badge span {
+    display: none;
+  }
+  .sc-strip {
+    order: 4;
+    flex: 1 0 100%;
+    gap: 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .sc-exit {
+    order: 3;
+  }
+  .sc-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .sc-strip .sc-stat:nth-child(n + 3) {
+    display: none;
+  }
+  .sc-top-right {
+    flex: 1;
+    justify-content: flex-end;
+  }
+  .sc-fov {
+    display: none;
+  }
+  .sc-chip {
+    padding: 4px 9px;
+    font-size: 10px;
+  }
+  .sc-exit {
+    padding: 5px 11px;
+    font-size: 10px;
+  }
+  .sc-event {
+    top: 112px;
+    font-size: 11px;
+    max-width: calc(100vw - 24px);
+  }
+  .sc-warn {
+    top: 146px;
+  }
+
+  .sc-panel {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    top: auto;
+    bottom: 150px;
+    max-height: 38vh;
+    transform: none !important;
+    padding: 11px;
+  }
+  .sc-list {
+    max-height: 128px;
+  }
+  .sc-map {
+    display: none;
+  }
+
+  .sc-deck {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    transform: none;
+    max-width: none;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .sc-deck-group {
+    min-width: 0;
+  }
+  .sc-deck-label {
+    font-size: 8px;
+  }
+  .sc-deck-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 1px;
+  }
+  .sc-deck-row::-webkit-scrollbar {
+    display: none;
+  }
+  .sc-step,
+  .sc-cmd {
+    padding: 5px 8px;
+    font-size: 10px;
+    flex: 0 0 auto;
+  }
+  .sc-rate {
+    gap: 10px;
+  }
+  .sc-rate span:nth-child(n + 3) {
+    display: none;
+  }
+  .sc-help {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: 150px;
+    width: auto;
+    max-height: 46vh;
+    overflow-y: auto;
+  }
+  .sc-reticle {
+    transform: scale(0.75);
+  }
+}
+
+/* Landscape phones have even less vertical room - drop to one deck row. */
+@media (max-height: 460px) {
+  .sc-panel {
+    max-height: 46vh;
+    bottom: 108px;
+  }
+  .sc-deck-group:nth-child(2) .sc-rate {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-warn.critical {
+    animation: none;
+  }
+  .sc-hud,
+  .sc-veil,
+  .sc-panel,
+  .sc-bracket,
+  .sc-event {
+    transition-duration: 0.01ms;
+  }
+}

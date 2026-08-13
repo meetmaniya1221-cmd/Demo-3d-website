@@ -52,9 +52,50 @@ const ATMOSPHERES: Record<string, AtmosphereSpec> = {
 
 const sphereGeo = new THREE.SphereGeometry(1, 64, 32);
 
+/**
+ * Fine ring structure, revealed by proximity.
+ *
+ * The base map (Cassini's real radial profile, streamed in over the procedural
+ * one) carries the big features - C ring, B ring, the Cassini division, the
+ * Encke gap. What a photograph of the whole system cannot carry is the scale
+ * below that: the rings are not smooth sheets but thousands of individual
+ * ringlets, and you only see them from close up. So this modulation stays at
+ * zero for a distant Saturn and fades in as a ship closes on the ring plane,
+ * adding density structure on top of the measured profile rather than
+ * replacing it. The radius is recovered per fragment, so the bands stay
+ * perfectly circular right down to a low pass over the rings.
+ */
+const RING_DETAIL_PARS = /* glsl */ `
+  varying vec2 vRingLocal;
+  uniform float uRingDetail;
+  uniform float uRingInner;
+  uniform float uRingOuter;
+  float ringlets(float t) {
+    float v = 0.55 * sin(t * 340.0);
+    v += 0.30 * sin(t * 910.0 + 1.7);
+    v += 0.18 * sin(t * 2350.0 + 3.1);
+    return v;
+  }
+`;
+
+const RING_DETAIL_BODY = /* glsl */ `
+  {
+    float rr = length(vRingLocal);
+    float t = clamp((rr - uRingInner) / max(uRingOuter - uRingInner, 1e-5), 0.0, 1.0);
+    float band = ringlets(t);
+    diffuseColor.a *= clamp(1.0 + uRingDetail * 0.45 * band, 0.22, 1.9);
+    diffuseColor.rgb *= 1.0 + uRingDetail * 0.15 * band;
+  }
+`;
+
 /** RingGeometry with UVs remapped so u runs inner→outer radius. */
-function radialRingGeometry(inner: number, outer: number, segments = 128): THREE.RingGeometry {
-  const geo = new THREE.RingGeometry(inner, outer, segments, 1);
+function radialRingGeometry(
+  inner: number,
+  outer: number,
+  segments = 256,
+  radialSegments = 6,
+): THREE.RingGeometry {
+  const geo = new THREE.RingGeometry(inner, outer, segments, radialSegments);
   const pos = geo.attributes.position;
   const uv = geo.attributes.uv;
   const v = new THREE.Vector3();
@@ -80,8 +121,10 @@ export class Planet {
   private atmoMat?: THREE.ShaderMaterial;
   readonly hit: THREE.Mesh;
   private ringMesh?: THREE.Mesh;
+  private ringUniforms?: Record<string, { value: number }>;
   private spinPhase: number;
   private currentRadius = 1;
+  private discVisible = true;
 
   constructor(def: BodyDef, surface: BodySurface, ringTexture?: THREE.Texture) {
     this.def = def;
@@ -157,6 +200,25 @@ export class Planet {
         roughness: 0.9,
         metalness: 0,
       });
+      this.ringUniforms = {
+        uRingDetail: { value: 0 },
+        uRingInner: { value: spec.inner },
+        uRingOuter: { value: spec.outer },
+      };
+      const uniforms = this.ringUniforms;
+      ringMat.onBeforeCompile = (shader) => {
+        Object.assign(shader.uniforms, uniforms);
+        shader.vertexShader = `varying vec2 vRingLocal;\n${shader.vertexShader}`.replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\n  vRingLocal = position.xy;',
+        );
+        shader.fragmentShader = `${RING_DETAIL_PARS}\n${shader.fragmentShader}`.replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>\n${RING_DETAIL_BODY}`,
+        );
+      };
+      // keep this variant out of the shared MeshStandardMaterial program cache
+      ringMat.customProgramCacheKey = () => 'orrery-ring-detail';
       const ring = new THREE.Mesh(ringGeo, ringMat);
       ring.rotation.x = -Math.PI / 2; // into the equatorial plane
       ring.renderOrder = 1;
@@ -231,5 +293,35 @@ export class Planet {
 
   get radius(): number {
     return this.currentRadius;
+  }
+
+  /**
+   * How much fine ring structure to reveal, 0..1. Driven by how close an
+   * observer is to the ring plane; zero everywhere except spacecraft mode.
+   */
+  setRingDetail(level: number): void {
+    if (this.ringUniforms) {
+      this.ringUniforms.uRingDetail.value = THREE.MathUtils.clamp(level, 0, 1);
+    }
+  }
+
+  get hasRings(): boolean {
+    return !!this.ringMesh;
+  }
+
+  /**
+   * Hide the body itself (surface, atmosphere, clouds, rings) while leaving its
+   * satellites and pick proxy alone. Used when the planet is a sub-pixel object
+   * and the naked-eye point renderer is drawing it as a star instead - a
+   * sub-pixel mesh only flickers and pumps the bloom pass.
+   */
+  setDiscVisible(v: boolean): void {
+    if (this.discVisible === v) return;
+    this.discVisible = v;
+    this.sizeGroup.visible = v;
+  }
+
+  get isDiscVisible(): boolean {
+    return this.discVisible;
   }
 }

@@ -103,6 +103,71 @@ const SUN_FRAG = /* glsl */ `
   }
 `;
 
+/**
+ * Near-field corona. The normal view never sees this - it only fades in when an
+ * observer gets within a few tens of solar radii, which only the spacecraft can
+ * do. Each fragment recovers the view ray's closest approach to the Sun's
+ * centre, so the glow is a genuine function of 3D geometry rather than a
+ * billboard: it thins correctly as you move around and through it, and drawing
+ * the shell's far side means the Sun's own disc occludes it for free.
+ *
+ * The structure in it (streamers, prominence-like arcs at the limb) is
+ * procedural. It is informed by coronagraph imagery, not derived from it, and
+ * the HUD says so.
+ */
+const CORONA_VERT = /* glsl */ `
+  varying vec3 vWorld;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorld = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+const CORONA_FRAG = /* glsl */ `
+  precision highp float;
+  varying vec3 vWorld;
+  uniform vec3 uCenter;
+  uniform float uRadius;
+  uniform float uTime;
+  uniform float uIntensity;
+  ${NOISE_GLSL}
+  void main() {
+    if (uIntensity <= 0.001) discard;
+    vec3 ro = cameraPosition;
+    vec3 rd = normalize(vWorld - ro);
+    vec3 oc = uCenter - ro;
+    float tca = dot(oc, rd);
+    float d2 = max(0.0, dot(oc, oc) - tca * tca);
+    // impact parameter of this view ray, in solar radii
+    float x = sqrt(d2) / max(uRadius, 1e-9);
+    if (x > 9.0) discard;
+
+    // direction of the closest-approach point: what the ray grazes past
+    vec3 mid = normalize((ro + rd * max(tca, 0.0)) - uCenter);
+    float t = uTime * 0.06;
+    float n = 0.5 + 0.5 * snoise(mid * 3.1 + vec3(t, t * 0.4, -t * 0.7));
+    n = mix(n, 0.5 + 0.5 * snoise(mid * 8.0 - vec3(t * 0.9, 0.0, t * 1.3)), 0.45);
+
+    // K-corona style falloff, brightened along streamers
+    float shell = max(0.0, x - 1.0);
+    float dens = exp(-shell * 1.55) * (0.55 + 0.85 * n);
+    dens += exp(-shell * 0.42) * 0.16 * pow(n, 2.0);       // long streamers
+    if (x < 1.0) dens *= 0.22;                              // behind the disc
+
+    // prominence arcs: hot, red, and only right at the limb
+    float limb = exp(-pow((x - 1.06) * 13.0, 2.0));
+    float prom = limb * smoothstep(0.62, 0.92, n);
+    vec3 col = vec3(1.0, 0.78, 0.46) * dens
+             + vec3(1.0, 0.30, 0.14) * prom * 0.9
+             + vec3(0.55, 0.72, 1.0) * dens * 0.12;         // faint blue outer wisp
+    gl_FragColor = vec4(min(col * uIntensity, vec3(3.0)), 1.0);
+  }
+`;
+
+/** Shell radius, in solar radii. */
+const CORONA_SHELL = 8.0;
+
 export class Sun {
   readonly group = new THREE.Group();
   readonly mesh: THREE.Mesh;
@@ -110,6 +175,11 @@ export class Sun {
   private mat: THREE.ShaderMaterial;
   private coronaInner: THREE.Sprite;
   private coronaOuter: THREE.Sprite;
+  private nearCorona: THREE.Mesh;
+  private nearMat: THREE.ShaderMaterial;
+  private nearEnabled = false;
+  private discVisible = true;
+  private currentRadius = 1;
 
   constructor() {
     this.mat = new THREE.ShaderMaterial({
@@ -156,21 +226,82 @@ export class Sun {
 
     this.light = new THREE.PointLight(0xfff1dd, 3.2, 0, 0);
     this.group.add(this.light);
+
+    this.nearMat = new THREE.ShaderMaterial({
+      vertexShader: CORONA_VERT,
+      fragmentShader: CORONA_FRAG,
+      uniforms: {
+        uCenter: { value: new THREE.Vector3(0, 0, 0) },
+        uRadius: { value: 1 },
+        uTime: { value: 0 },
+        uIntensity: { value: 0 },
+      },
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    });
+    this.nearCorona = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), this.nearMat);
+    this.nearCorona.visible = false;
+    this.nearCorona.renderOrder = 2;
+    this.group.add(this.nearCorona);
   }
 
   update(elapsed: number, scaleT: number, simDays = 0): void {
     this.mat.uniforms.uTime.value = elapsed;
     const r = displayRadius('sun', SUN.facts.diameterKm, scaleT);
+    this.currentRadius = r;
     this.mesh.scale.setScalar(r);
     this.coronaInner.scale.setScalar(r * 5.2);
     this.coronaOuter.scale.setScalar(r * 11);
+    this.nearCorona.scale.setScalar(r * CORONA_SHELL);
+    this.nearMat.uniforms.uRadius.value = r;
+    this.nearMat.uniforms.uTime.value = elapsed;
     // solar rotation follows simulation time (sidereal Carrington rate,
     // ~25.4 days at the equator) so pause/rewind/fast-forward all apply
     this.mesh.rotation.y = (simDays / 25.38) * Math.PI * 2;
   }
 
   get radius(): number {
-    return this.mesh.scale.x;
+    return this.currentRadius;
+  }
+
+  /**
+   * Arm the near-field corona (spacecraft mode only - the orbit view's Sun is
+   * unchanged) and set how strongly it shows for an observer at `camDist`
+   * scene units from the centre. Returns the distance in solar radii.
+   */
+  setObserver(camDist: number, enabled: boolean): number {
+    this.nearEnabled = enabled;
+    const radii = camDist / Math.max(this.currentRadius, 1e-9);
+    if (!enabled) {
+      this.nearCorona.visible = false;
+      this.nearMat.uniforms.uIntensity.value = 0;
+      return radii;
+    }
+    // invisible past ~55 radii, full strength inside ~22
+    const k = 1 - THREE.MathUtils.smoothstep(radii, 22, 55);
+    this.nearMat.uniforms.uIntensity.value = k * 1.35;
+    this.nearCorona.visible = k > 0.002 && this.discVisible;
+    return radii;
+  }
+
+  /**
+   * Hide the disc and its sprite corona once the Sun is a sub-pixel object -
+   * the naked-eye point renderer takes over and draws it as the brilliant star
+   * it actually is from out there.
+   */
+  setDiscVisible(v: boolean): void {
+    if (this.discVisible === v) return;
+    this.discVisible = v;
+    this.mesh.visible = v;
+    this.coronaInner.visible = v;
+    this.coronaOuter.visible = v;
+    if (!v) this.nearCorona.visible = false;
+  }
+
+  get isNearFieldArmed(): boolean {
+    return this.nearEnabled;
   }
 
   /** Swap in the photographic solar surface (progressive enhancement). */

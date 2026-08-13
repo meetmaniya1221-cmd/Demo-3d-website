@@ -29,6 +29,7 @@ import { Search } from './ui/search';
 import { Atlas } from './ui/atlas';
 import { Journey } from './ui/journey';
 import { Tour, type TourHost } from './ui/tour';
+import { SpacecraftMode } from './spacecraft/mode';
 import { PLANETS } from './data/bodies';
 import { catalogObject } from './data/catalog';
 import { fmtSimDate } from './ui/format';
@@ -63,6 +64,7 @@ export class App implements TourHost {
   private atlas: Atlas;
   private journey: Journey;
   private tour: Tour;
+  private spacecraft: SpacecraftMode;
   private toastEl: HTMLElement;
   private liveRegion!: HTMLElement;
   private toastTimer = 0;
@@ -161,6 +163,7 @@ export class App implements TourHost {
       onMissions: () => this.missions.open(),
       onMeteors: () => this.meteors.open(),
       onObservatory: () => this.observatory.open(),
+      onSpacecraft: () => this.enterSpacecraft(),
     });
     this.infoPanel = new InfoPanel(root, this.state, {
       onCompare: (id) => (id ? this.compare.openWith(id) : this.compare.open()),
@@ -171,6 +174,17 @@ export class App implements TourHost {
       cometActivity: (id) => this.system.smallBodies.cometActivity(id),
     });
     this.tour = new Tour(root, this);
+    this.spacecraft = new SpacecraftMode(root, {
+      state: this.state,
+      system: this.system,
+      renderer: this.renderer,
+      camera: this.rig.camera,
+      canvas: this.renderer.domElement,
+      releaseCamera: () => this.rig.release(),
+      resumeCamera: (target) => this.rig.resume(target),
+      focusOverview: () => this.focusOverview(),
+      announce: (text) => this.announce(text),
+    });
 
     this.toastEl = document.createElement('div');
     this.toastEl.className = 'toast';
@@ -185,6 +199,7 @@ export class App implements TourHost {
 
     // ---- state wiring ----
     this.state.on('select', (id) => {
+      if (this.spacecraft?.active || this.spacecraft?.busy) return; // the cockpit has its own targeting
       // picking a destination leaves the journey; mere deselection does not
       if (id && this.journey.active) this.journey.end();
       this.system.setHighlightedOrbit(id && catalogObject(id)?.type !== 'region' ? id : null);
@@ -213,6 +228,9 @@ export class App implements TourHost {
     this.state.on('scale', (mode) => {
       this.scaleTarget = mode === 'true' ? 1 : 0;
       if (this.journey.active) return; // journey narrates the scale itself
+      // spacecraft mode forces true scale on the way in and restores the
+      // previous mode on the way out - neither deserves a toast
+      if (this.spacecraft?.active || this.spacecraft?.busy) return;
       if (mode === 'true') {
         // labels are the only way to find planets at true scale
         if (!this.state.showLabels) this.state.setToggle('showLabels', true);
@@ -268,7 +286,7 @@ export class App implements TourHost {
       const dt = performance.now() - this.downPos.t;
       this.downPos = null;
       if (dx * dx + dy * dy > 36 || dt > 500) return; // it was a drag
-      if (this.journey.active) return;
+      if (this.journey.active || this.spacecraft.active) return;
       this.pick(e.clientX, e.clientY);
     });
     window.addEventListener('resize', () => this.resize());
@@ -347,6 +365,22 @@ export class App implements TourHost {
     }
   }
 
+  /** Enter first-person spacecraft mode, closing anything modal first. */
+  enterSpacecraft(): void {
+    if (this.spacecraft.active) return;
+    const wasSequenced = this.tour.active || this.journey.active;
+    if (this.tour.active) this.tour.dismiss();
+    if (this.journey.active) this.journey.end();
+    this.atlas.close();
+    if (this.search.isOpen) this.search.close();
+    for (const o of [this.compare, this.gravity, this.structure, this.earthMoon, this.observatory, this.missions, this.meteors, this.cutaway]) {
+      if (o.isOpen) o.close();
+    }
+    if (this.layersPanel.isOpen) this.layersPanel.setOpen(false);
+    if (this.state.selectedId) this.state.select(null);
+    this.spacecraft.enter({ restoreOverview: wasSequenced });
+  }
+
   startJourney(): void {
     if (this.tour.active) this.tour.dismiss();
     this.atlas.close();
@@ -381,6 +415,11 @@ export class App implements TourHost {
   }
 
   private onKey(e: KeyboardEvent): void {
+    // spacecraft mode owns the keyboard while it is flying
+    if (this.spacecraft.active) {
+      this.spacecraft.handleKey(e);
+      return;
+    }
     // Escape always works, even from inside inputs/sliders
     if (e.key === 'Escape') {
       if (this.hud.datePicker.isOpen) this.hud.datePicker.close(true);
@@ -434,14 +473,23 @@ export class App implements TourHost {
     const rawDt = this.clock.getDelta();
     const dt = Math.min(rawDt, 0.1);
     this.elapsed += dt;
-    this.state.tick(dt);
+    const flying = this.spacecraft.active;
+    if (flying) {
+      // the vessel drives the clock: simulated time advances at the ship's own
+      // time-compression factor, so planets keep moving during a cruise
+      this.spacecraft.update(Math.min(rawDt, 0.5));
+    } else {
+      this.state.tick(dt);
+    }
 
     // animate the explorer ↔ true-scale morph (snap under reduced motion).
     // The easing factor is time-normalized so the morph takes the same wall
     // time at any frame rate, and the asymptotic tail snaps early so orbit
     // geometry stops rebuilding as soon as the change is invisible.
     const diff = this.scaleTarget - this.state.scaleT;
-    if (REDUCED_MOTION) {
+    if (flying) {
+      this.state.scaleT = this.spacecraft.scaleT;
+    } else if (REDUCED_MOTION) {
       this.state.scaleT = this.scaleTarget;
     } else if (Math.abs(diff) > 0.002) {
       this.state.scaleT += diff * (1 - Math.exp(-dt * 1.6));
@@ -450,6 +498,13 @@ export class App implements TourHost {
     }
 
     this.system.update(this.state.simDays, this.state.scaleT, this.elapsed, this.rig.camera);
+    if (flying) {
+      this.spacecraft.postUpdate(dt);
+      this.composer.render();
+      this.spacecraft.renderOverlay();
+      this.trackFrameCost(rawDt);
+      return;
+    }
     // camera flights advance on wall-clock time so they finish on schedule
     // even when the GPU is struggling
     if (this.journey.active) {
@@ -499,10 +554,15 @@ export class App implements TourHost {
       }
     }
 
-    // adaptive resolution: EMA of frame time with two-way hysteresis. Changes
-    // recreate every post-processing target, so they are rate-limited - some
-    // drivers show a garbage frame when targets churn mid-session. Clamp the
-    // sample so one hidden-tab gap can't poison the average into a downscale.
+    this.trackFrameCost(rawDt);
+    this.composer.render();
+  }
+
+  /** Adaptive resolution: EMA of frame time with two-way hysteresis. Changes
+   *  recreate every post-processing target, so they are rate-limited - some
+   *  drivers show a garbage frame when targets churn mid-session. Clamp the
+   *  sample so one hidden-tab gap can't poison the average into a downscale. */
+  private trackFrameCost(rawDt: number): void {
     this.frameTimeEma += (Math.min(rawDt, 0.25) * 1000 - this.frameTimeEma) * 0.05;
     const pr = this.renderer.getPixelRatio();
     const maxPr = Math.min(window.devicePixelRatio || 1, 2);
@@ -525,8 +585,6 @@ export class App implements TourHost {
       this.slowFrames = 0;
       this.goodFrames = 0;
     }
-
-    this.composer.render();
   }
 
   private setPixelRatio(value: number): void {
@@ -535,6 +593,7 @@ export class App implements TourHost {
     this.system.markers.setPixelRatio(value);
     this.system.constellations.setPixelRatio(value);
     this.system.setPixelRatio(value);
+    this.spacecraft.setPixelRatio(value);
   }
 
   private resize(): void {
@@ -544,6 +603,7 @@ export class App implements TourHost {
     // composer.setSize resizes every pass (including bloom) in device pixels
     this.composer.setSize(w, h);
     this.rig.resize(w, h);
+    this.spacecraft.resize(w, h);
     this.updateViewOffset();
   }
 
@@ -602,6 +662,10 @@ export class App implements TourHost {
       renderer: this.renderer,
       camera: this.rig.camera,
       isFlying: () => this.rig.isFlying,
+      enterSpacecraft: () => this.enterSpacecraft(),
+      exitSpacecraft: () => this.spacecraft.exit(),
+      spacecraftActive: () => this.spacecraft.active,
+      spacecraft: this.spacecraft.debug,
     };
   }
 }

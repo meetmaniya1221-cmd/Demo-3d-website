@@ -7,6 +7,7 @@ on:
       - claude/3d-solar-system-edu-rxmhpb
       - claude/solar-system-upgrade-4d9hwd
       - claude/solar-system-ui-visuals-7kbu69
+      - claude/spacecraft-exploration-mode-o7c17x
       - main
   workflow_dispatch:
 
