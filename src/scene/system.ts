@@ -30,7 +30,7 @@ export class SolarSystem {
   readonly grid: ReferenceGrid;
   readonly constellations: Constellations;
   readonly pickables: THREE.Object3D[] = [];
-  private sky: Sky;
+  readonly sky: Sky;
   private mainBelt: Belt;
   private kuiperBelt: Belt;
   private oortCloud: OortCloud;
@@ -44,7 +44,7 @@ export class SolarSystem {
   constructor(tex: GeneratedTextures, textureBase: string) {
     this.scene.background = new THREE.Color(0x020308);
 
-    this.sky = new Sky(tex.milkyWay);
+    this.sky = new Sky();
     this.scene.add(this.sky.group);
 
     this.markers = new Markers();

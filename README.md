@@ -132,6 +132,21 @@ physical proportions (1 AU = 100 units). The app always tells you which
 lie it is currently telling, and the guided tour ends by taking the lie
 away.
 
+**A real sky to fly through.** The Milky Way is not a picture on a sphere and
+it is not tilted by eye: it is evaluated in galactic coordinates and the sky
+carries the true J2000 rotation from the scene's ecliptic axes into that
+frame, so the band crosses Sagittarius and Cygnus where it should and agrees
+with the constellation figures drawn over it. The structure is the physics -
+an exponential disc that thins toward the centre, a warm bulge, arm tangents
+where a sight line runs down a spiral arm, and dust lanes that *subtract*, so
+the Great Rift is an absence of light rather than a grey smear. Reddening
+follows the dust column, which is why the obscured stretches run amber. The
+26,000 background stars are scattered by the same density law, so the
+crowding toward the plane is the same phenomenon that lights the band. Sampled
+on the 3D direction and baked once into a cubemap, it has no seam to line up,
+no pinch at the poles, and costs a texture fetch rather than a full-screen
+noise evaluation every frame.
+
 **An astronomical navigator, not a landing page.** Text-only instrument
 labels, thin orbit paths, an ecliptic reference grid with AU rings, all 88
 constellation figures over 5,044 catalogued stars coloured by their real
@@ -195,6 +210,7 @@ src/
   data/catalog/*.ts     moons, dwarfs, asteroids, comets, missions, regions
   sim/scale.ts          explorer ↔ true-scale mapping (single source of truth)
   sim/state.ts          app state + event emitter
+  scene/galaxy.ts       the Milky Way in galactic coordinates, baked to a cubemap
   scene/                sun, planets, satellites, small bodies, comet tails,
                         belts, sky, orbit lines, lazy procedural surfaces
   spacecraft/           first-person mode: true-scale ephemeris, flight
