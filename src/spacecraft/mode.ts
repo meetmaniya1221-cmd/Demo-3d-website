@@ -58,13 +58,18 @@ const DISC_PIXELS = 2.6;
 const REDUCED_MOTION =
   typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** Window presets reachable from the number keys. */
+/**
+ * Number-key shortcuts to the bearings a pilot reaches for most. These are
+ * conveniences, not the set of directions the seat can face - the head turns
+ * continuously through all 360°, and every bearing between these has glass.
+ */
 const LOOK_PRESETS: Record<string, [number, number]> = {
-  '1': [0, 0],
-  '2': [78, 0],
-  '3': [-78, 0],
-  '4': [0, 62],
-  '5': [0, -48],
+  '1': [0, 0],      // ahead
+  '2': [90, 0],     // starboard
+  '3': [-90, 0],    // port
+  '4': [0, 80],     // overhead
+  '5': [0, -78],    // floor port
+  '6': [180, 0],    // astern
 };
 
 type Phase = 'off' | 'entering' | 'flying' | 'exiting';
@@ -228,7 +233,7 @@ export class SpacecraftMode {
     this.attachInput();
     this.veil.classList.add('on');
     this.deps.announce(
-      'Spacecraft mode. You are in the cockpit at true scale. Drag to look around, W and S for the main engine, Escape to leave.',
+      'Spacecraft mode. You are in the cockpit at true scale, with glass all round. Drag to look anywhere, including astern; W and S for the main engine, Escape to leave.',
     );
     if (REDUCED_MOTION) this.t = 1;
   }
