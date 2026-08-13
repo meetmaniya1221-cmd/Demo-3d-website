@@ -11,7 +11,16 @@ import { TYPE_LABEL, type CatalogObject } from '../data/types';
 import { catalogObject } from '../data/catalog';
 import { fmtInt, fmtSimDate, fmtSimTime } from './format';
 import { magnitudeNote } from '../scene/nakedeye';
-import { THROTTLE_STEPS, TIME_STEPS, FASTEST_PROBE_KMS, type FlightMode } from '../spacecraft/ship';
+import {
+  THROTTLE_STEPS,
+  THRUST_STEPS_MS2,
+  TIME_STEPS,
+  FASTEST_PROBE_KMS,
+  type AttitudeHold,
+  type FlightMode,
+  type OrbitTelemetry,
+} from '../spacecraft/ship';
+import { BURN_AXES, BURN_EFFECT, BURN_LABEL } from '../spacecraft/orbit';
 import {
   KM_PER_UNIT,
   targetableObjects,
@@ -48,7 +57,11 @@ export interface Telemetry {
   anchorName: string | null;
   /** Velocity the transit-time estimate is quoted at. */
   etaVelocityKms: number;
-  orbit: { periodSec: number; speedKms: number; radiusKm: number } | null;
+  orbit: OrbitTelemetry | null;
+  /** Attitude the flight computer is holding. */
+  hold: AttitudeHold;
+  /** Main-engine acceleration at the current notch, m/s². */
+  thrustMs2: number;
   warning: { name: string; severity: number } | null;
   sunRadii: number;
   /** Screen position of the target, and whether it is in front of the camera. */
@@ -77,6 +90,8 @@ export interface SpacecraftUiCallbacks {
   onLookPreset: (yawDeg: number, pitchDeg: number) => void;
   onGazeLock: (on: boolean) => void;
   onAlign: () => void;
+  onHold: (hold: AttitudeHold) => void;
+  onReleaseOrbit: () => void;
 }
 
 const MODE_LABEL: Record<FlightMode, string> = {
@@ -125,6 +140,24 @@ function fmtRate(kms: number): string {
   if (kms >= 1e6) return `${(kms / 1e6).toFixed(2)} million km / s`;
   if (kms >= 1000) return `${fmtInt(kms)} km / s`;
   return `${kms.toFixed(1)} km / s`;
+}
+
+/** Engine acceleration, in the units a spacecraft engineer would use. */
+function fmtAccel(ms2: number): string {
+  if (ms2 === 0) return 'off';
+  if (ms2 < 0.01) return `${(ms2 * 1000).toFixed(1)} mm/s²`;
+  if (ms2 < 1) return `${(ms2 * 1000).toFixed(0)} mm/s²`;
+  return `${ms2.toFixed(2)} m/s²`;
+}
+
+/** What kind of conic this eccentricity describes. */
+function conicName(e: number): string {
+  if (e < 0.01) return 'circular';
+  if (e < 0.2) return 'near-circular';
+  if (e < 0.9) return 'elliptical';
+  if (e < 1) return 'highly elliptical';
+  if (e < 1.02) return 'parabolic - escaping';
+  return 'hyperbolic - escaping';
 }
 
 function fmtTimeScale(t: number): string {
@@ -181,6 +214,8 @@ export class SpacecraftUI {
   private timeChips: HTMLButtonElement[] = [];
   private pauseBtn!: HTMLButtonElement;
   private throttleReadout!: HTMLElement;
+  private propulsionLabel!: HTMLElement;
+  private throttleInOrbit = false;
 
   // reticle / target bracket
   private reticle!: HTMLElement;
@@ -192,6 +227,13 @@ export class SpacecraftUI {
   private mapCtx!: CanvasRenderingContext2D;
   private mapSpanAU = 0; // 0 = auto-fit to where the ship is
 
+  // orbit panel
+  private orbitPanel!: HTMLElement;
+  private orbitTitle!: HTMLElement;
+  private orbitBanner!: HTMLElement;
+  private orbitStats!: HTMLElement;
+  private holdButtons: HTMLButtonElement[] = [];
+
   private warnEl!: HTMLElement;
   private eventEl!: HTMLElement;
   private eventTimer = 0;
@@ -201,8 +243,10 @@ export class SpacecraftUI {
   private fovInput!: HTMLInputElement;
   private helpEl!: HTMLElement;
   private panelBtn!: HTMLButtonElement;
-  /** 0 = both panels (desktop) / none (phone), 1 = navigation, 2 = location. */
+  /** 0 = both panels (desktop) / none (phone), 1 = navigation, 2 = location,
+   *  3 = orbit (phone only, and only while there is an orbit to show). */
   private panelMode = 0;
+  private orbiting = false;
 
   constructor(parent: HTMLElement, cb: SpacecraftUiCallbacks) {
     this.cb = cb;
@@ -214,6 +258,7 @@ export class SpacecraftUI {
     this.buildReticle();
     this.buildNavPanel();
     this.buildLocationPanel();
+    this.buildOrbitPanel();
     this.buildThrottle();
     this.buildMap();
     this.buildHelp();
@@ -282,7 +327,7 @@ export class SpacecraftUI {
     // is a plain on/off for the pair.
     this.panelBtn = el('button', 'sc-chip sc-panels-toggle', 'Panels');
     this.panelBtn.addEventListener('click', () => {
-      const states = isPhone() ? 3 : 2;
+      const states = isPhone() ? (this.orbiting ? 4 : 3) : 2;
       this.panelMode = (this.panelMode + 1) % states;
       this.syncPanels();
     });
@@ -375,12 +420,77 @@ export class SpacecraftUI {
     this.root.appendChild(p);
   }
 
+  /**
+   * Flight-deck panel for orbital work. Hidden entirely unless the ship is on an
+   * orbital trajectory, so it costs the window nothing the rest of the time.
+   */
+  private buildOrbitPanel(): void {
+    const p = el('aside', 'sc-panel sc-orbit');
+    p.setAttribute('aria-label', 'Orbit');
+    this.orbitTitle = el('h2', undefined, 'Orbit');
+    p.appendChild(this.orbitTitle);
+
+    this.orbitBanner = el('div', 'sc-orbit-banner');
+    p.appendChild(this.orbitBanner);
+
+    // The manoeuvre axes sit directly under the banner: they are the primary
+    // control in this mode, and burying them under a dozen readouts would put
+    // them below the fold on a laptop.
+    p.appendChild(el('h3', undefined, 'Attitude hold · burn direction'));
+    const holds = el('div', 'sc-holds');
+    const holdKey: Partial<Record<string, string>> = {
+      prograde: '6',
+      retrograde: '7',
+      'radial-out': '8',
+      'radial-in': '9',
+      normal: '0',
+    };
+    for (const axis of BURN_AXES) {
+      const b = el('button', 'sc-hold', BURN_LABEL[axis]);
+      const k = holdKey[axis];
+      b.title = `${BURN_EFFECT[axis]}${k ? ` · key ${k}` : ''}`;
+      b.dataset.hold = axis;
+      b.addEventListener('click', () => this.cb.onHold(axis));
+      holds.appendChild(b);
+      this.holdButtons.push(b);
+    }
+    const manual = el('button', 'sc-hold', 'Manual attitude');
+    manual.title = 'Release the attitude hold and fly the nose yourself · key C cycles';
+    manual.dataset.hold = 'manual';
+    manual.addEventListener('click', () => this.cb.onHold(null));
+    holds.appendChild(manual);
+    this.holdButtons.push(manual);
+    p.appendChild(holds);
+
+    const release = el('button', 'sc-act danger', 'Release orbit → free flight');
+    release.title =
+      'Leave the orbital trajectory keeping your exact position and velocity · key O';
+    release.addEventListener('click', () => this.cb.onReleaseOrbit());
+    p.appendChild(release);
+
+    this.orbitStats = el('dl', 'sc-kv');
+    p.appendChild(this.orbitStats);
+
+    p.appendChild(
+      el(
+        'p',
+        'sc-note',
+        'The throttle is engine acceleration here, not a speed setting. Burn prograde to raise ' +
+          'the far side of the orbit, retrograde to lower it, normal to tilt the plane. The ' +
+          'curve outside updates as you burn.',
+      ),
+    );
+    this.orbitPanel = p;
+    this.root.appendChild(p);
+  }
+
   private buildThrottle(): void {
     const deck = el('div', 'sc-deck');
     deck.setAttribute('aria-label', 'Propulsion and time controls');
 
     const propulsion = el('div', 'sc-deck-group');
-    propulsion.appendChild(el('i', 'sc-deck-label', 'Main engine · physical velocity'));
+    this.propulsionLabel = el('i', 'sc-deck-label', 'Main engine · physical velocity');
+    propulsion.appendChild(this.propulsionLabel);
     const row = el('div', 'sc-deck-row');
     THROTTLE_STEPS.forEach((v, i) => {
       const b = el('button', 'sc-step', v === 0 ? 'STOP' : fmtSpeed(v));
@@ -509,6 +619,20 @@ export class SpacecraftUI {
         <li><kbd>[</kbd><kbd>]</kbd> Time compression down / up</li>
         <li><kbd>G</kbd> Gaze lock &nbsp;·&nbsp; <kbd>Esc</kbd> Exit the spacecraft</li>
       </ul>
+      <h3>In orbit</h3>
+      <ul>
+        <li><kbd>6</kbd> Hold prograde &nbsp;·&nbsp; <kbd>7</kbd> retrograde</li>
+        <li><kbd>8</kbd> Radial out &nbsp;·&nbsp; <kbd>9</kbd> radial in &nbsp;·&nbsp; <kbd>0</kbd> normal</li>
+        <li><kbd>C</kbd> Cycle the attitude hold, including anti-normal and manual</li>
+        <li><kbd>O</kbd> Release the orbit into free flight</li>
+        <li>The throttle becomes engine <b>acceleration</b>. The engine burns
+          whenever it is above CUT, along whichever way the nose points.</li>
+      </ul>
+      <p>Orbit mode is a real trajectory, not a fixed path. The ship carries a
+      position and a velocity around the body and every control changes them:
+      burn prograde and the far side of the orbit rises, retrograde and it
+      falls, normal and the plane tilts. Burn hard enough and you escape. The
+      curve drawn outside the window is your actual predicted path.</p>
       <p>The engine moves the hull at a real physical velocity. Time compression
       speeds up the whole simulation - planets included - so an interplanetary
       cruise fits in a coffee break without faking the distances.</p>
@@ -585,14 +709,19 @@ export class SpacecraftUI {
   /** Re-evaluate which panels are on screen (also called on resize). */
   syncPanels(): void {
     const phone = isPhone();
-    if (!phone && this.panelMode === 2) this.panelMode = 1;
-    const showNav = phone ? this.panelMode === 1 : this.panelMode === 1;
+    if (!phone && this.panelMode > 1) this.panelMode = 1;
+    if (phone && this.panelMode === 3 && !this.orbiting) this.panelMode = 0;
+    const showNav = this.panelMode === 1;
     const showLoc = phone ? this.panelMode === 2 : this.panelMode === 1;
+    // on a desktop the orbit panel shares the left column with navigation; on a
+    // phone it takes its own turn in the single bottom sheet
+    const showOrbit = phone ? this.panelMode === 3 : true;
     this.root.classList.toggle('nav-hidden', !showNav);
     this.root.classList.toggle('loc-hidden', !showLoc);
+    this.root.classList.toggle('orbit-hidden', !showOrbit);
     this.panelBtn.classList.toggle('active', this.panelMode !== 0);
     this.panelBtn.textContent = phone
-      ? ['Panels', 'Navigation', 'Location'][this.panelMode]
+      ? ['Panels', 'Navigation', 'Location', 'Orbit'][this.panelMode]
       : 'Panels';
   }
 
@@ -659,6 +788,31 @@ export class SpacecraftUI {
         ? `${MODE_LABEL[t.mode]} · ${t.anchorName}`
         : MODE_LABEL[t.mode];
 
+    // In orbit the same seven notches mean acceleration, not velocity - a
+    // velocity setpoint is meaningless on a trajectory. Relabel rather than
+    // build a second control, so there is only ever one throttle to learn.
+    const orbiting = t.mode === 'orbit';
+    if (orbiting !== this.throttleInOrbit) {
+      this.throttleInOrbit = orbiting;
+      this.propulsionLabel.textContent = orbiting
+        ? 'Main engine · thrust'
+        : 'Main engine · physical velocity';
+      for (let i = 0; i < this.throttleChips.length; i++) {
+        const b = this.throttleChips[i];
+        if (orbiting) {
+          b.textContent = i === 0 ? 'CUT' : fmtAccel(THRUST_STEPS_MS2[i]);
+          b.title = `${fmtAccel(THRUST_STEPS_MS2[i])} of main-engine acceleration`;
+        } else {
+          b.textContent = THROTTLE_STEPS[i] === 0 ? 'STOP' : fmtSpeed(THROTTLE_STEPS[i]);
+          b.title =
+            THROTTLE_STEPS[i] === 0
+              ? 'Cut the main engine'
+              : THROTTLE_STEPS[i] > FASTEST_PROBE_KMS
+                ? `${fmtSpeed(THROTTLE_STEPS[i])} — faster than any vehicle humans have built (record: ${FASTEST_PROBE_KMS} km/s)`
+                : `${fmtSpeed(THROTTLE_STEPS[i])} — within the range of real deep-space probes`;
+        }
+      }
+    }
     for (let i = 0; i < this.throttleChips.length; i++) {
       this.throttleChips[i].classList.toggle('active', i === t.throttleIndex);
     }
@@ -672,8 +826,12 @@ export class SpacecraftUI {
     this.abortBtn.disabled = t.mode === 'free';
 
     const rate = t.speedKms * t.effectiveTimeScale;
-    this.throttleReadout.innerHTML =
-      `<span><i>Physical</i><b>${fmtSpeed(t.speedKms)}</b></span>` +
+    this.throttleReadout.innerHTML = orbiting
+      ? `<span><i>Thrust</i><b>${fmtAccel(t.thrustMs2)}</b></span>` +
+        `<span><i>Orbital speed</i><b>${fmtSpeed(t.speedKms)}</b></span>` +
+        `<span><i>×</i><b>${fmtTimeScale(t.effectiveTimeScale)}</b></span>` +
+        `<span><i>Δv spent</i><b>${(t.orbit?.dvSpentKms ?? 0).toFixed(3)} km/s</b></span>`
+      : `<span><i>Physical</i><b>${fmtSpeed(t.speedKms)}</b></span>` +
       `<span><i>×</i><b>${fmtTimeScale(t.effectiveTimeScale)}</b></span>` +
       `<span><i>Apparent</i><b>${fmtRate(rate)}</b></span>` +
       `<span><i>Travelled</i><b>${fmtSpaceDist(t.distanceTravelledKm)}</b></span>`;
@@ -710,10 +868,7 @@ export class SpacecraftUI {
       if (t.targetMag !== null && Number.isFinite(t.targetMag)) {
         rows.push(['Brightness', `mag ${t.targetMag.toFixed(1)} · ${magnitudeNote(t.targetMag)}`]);
       }
-      if (t.orbit) {
-        rows.push(['Orbital period', fmtDuration(t.orbit.periodSec)]);
-        rows.push(['Orbital velocity', fmtSpeed(t.orbit.speedKms)]);
-      }
+
       this.targetStats.innerHTML = rows
         .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`)
         .join('');
@@ -723,6 +878,8 @@ export class SpacecraftUI {
       this.targetStats.innerHTML = '';
       this.actionsEl.classList.add('disabled');
     }
+
+    this.updateOrbitPanel(t);
 
     // ---- location block ----
     this.regionEl.innerHTML = `<b>${t.region.label}</b><i>${t.region.detail}</i>`;
@@ -766,6 +923,60 @@ export class SpacecraftUI {
       .join('');
     for (const b of Array.from(this.nearEl.querySelectorAll('button'))) {
       b.addEventListener('click', () => this.cb.onSelectTarget((b as HTMLElement).dataset.id!));
+    }
+  }
+
+  /** The orbital instrument panel. Only on screen while actually orbiting. */
+  private updateOrbitPanel(t: Telemetry): void {
+    const o = t.orbit;
+    this.orbitPanel.classList.toggle('show', !!o);
+    // the left column now carries two panels; tell the stylesheet so the
+    // navigation panel gives up the height rather than overlapping this one
+    if (!!o !== this.orbiting) {
+      this.orbiting = !!o;
+      this.root.classList.toggle('orbiting', this.orbiting);
+      this.syncPanels();
+    }
+    if (!o) return;
+
+    this.orbitTitle.textContent = `Orbit · ${o.bodyName}`;
+
+    if (o.impactPredicted) {
+      this.orbitBanner.className = 'sc-orbit-banner danger';
+      this.orbitBanner.innerHTML =
+        `<b>Impact predicted</b><i>Periapsis is below the surface. Burn prograde at periapsis, ` +
+        `or radial out, to raise it.</i>`;
+    } else if (o.escaping) {
+      this.orbitBanner.className = 'sc-orbit-banner warn';
+      this.orbitBanner.innerHTML =
+        `<b>Escape trajectory</b><i>${conicName(o.eccentricity)} — you are no longer bound to ` +
+        `${o.bodyName}. Burn retrograde to recapture.</i>`;
+    } else {
+      this.orbitBanner.className = 'sc-orbit-banner';
+      this.orbitBanner.innerHTML =
+        `<b>${conicName(o.eccentricity)} orbit</b><i>Period ${fmtDuration(o.periodSec)} · ` +
+        `${o.hold ? `holding ${o.hold === 'target' ? 'target' : BURN_LABEL[o.hold].toLowerCase()}` : 'manual attitude'}</i>`;
+    }
+
+    const rows: Array<[string, string]> = [
+      ['Altitude', fmtSpaceDist(o.altitudeKm)],
+      ['Orbital velocity', fmtSpeed(o.speedKms)],
+      ['Apoapsis', o.escaping ? '—' : `${fmtSpaceDist(o.apoapsisAltKm)} alt`],
+      ['Periapsis', `${fmtSpaceDist(o.periapsisAltKm)} alt`],
+      ['Eccentricity', o.eccentricity.toFixed(4)],
+      ['Inclination', `${o.inclinationDeg.toFixed(2)}° to the ecliptic`],
+      ['Semi-major axis', o.escaping ? '—' : fmtSpaceDist(o.semiMajorKm)],
+      ['Period', fmtDuration(o.periodSec)],
+      ['Position in orbit', `${o.trueAnomalyDeg.toFixed(0)}° true anomaly`],
+      ['Distance to centre', fmtSpaceDist(o.radiusKm)],
+      ['Engine', fmtAccel(o.thrustMs2)],
+      ['Δv spent', `${o.dvSpentKms.toFixed(3)} km/s`],
+    ];
+    this.orbitStats.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+
+    for (const b of this.holdButtons) {
+      const want = b.dataset.hold === 'manual' ? null : (b.dataset.hold as AttitudeHold);
+      b.classList.toggle('active', (t.hold ?? null) === want);
     }
   }
 

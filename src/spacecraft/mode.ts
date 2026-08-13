@@ -23,13 +23,16 @@ import type { SolarSystem } from '../scene/system';
 import { NakedEyeBodies } from '../scene/nakedeye';
 import { catalogObject } from '../data/catalog';
 import { Cockpit } from './cockpit';
-import { Ship, THROTTLE_STEPS } from './ship';
+import { Ship, THROTTLE_STEPS, type AttitudeHold } from './ship';
+import { TrajectoryPreview } from './trajectory';
 import {
   KM_PER_UNIT,
   UNITS_PER_AU,
   bodyExtentTrue,
   bodyPositionTrue,
+  bodyRadiusKm,
   bodyRadiusTrue,
+  minSafeDistance,
   nearestBodies,
   regionOf,
   type Neighbour,
@@ -72,6 +75,15 @@ const LOOK_PRESETS: Record<string, [number, number]> = {
   '6': [180, 0],    // astern
 };
 
+/** Manoeuvre-axis holds on the number keys above the window presets. */
+const HOLD_KEYS: Record<string, AttitudeHold> = {
+  '6': 'prograde',
+  '7': 'retrograde',
+  '8': 'radial-out',
+  '9': 'radial-in',
+  '0': 'normal',
+};
+
 type Phase = 'off' | 'entering' | 'flying' | 'exiting';
 
 export class SpacecraftMode {
@@ -79,6 +91,7 @@ export class SpacecraftMode {
   private deps: SpacecraftDeps;
   private cockpit = new Cockpit();
   private nakedEye = new NakedEyeBodies();
+  private trajectory = new TrajectoryPreview();
   private ui: SpacecraftUI;
   private veil: HTMLElement;
 
@@ -167,6 +180,14 @@ export class SpacecraftMode {
         this.ship.gazeLock = on;
       },
       onAlign: () => this.ship.alignHullToGaze(),
+      onHold: (hold) => {
+        this.ship.setHold(hold);
+        this.flushShipEvent();
+      },
+      onReleaseOrbit: () => {
+        this.ship.releaseOrbit();
+        this.flushShipEvent();
+      },
     });
   }
 
@@ -216,6 +237,7 @@ export class SpacecraftMode {
     // reference grid, no constellation figures unless the pilot asks for them
     this.applyLayers({ grid: false, planetOrbits: false, constellations: false });
     system.scene.add(this.nakedEye.points);
+    system.scene.add(this.trajectory.group);
     this.nakedEye.setEnabled(true);
 
     if (this.ship.unplaced) {
@@ -266,6 +288,8 @@ export class SpacecraftMode {
     // put the world back exactly as it was
     this.nakedEye.setEnabled(false);
     system.scene.remove(this.nakedEye.points);
+    this.trajectory.setVisible(false);
+    system.scene.remove(this.trajectory.group);
     system.sun.setDiscVisible(true);
     system.sun.setObserver(1, false);
     for (const p of system.planets.values()) {
@@ -404,6 +428,12 @@ export class SpacecraftMode {
       e.preventDefault();
       return;
     }
+    if (HOLD_KEYS[k]) {
+      this.ship.setHold(HOLD_KEYS[k]);
+      this.flushShipEvent();
+      e.preventDefault();
+      return;
+    }
     switch (k) {
       case ' ':
         e.preventDefault();
@@ -421,6 +451,14 @@ export class SpacecraftMode {
       case 'g':
         this.ship.gazeLock = !this.ship.gazeLock;
         this.ui.announce(this.ship.gazeLock ? 'Gaze lock on.' : 'Gaze lock off.');
+        return;
+      case 'c':
+        this.ship.cycleHold();
+        this.flushShipEvent();
+        return;
+      case 'o':
+        this.ship.releaseOrbit();
+        this.flushShipEvent();
         return;
       case 't':
         if (this.ship.targetId) {
@@ -575,6 +613,24 @@ export class SpacecraftMode {
       planet.setRingDetail(1 - THREE.MathUtils.smoothstep(radii, 6, 46));
     }
 
+    // ---- trajectory preview --------------------------------------------------
+    const orbitState = this.ship.orbitState;
+    if (orbitState) {
+      const def = catalogObject(orbitState.anchorId);
+      const reachKm = bodyRadiusKm(orbitState.anchorId) * (def?.type === 'planet' ? 260 : 90);
+      this.trajectory.update(
+        bodyPositionTrue(orbitState.anchorId, state.simDays, this.tmpA),
+        orbitState.r,
+        orbitState.v,
+        orbitState.mu,
+        reachKm,
+        minSafeDistance(orbitState.anchorId) * KM_PER_UNIT,
+      );
+      this.trajectory.setVisible(true);
+    } else {
+      this.trajectory.setVisible(false);
+    }
+
     // ---- Sun near field ------------------------------------------------------
     const sunDist = this.ship.pos.length();
     const sunRadii = system.sun.setObserver(sunDist, true);
@@ -656,6 +712,8 @@ export class SpacecraftMode {
       anchorName: ship.anchorName,
       etaVelocityKms: ship.etaVelocityKms,
       orbit: ship.orbitInfo,
+      hold: ship.hold,
+      thrustMs2: ship.thrustMs2,
       warning: ship.warning,
       sunRadii,
       targetScreen,
@@ -698,6 +756,13 @@ export class SpacecraftMode {
       follow: () => this.withTarget((id) => this.ship.startFollow(id, this.simDays)),
       look: (yaw: number, pitch: number) => this.ship.lookPreset(yaw, pitch),
       setThrottle: (i: number) => this.ship.setThrottleIndex(i),
+      setHold: (h: AttitudeHold) => this.ship.setHold(h),
+      releaseOrbit: () => this.ship.releaseOrbit(),
+      orbitInfo: () => this.ship.orbitInfo,
+      stateVector: () => {
+        const st = this.ship.orbitState;
+        return st ? { r: st.r.toArray(), v: st.v.toArray(), mu: st.mu, anchor: st.anchorId } : null;
+      },
       setPaused: (v: boolean) => {
         this.ship.paused = v;
       },
@@ -723,6 +788,10 @@ export class SpacecraftMode {
         travelledKm: this.ship.distanceTravelledKm,
         warning: this.ship.warning,
         frame: this.ship.frameId,
+        hold: this.ship.hold,
+        gazeLock: this.ship.gazeLock,
+        thrustMs2: this.ship.thrustMs2,
+        orbit: this.ship.orbitInfo,
         rel: this.ship.targetId
           ? new THREE.Vector3()
               .copy(this.ship.pos)
@@ -735,6 +804,54 @@ export class SpacecraftMode {
         return (2 * Math.asin(Math.min(1, bodyExtentTrue(id) / d)) * 180) / Math.PI;
       },
       pixelsOf: (id: string) => this.nakedEye.pixelsOf(id),
+      /**
+       * Test hook: run a burn on a throwaway vessel with a SYNTHETIC frame
+       * clock, so the same manoeuvre can be compared across frame rates without
+       * needing a machine that actually renders at them. The live ship is not
+       * touched. Exists because tying orbital authority to frame rate is an easy
+       * mistake to make and an invisible one to live with.
+       */
+      burnProbe: (opts?: {
+        body?: string;
+        dt?: number;
+        seconds?: number;
+        throttle?: number;
+        axis?: AttitudeHold;
+      }) => {
+        const body = opts?.body ?? 'mars';
+        const dt = opts?.dt ?? 1 / 60;
+        const seconds = opts?.seconds ?? 6;
+        const throttle = opts?.throttle ?? 3;
+        const probe = new Ship();
+        let simDays = this.simDays;
+        probe.gazeLock = false;
+        probe.placeNear(body, simDays, 1);
+        probe.startOrbit(body, simDays);
+        probe.setHold(opts?.axis ?? 'prograde');
+        // let the attitude settle with the engine cold
+        for (let i = 0; i < 120; i++) simDays += probe.update(1 / 60, simDays) / 86_400;
+        const before = probe.orbitInfo!;
+        probe.setThrottleIndex(throttle);
+        const frames = Math.max(1, Math.round(seconds / dt));
+        for (let i = 0; i < frames; i++) simDays += probe.update(dt, simDays) / 86_400;
+        const after = probe.orbitInfo!;
+        const st = probe.orbitState;
+        // specific orbital energy: the one shape measure that stays finite and
+        // monotone whether the burn left the orbit bound or not
+        const energy = st
+          ? st.v.lengthSq() / 2 - st.mu / st.r.length()
+          : Number.NaN;
+        return {
+          dt,
+          frames,
+          dvSpentKms: after.dvSpentKms,
+          energyKm2S2: energy,
+          semiMajorBeforeKm: before.semiMajorKm,
+          semiMajorAfterKm: after.semiMajorKm,
+          eccentricity: after.eccentricity,
+          escaping: after.escaping,
+        };
+      },
       cockpit: this.cockpit,
     };
   }
@@ -743,6 +860,7 @@ export class SpacecraftMode {
     this.detachInput();
     this.cockpit.dispose();
     this.nakedEye.dispose();
+    this.trajectory.dispose();
     this.ui.dispose();
     this.veil.remove();
   }

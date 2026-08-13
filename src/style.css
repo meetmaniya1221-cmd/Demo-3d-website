@@ -4764,16 +4764,6 @@ body.spacecraft-mode .rail {
 .sc-loc {
   right: 14px;
 }
-.sc-hud.panels-hidden .sc-panel {
-  opacity: 0;
-  pointer-events: none;
-}
-.sc-hud.panels-hidden .sc-nav {
-  transform: translateX(-14px);
-}
-.sc-hud.panels-hidden .sc-loc {
-  transform: translateX(14px);
-}
 .sc-panel h2 {
   margin: 0;
   font-size: 10px;
@@ -5438,5 +5428,124 @@ body.spacecraft-mode .rail {
   .sc-bracket,
   .sc-event {
     transition-duration: 0.01ms;
+  }
+}
+
+/* ------------------------------------------------------------ orbit panel --
+   Only on screen while the ship is actually on an orbital trajectory. It sits
+   under the navigation panel on the left, so the window and the right-hand
+   location panel are untouched.
+   ------------------------------------------------------------------------- */
+
+.sc-orbit {
+  left: 14px;
+  top: auto;
+  bottom: 14px;
+  max-height: min(48vh, calc(100vh - 430px));
+  display: none;
+}
+/* the navigation panel yields height while the orbit panel shares the column */
+.sc-hud.orbiting .sc-nav {
+  max-height: min(40vh, calc(100vh - 470px));
+}
+.sc-hud.orbiting .sc-list {
+  max-height: 92px;
+}
+.sc-orbit.show {
+  display: flex;
+}
+.sc-hud.nav-hidden .sc-orbit {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-14px);
+}
+
+.sc-orbit-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(127, 212, 255, 0.07);
+  border: 1px solid rgba(127, 212, 255, 0.16);
+}
+.sc-orbit-banner b {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  text-transform: capitalize;
+}
+.sc-orbit-banner i {
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.sc-orbit-banner.warn {
+  background: rgba(255, 196, 107, 0.09);
+  border-color: rgba(255, 196, 107, 0.3);
+}
+.sc-orbit-banner.warn b {
+  color: var(--warm);
+}
+.sc-orbit-banner.danger {
+  background: rgba(255, 143, 107, 0.1);
+  border-color: rgba(255, 143, 107, 0.34);
+}
+.sc-orbit-banner.danger b {
+  color: var(--danger);
+}
+
+.sc-holds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+.sc-hold {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: rgba(10, 16, 28, 0.7);
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+.sc-hold:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.sc-hold.active {
+  color: #04101a;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.sc-hold[data-hold='manual'] {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 960px) {
+  .sc-orbit {
+    max-height: min(46vh, calc(100vh - 440px));
+  }
+}
+
+/* On a phone the orbit panel takes its own turn in the single bottom sheet
+   rather than sharing the column, so it needs no height negotiation at all. */
+.sc-hud.orbit-hidden .sc-orbit {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .sc-orbit {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: 150px;
+    max-height: 38vh;
+  }
+  .sc-hud.orbiting .sc-nav {
+    max-height: 38vh;
   }
 }
