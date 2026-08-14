@@ -23,6 +23,8 @@ export interface Layers {
   grid: boolean;
   distanceScale: boolean;
   habitableZone: boolean;
+  /** The nearby star systems, drawn as points at their real 3D positions. */
+  nearbyStars: boolean;
 }
 
 export const DEFAULT_LAYERS: Layers = {
@@ -41,6 +43,7 @@ export const DEFAULT_LAYERS: Layers = {
   grid: true,
   distanceScale: true,
   habitableZone: false,
+  nearbyStars: true,
 };
 
 export type LayerKey = keyof Layers;

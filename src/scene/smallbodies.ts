@@ -93,7 +93,7 @@ export class SmallBodies {
   private tmpV2 = new THREE.Vector3();
 
   constructor(
-    scene: THREE.Scene,
+    scene: THREE.Object3D,
     defs: CatalogObject[],
     textureBase: string,
     markers: Markers,

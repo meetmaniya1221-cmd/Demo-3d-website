@@ -33,6 +33,27 @@ import { SpacecraftMode } from './spacecraft/mode';
 import { PLANETS } from './data/bodies';
 import { catalogObject } from './data/catalog';
 import { fmtSimDate } from './ui/format';
+import { SystemsPanel } from './ui/systems';
+import { SystemLabels } from './ui/systemlabels';
+import { Voyage } from './ui/voyage';
+import {
+  AU_PER_LY,
+  NEIGHBOURHOOD_RADIUS_LY,
+  SOL_ID,
+  positionLyOf,
+  unitsPerLy,
+} from './sim/interstellar';
+import { exoplanet, hostStar, primaryStar, starSystem } from './data/catalog/starsystems';
+import { invMapSystemUnits } from './scene/starsystem';
+
+/** Outer edge of the modelled Oort cloud, in AU - where the planetary scale
+ *  stops being the right ruler (see scene/oort). */
+const OORT_OUTER_AU = 60_000;
+
+/** Display name for anything living in a neighbouring system. */
+function exoplanetName(id: string): string | null {
+  return exoplanet(id)?.name ?? hostStar(id)?.name ?? null;
+}
 
 const CYCLE_IDS = ['sun', ...PLANETS.map((p) => p.id)];
 
@@ -65,6 +86,9 @@ export class App implements TourHost {
   private journey: Journey;
   private tour: Tour;
   private spacecraft: SpacecraftMode;
+  private systemsPanel: SystemsPanel;
+  private systemLabels: SystemLabels;
+  private voyage: Voyage;
   private toastEl: HTMLElement;
   private liveRegion!: HTMLElement;
   private toastTimer = 0;
@@ -134,6 +158,7 @@ export class App implements TourHost {
     this.meteors = new MeteorsOverlay(root, { selectObject: (id) => this.state.select(id) });
     this.search = new Search(root, {
       selectObject: (id) => this.state.select(id),
+      goToSystem: (id) => this.goToSystem(id),
       openMission: (id) => this.missions.openAt(id),
       openSky: (id) => {
         // search can fire over an already-open modal - close the stack so
@@ -145,6 +170,24 @@ export class App implements TourHost {
       },
     });
     this.atlas = new Atlas(root, this.state);
+    this.systemsPanel = new SystemsPanel(root, {
+      goToSystem: (id) => this.goToSystem(id),
+      activeSystem: () => this.system.activeSystemId,
+      // both live on the left rail, so one opening closes the other
+      onOpen: () => this.atlas.close(),
+    });
+    this.systemLabels = new SystemLabels(root, {
+      goToSystem: (id) => this.goToSystem(id),
+    });
+    this.voyage = new Voyage(root, {
+      state: this.state,
+      system: this.system,
+      camera: this.rig.camera,
+      releaseCamera: () => this.rig.release(),
+      resumeCamera: (target) => this.rig.resume(target),
+      onArrive: (systemId, focusId) => this.onArrive(systemId, focusId),
+      announce: (text) => this.announce(text),
+    });
     this.journey = new Journey(root, {
       state: this.state,
       camera: this.rig.camera,
@@ -158,12 +201,16 @@ export class App implements TourHost {
       onCompare: () => this.compare.open(),
       onGravity: () => this.gravity.open(),
       onSearch: () => this.search.open(),
-      onAtlas: () => this.atlas.toggle(),
+      onAtlas: () => {
+        this.systemsPanel.close();
+        this.atlas.toggle();
+      },
       onJourney: () => this.startJourney(),
       onMissions: () => this.missions.open(),
       onMeteors: () => this.meteors.open(),
       onObservatory: () => this.observatory.open(),
       onSpacecraft: () => this.enterSpacecraft(),
+      onSystems: () => this.systemsPanel.toggle(),
     });
     this.infoPanel = new InfoPanel(root, this.state, {
       onCompare: (id) => (id ? this.compare.openWith(id) : this.compare.open()),
@@ -200,6 +247,18 @@ export class App implements TourHost {
     // ---- state wiring ----
     this.state.on('select', (id) => {
       if (this.spacecraft?.active || this.spacecraft?.busy) return; // the cockpit has its own targeting
+      if (this.voyage?.active) return; // a transit is already flying the camera
+      // Choosing something in another star's system is a decision to go there.
+      // The transit runs first and re-issues the selection on arrival, so one
+      // click from search or the atlas lands on the right planet.
+      if (id) {
+        const owner = this.system.systemOf(id);
+        if (owner !== this.system.activeSystemId) {
+          this.state.selectedId = null;
+          this.goToSystem(owner, id);
+          return;
+        }
+      }
       // picking a destination leaves the journey; mere deselection does not
       if (id && this.journey.active) this.journey.end();
       this.system.setHighlightedOrbit(id && catalogObject(id)?.type !== 'region' ? id : null);
@@ -315,6 +374,11 @@ export class App implements TourHost {
   }
 
   focusOverview(): void {
+    // "the overview" means whichever system you are standing in
+    if (this.system.activeSystemId !== SOL_ID) {
+      this.focusSystemOverview();
+      return;
+    }
     this.rig.flyTo(
       () => {
         const dist = 265 * (1 - this.state.scaleT) + 5600 * this.state.scaleT;
@@ -363,6 +427,73 @@ export class App implements TourHost {
         'No telescope has ever seen it - its existence is inferred from long-period comet orbits. This sparse spherical swarm is a model visualization beginning ~2,000 AU out; zoom all the way out to find yourself inside it.',
       );
     }
+  }
+
+  // ----------------------------------------------------- interstellar travel --
+
+  /**
+   * Travel to another system, optionally focusing something specific there.
+   * Going somewhere you already are just frames it again rather than running a
+   * transit to nowhere.
+   */
+  goToSystem(systemId: string, focusId: string | null = null): void {
+    if (this.voyage.active) return;
+    if (this.spacecraft.active) {
+      this.spacecraft.setInterstellarTarget(systemId);
+      return;
+    }
+    if (systemId === this.system.activeSystemId) {
+      if (focusId) this.state.select(focusId);
+      else this.focusSystemOverview();
+      return;
+    }
+    if (this.tour.active) this.tour.dismiss();
+    if (this.journey.active) this.journey.end();
+    if (this.search.isOpen) this.search.close();
+    this.atlas.close();
+    this.systemsPanel.close();
+    for (const o of [this.compare, this.gravity, this.structure, this.earthMoon, this.observatory, this.missions, this.meteors, this.cutaway]) {
+      if (o.isOpen) o.close();
+    }
+    // a toast about the system you are leaving has no business surviving the
+    // trip - it reads as a caption for wherever you land
+    this.clearToast();
+    this.voyage.start(systemId, focusId);
+    this.systemsPanel.syncActive();
+  }
+
+  private onArrive(systemId: string, focusId: string | null): void {
+    this.rig.resume(new THREE.Vector3(0, 0, 0));
+    this.systemsPanel.syncActive();
+    if (focusId) {
+      // arrive, settle, then close on the thing that was asked for
+      window.setTimeout(() => this.state.select(focusId), 60);
+    } else {
+      this.focusSystemOverview();
+      const sys = starSystem(systemId);
+      if (sys) {
+        this.toast(
+          sys.name,
+          `${sys.tagline}. ${sys.distanceLy.toFixed(2)} light-years from the Sun. Planet sizes and colours here are informed renderings - nobody has photographed these worlds.`,
+        );
+      }
+    }
+  }
+
+  /** Frame whichever system the camera is currently standing in. */
+  focusSystemOverview(): void {
+    const foreign = this.system.activeForeign;
+    if (!foreign) {
+      this.focusOverview();
+      return;
+    }
+    this.rig.flyTo(
+      () => {
+        const extent = foreign.extent(this.state.scaleT);
+        return { position: new THREE.Vector3(0, 0, 0), radius: Math.max(extent * 0.34, 1e-4) };
+      },
+      { distanceFactor: 2.6, minDistanceOnArrive: 1e-3 },
+    );
   }
 
   /** Enter first-person spacecraft mode, closing anything modal first. */
@@ -422,8 +553,10 @@ export class App implements TourHost {
     }
     // Escape always works, even from inside inputs/sliders
     if (e.key === 'Escape') {
-      if (this.hud.datePicker.isOpen) this.hud.datePicker.close(true);
+      if (this.voyage.active) this.voyage.skip();
+      else if (this.hud.datePicker.isOpen) this.hud.datePicker.close(true);
       else if (this.search.isOpen) this.search.close(true);
+      else if (this.systemsPanel.isOpen) this.systemsPanel.close(true);
       else if (this.layersPanel.isOpen) this.layersPanel.setOpen(false);
       else if (this.compare.isOpen) this.compare.close();
       else if (this.gravity.isOpen) this.gravity.close();
@@ -437,6 +570,8 @@ export class App implements TourHost {
       else if (this.atlas.isOpen) this.atlas.close(true);
       else if (this.tour.active) this.tour.end();
       else if (this.state.selectedId) this.state.select(null);
+      // from another star, Escape's last stop is the way home
+      else if (this.system.activeSystemId !== SOL_ID) this.goToSystem(SOL_ID);
       return;
     }
     // don't steal keys from focused interactive elements (Space activates
@@ -452,6 +587,15 @@ export class App implements TourHost {
         break;
       case 'ArrowRight':
       case 'ArrowLeft': {
+        // in another star's system, cycle through that system's own worlds
+        const foreignSys = starSystem(this.system.activeSystemId);
+        if (foreignSys) {
+          const ring = [primaryStar(foreignSys).id, ...foreignSys.planets.map((p) => p.id)];
+          const at = ring.indexOf(this.state.selectedId ?? ring[0]);
+          const step = e.key === 'ArrowRight' ? 1 : -1;
+          this.state.select(ring[(Math.max(at, 0) + step + ring.length) % ring.length]);
+          break;
+        }
         let cur = this.state.selectedId ?? 'sun';
         // from a moon or small body, cycle relative to its parent/nearest planet
         if (!CYCLE_IDS.includes(cur)) {
@@ -518,7 +662,9 @@ export class App implements TourHost {
     }
     // camera flights advance on wall-clock time so they finish on schedule
     // even when the GPU is struggling
-    if (this.journey.active) {
+    if (this.voyage.active) {
+      this.voyage.update(Math.min(rawDt, 0.5));
+    } else if (this.journey.active) {
       this.journey.update(Math.min(rawDt, 0.5));
     } else {
       this.rig.update(Math.min(rawDt, 0.5));
@@ -526,33 +672,86 @@ export class App implements TourHost {
     const panelInset = this.state.selectedId && window.innerWidth > 720 ? 372 : 0;
     this.labels.update(this.system, this.rig.camera, this.state, panelInset);
     this.skyNotes.update(this.system, this.rig.camera, this.state);
+    this.systemLabels.update(
+      this.system.neighbourhood,
+      this.rig.camera,
+      this.state.layers.nearbyStars && !this.journey.active,
+      this.rig.camera.position.length() > mapDistanceAU(OORT_OUTER_AU, this.state.scaleT),
+      panelInset,
+    );
 
-    // right-edge distance readout: camera → focused body (or the Sun)
+    // right-edge distance readout: camera → focused body (or the system's star)
     if (this.state.layers.distanceScale) {
-      const focusId = this.state.selectedId ?? 'sun';
-      const def = catalogObject(focusId);
-      this.system.bodyPosition(
-        def && def.type !== 'region' ? focusId : 'sun',
-        this.tmpV,
-      );
-      this.distance.update(
-        this.rig.camera.position,
-        this.tmpV,
-        def && def.type !== 'region' ? (focusId === 'moon' ? 'the Moon' : (def?.name ?? 'the Sun')) : 'the Sun',
-        this.state.scaleT,
-      );
+      const foreign = this.system.activeForeign;
+      const camR = this.rig.camera.position.length();
+      if (camR > mapDistanceAU(OORT_OUTER_AU, this.state.scaleT)) {
+        // Out past the Oort cloud the planetary compression curve no longer
+        // applies - the stars are laid out linearly in light-years, and
+        // reading the camera's distance through the wrong curve was reporting
+        // 109 light-years for a camera 44 light-years out.
+        this.distance.update(
+          this.rig.camera.position,
+          this.tmpV.set(0, 0, 0),
+          this.system.activeSystemId === SOL_ID
+            ? 'the Sun'
+            : (starSystem(this.system.activeSystemId)?.name ?? 'the star'),
+          this.state.scaleT,
+          (r, t) => (r / unitsPerLy(t)) * AU_PER_LY,
+        );
+      } else if (foreign) {
+        // in another system the anchor is that system's own star, and the
+        // scene-units→AU conversion is that system's own curve
+        const anchor = primaryStar(foreign.def);
+        const focusId = this.state.selectedId ?? anchor.id;
+        const named = exoplanetName(focusId) ?? anchor.name;
+        this.system.bodyPosition(focusId, this.tmpV);
+        this.distance.update(
+          this.rig.camera.position,
+          this.tmpV,
+          named,
+          this.state.scaleT,
+          (r, t) => invMapSystemUnits(r, t, foreign.scales),
+        );
+      } else {
+        const focusId = this.state.selectedId ?? 'sun';
+        const def = catalogObject(focusId);
+        this.system.bodyPosition(
+          def && def.type !== 'region' ? focusId : 'sun',
+          this.tmpV,
+        );
+        this.distance.update(
+          this.rig.camera.position,
+          this.tmpV,
+          def && def.type !== 'region' ? (focusId === 'moon' ? 'the Moon' : (def?.name ?? 'the Sun')) : 'the Sun',
+          this.state.scaleT,
+        );
+      }
     }
 
     // deep true-scale views (Sedna's aphelion is 937 AU out) need a longer
-    // far plane; explorer view keeps the tighter one for depth precision
-    const wantFar = 22000 * (1 - this.state.scaleT) + 320000 * this.state.scaleT;
+    // far plane; explorer view keeps the tighter one for depth precision.
+    // Pulling out into the neighbourhood extends it further still - the star
+    // points ride a shell 5,700 units from the camera, so the plane has to
+    // clear the camera's own distance plus that shell.
+    const camDist = this.rig.camera.position.length();
+    const wantFar = Math.max(
+      22000 * (1 - this.state.scaleT) + 320000 * this.state.scaleT,
+      camDist * 1.1 + 9000,
+    );
     if (Math.abs(wantFar - this.rig.camera.far) / this.rig.camera.far > 0.2) {
       this.rig.camera.far = wantFar;
       this.rig.camera.updateProjectionMatrix();
     }
-    // zoom-out limit follows the scale mode: true scale needs to reach the
-    // outermost aphelia (~940 AU = 94,000 units), explorer stays tight
-    this.rig.controls.maxDistance = 12000 * (1 - this.state.scaleT) + 150000 * this.state.scaleT;
+    // Zoom-out limit follows the scale mode: true scale needs to reach the
+    // outermost aphelia (~940 AU = 94,000 units), explorer stays tight - but
+    // both must let the traveller pull back far enough to see the whole
+    // stellar neighbourhood, which is what makes the star map reachable by
+    // scrolling rather than only by a menu.
+    const localMax = 12000 * (1 - this.state.scaleT) + 150000 * this.state.scaleT;
+    this.rig.controls.maxDistance = Math.max(
+      localMax,
+      unitsPerLy(this.state.scaleT) * NEIGHBOURHOOD_RADIUS_LY * 1.35,
+    );
 
     this.liveTimer += dt;
     if (this.liveTimer > 1) {
@@ -638,6 +837,11 @@ export class App implements TourHost {
     }
   }
 
+  private clearToast(): void {
+    this.toastEl.classList.remove('show');
+    this.toastTimer = 0;
+  }
+
   private toast(title: string, text: string): void {
     this.toastEl.innerHTML = `<b>${title}</b>${text}`;
     this.toastEl.classList.add('show');
@@ -677,6 +881,48 @@ export class App implements TourHost {
       exitSpacecraft: () => this.spacecraft.exit(),
       spacecraftActive: () => this.spacecraft.active,
       spacecraft: this.spacecraft.debug,
+      // ---- interstellar
+      goToSystem: (id: string, focusId?: string) => this.goToSystem(id, focusId ?? null),
+      activeSystem: () => this.system.activeSystemId,
+      voyageActive: () => this.voyage.active,
+      voyagePhase: () => this.voyage.phase,
+      skipVoyage: () => this.voyage.skip(),
+      openSystems: () => this.systemsPanel.open(),
+      neighbourhood: () =>
+        this.system.neighbourhood.entries.map((e) => ({
+          id: e.id,
+          distLy: e.distLy,
+          mag: e.mag,
+          scenePos: e.scenePos.toArray(),
+        })),
+      systemInfo: () => {
+        const foreign = this.system.activeForeign;
+        if (!foreign) return { id: SOL_ID, planets: [] };
+        const v = new THREE.Vector3();
+        return {
+          id: foreign.def.id,
+          extent: foreign.extent(this.state.scaleT),
+          hz: foreign.hz,
+          planets: foreign.def.planets.map((p) => {
+            foreign.position(p.id, v);
+            return {
+              id: p.id,
+              status: p.status,
+              semiMajorAU: p.semiMajorAU,
+              periodDays: p.periodDays,
+              radius: foreign.radiusOf(p.id),
+              pos: v.toArray(),
+              r: v.length(),
+            };
+          }),
+          stars: foreign.def.stars.map((s) => {
+            foreign.position(s.id, v);
+            return { id: s.id, pos: v.toArray(), radius: foreign.radiusOf(s.id) };
+          }),
+        };
+      },
+      interstellarPos: (id: string) => positionLyOf(id).toArray(),
+      builtSystems: () => this.system.builtSystemIds,
     };
   }
 }

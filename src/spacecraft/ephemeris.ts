@@ -34,6 +34,41 @@ const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const tmpMap = { x: 0, y: 0, z: 0 };
 const tmpParent = new THREE.Vector3();
 
+/**
+ * The system the scene's origin currently sits on.
+ *
+ * When the ship is at another star, "where is X" has to be answered by that
+ * star's own geometry rather than by the Solar System's Kepler elements. The
+ * frame is injected rather than imported so this module stays the single
+ * analytic read of whatever the renderer is drawing, wherever that happens to
+ * be, instead of growing a second opinion about it.
+ */
+export interface InterstellarFrame {
+  systemId: string;
+  systemName: string;
+  /** Analytic scene position, or null if the id does not belong here. */
+  position: (id: string, simDays: number, out: THREE.Vector3) => THREE.Vector3 | null;
+  /** True-scale display radius in scene units. */
+  radiusUnits: (id: string) => number | null;
+  /** Physical radius in km. */
+  radiusKm: (id: string) => number | null;
+  /** Every id navigation may target here. */
+  ids: () => string[];
+  /** Human-readable name of an id here. */
+  nameOf: (id: string) => string | null;
+}
+
+let frame: InterstellarFrame | null = null;
+
+/** Called by the scene whenever the origin moves to another star (or home). */
+export function setInterstellarFrame(f: InterstellarFrame | null): void {
+  frame = f;
+}
+
+export function interstellarFrame(): InterstellarFrame | null {
+  return frame;
+}
+
 /** Axial tilt (radians) of every parent whose moons ride its equatorial plane. */
 const PARENT_TILT = new Map<string, number>();
 for (const p of PLANETS) {
@@ -62,6 +97,12 @@ function heliocentric(def: CatalogObject, simDays: number, out: THREE.Vector3): 
  * Returns the origin for ids the app cannot place (regions, unknown ids).
  */
 export function bodyPositionTrue(id: string, simDays: number, out: THREE.Vector3): THREE.Vector3 {
+  if (frame) {
+    const p = frame.position(id, simDays, out);
+    if (p) return p;
+    // outside its own system nothing local has a meaningful place
+    return out.set(0, 0, 0);
+  }
   if (id === 'sun') return out.set(0, 0, 0);
   const def = catalogObject(id);
   if (!def) return out.set(0, 0, 0);
@@ -92,6 +133,10 @@ export function bodyPositionTrue(id: string, simDays: number, out: THREE.Vector3
 
 /** True-scale display radius (scene units) of any catalog object. */
 export function bodyRadiusTrue(id: string): number {
+  if (frame) {
+    const r = frame.radiusUnits(id);
+    if (r !== null) return r;
+  }
   if (id === 'sun') return trueRadius('sun', SUN.facts.diameterKm);
   const def = catalogObject(id);
   if (!def) return 1e-4;
@@ -100,9 +145,18 @@ export function bodyRadiusTrue(id: string): number {
 
 /** Physical radius in km. */
 export function bodyRadiusKm(id: string): number {
+  if (frame) {
+    const r = frame.radiusKm(id);
+    if (r !== null) return r;
+  }
   if (id === 'sun') return SUN.facts.diameterKm / 2;
   const def = catalogObject(id);
   return def ? def.physical.diameterKm / 2 : 1;
+}
+
+/** Display name of anything targetable, in this system or another star's. */
+export function bodyName(id: string): string {
+  return frame?.nameOf(id) ?? catalogObject(id)?.name ?? id;
 }
 
 /** Outer ring radius in body radii, for the two ringed planets we draw. */
@@ -143,9 +197,16 @@ export function minSafeDistance(id: string): number {
   return Math.max(r * 1.02, 30 * UNITS_PER_KM);
 }
 
-/** Ids the navigation computer will let you target. */
+/** Ids the navigation computer will let you target, here and now. */
 export function targetableObjects(): CatalogObject[] {
+  if (frame) return [];
   return ALL_OBJECTS.filter((o) => o.type !== 'region' && (o.id === 'sun' || o.orbit || o.satOrbit));
+}
+
+/** Targetable ids in the system the ship is currently in. */
+export function targetableIds(): string[] {
+  if (frame) return frame.ids();
+  return targetableObjects().map((o) => o.id);
 }
 
 /** Bodies worth scanning for "what is near me" - cheap enough to run per frame. */
@@ -204,16 +265,17 @@ export function nearestBodies(
   pos: THREE.Vector3,
   simDays: number,
   n: number,
-  ids: string[] = NEIGHBOUR_IDS,
+  ids?: string[],
 ): Neighbour[] {
+  const list = ids ?? (frame ? frame.ids() : NEIGHBOUR_IDS);
   const out: Neighbour[] = [];
-  for (const id of ids) {
+  for (const id of list) {
     bodyPositionTrue(id, simDays, scan);
     const dist = pos.distanceTo(scan);
     const radius = bodyExtentTrue(id);
     out.push({
       id,
-      name: catalogObject(id)?.name ?? id,
+      name: bodyName(id),
       dist,
       altitude: dist - bodyRadiusTrue(id),
       angularDeg: angularDiameterDeg(radius, dist),
@@ -244,6 +306,8 @@ export interface RegionInfo {
  */
 export function regionOf(pos: THREE.Vector3, simDays: number): RegionInfo {
   const rAU = pos.length() / UNITS_PER_AU;
+
+  if (frame) return foreignRegionOf(pos, simDays, rAU);
 
   // local systems first, ranked by how deep inside them we are
   let best: { label: string; detail: string; score: number } | null = null;
@@ -282,4 +346,41 @@ export function regionOf(pos: THREE.Vector3, simDays: number): RegionInfo {
   if (rAU < 120) return { label: 'Scattered disc', detail: 'Sparse, tilted, eccentric orbits scattered by Neptune long ago.' };
   if (rAU < 1000) return { label: 'Heliosphere edge', detail: 'Near the heliopause, where the solar wind gives way to interstellar space.' };
   return { label: 'Oort cloud (conceptual)', detail: 'Modelled, never observed - a spherical shell of comet nuclei around the Sun.' };
+}
+
+/**
+ * "Where am I" at another star. The bands the Solar System uses mean nothing
+ * here - these systems are a tenth of an AU across - so the answer is given
+ * relative to the nearest body and to the star's own habitable zone, which is
+ * the scale that actually applies.
+ */
+function foreignRegionOf(pos: THREE.Vector3, simDays: number, rAU: number): RegionInfo {
+  const f = frame!;
+  let best: { id: string; d: number; r: number } | null = null;
+  for (const id of f.ids()) {
+    bodyPositionTrue(id, simDays, scan);
+    const d = pos.distanceTo(scan);
+    const r = Math.max(bodyRadiusTrue(id), 1e-9);
+    if (d < r * 400 && (!best || d / r < best.d / best.r)) best = { id, d, r };
+  }
+  if (best) {
+    const name = f.nameOf(best.id) ?? best.id;
+    const radii = best.d / best.r;
+    return radii < 12
+      ? { label: `Near ${name}`, detail: `${radii.toFixed(1)} body radii from ${name}'s centre.` }
+      : { label: `${name} vicinity`, detail: `${radii.toFixed(0)} radii out from ${name}.` };
+  }
+  if (rAU < 0.05) {
+    return {
+      label: `Inner ${f.systemName}`,
+      detail: `${rAU.toFixed(4)} AU from the star - closer in than Mercury is to the Sun.`,
+    };
+  }
+  if (rAU < 5) {
+    return { label: f.systemName, detail: `${rAU.toFixed(3)} AU from the system's star.` };
+  }
+  return {
+    label: `Outskirts of ${f.systemName}`,
+    detail: `${rAU.toFixed(1)} AU out. Beyond here is interstellar space.`,
+  };
 }

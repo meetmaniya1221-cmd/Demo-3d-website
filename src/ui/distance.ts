@@ -65,17 +65,23 @@ export class DistanceReadout {
    * @param targetPos focus position (scene units)
    * @param targetName label under the number ("from Saturn")
    * @param scaleT explorer(0) → true(1)
+   * @param invert scene radius → AU for the system we are standing in. The
+   *        Solar System's own compression curve is the default, but another
+   *        star's system has its own normalisation, and reading TRAPPIST-1's
+   *        0.06-AU orbits through the Sun's curve reported tens of AU - a
+   *        number that was wrong by three orders of magnitude.
    */
   update(
     camPos: THREE.Vector3,
     targetPos: THREE.Vector3,
     targetName: string,
     scaleT: number,
+    invert: (sceneR: number, t: number) => number = invMapRadius,
   ): void {
     // Map both endpoints into AU space radially (direction is preserved by
     // the scene mapping), then measure the chord there.
-    const rCam = invMapRadius(camPos.length(), scaleT);
-    const rTgt = invMapRadius(targetPos.length(), scaleT);
+    const rCam = invert(camPos.length(), scaleT);
+    const rTgt = invert(targetPos.length(), scaleT);
     this.a.copy(camPos).normalize().multiplyScalar(rCam);
     if (targetPos.lengthSq() > 1e-12) {
       this.b.copy(targetPos).normalize().multiplyScalar(rTgt);

@@ -32,6 +32,20 @@ real orbits, the asteroid belt,
 Kuiper belt and Oort cloud - each with structured scientific data, mission
 history, sources and honest uncertainty notes.
 
+**Thirteen nearby star systems.** Alpha Centauri (all three stars),
+Barnard's Star, Lalande 21185, Sirius, Epsilon Eridani, Ross 128, Epsilon
+Indi, Tau Ceti, GJ 1061, Teegarden's Star, Wolf 1061, GJ 876 and
+TRAPPIST-1 - out to 40.7 light-years, with 33 planets between them, every
+one from the NASA Exoplanet Archive. Each system sits at its real 3D
+position, computed from its right ascension, declination and Gaia DR3
+parallax, so the neighbourhood is a map rather than a menu: pull back past
+the Oort cloud and the stars separate at their true relative distances.
+Selecting one flies you there through the same universe, hands the
+scene's origin to the new star at the midpoint, and arrives at a system
+you can orbit, click and read. Habitable zones are computed per star from
+its own luminosity and temperature (Kopparapu et al. 2014), including the
+Sun's.
+
 **Real NASA surfaces.** 22 mission-imagery global mosaics (USGS
 Astrogeology / New Horizons / Cassini / Galileo / Dawn / Hayabusa2 -
 see [SOURCES.md](SOURCES.md)). Where no map exists the app paints a
@@ -208,21 +222,50 @@ src/
   data/types.ts         CatalogObject/Mission - the uniform data model
   data/catalog.ts       assembles the full catalog + mission cross-index
   data/catalog/*.ts     moons, dwarfs, asteroids, comets, missions, regions
+  data/catalog/
+    starsystems.ts      the 13 nearby systems: stars, planets, provenance
   sim/scale.ts          explorer ↔ true-scale mapping (single source of truth)
+  sim/interstellar.ts   RA/Dec/parallax → 3D position; the interstellar scale
+  sim/habitable.ts      Kopparapu et al. (2014) habitable-zone limits
   sim/state.ts          app state + event emitter
   scene/galaxy.ts       the Milky Way in galactic coordinates, baked to a cubemap
   scene/                sun, planets, satellites, small bodies, comet tails,
                         belts, sky, orbit lines, lazy procedural surfaces
+  scene/neighbourhood.ts the stellar neighbourhood as a real 3D point map
+  scene/starsystem.ts   one foreign system, built on arrival and disposed
+  scene/hoststar.ts     a star coloured by its measured temperature
+  scene/exoplanet.ts    procedural worlds driven by size, mass, temperature
   spacecraft/           first-person mode: true-scale ephemeris, flight
                         computer, two-body orbital mechanics, trajectory
                         preview, cockpit geometry, mode orchestration
   ui/                   HUD, info panel, labels, search, atlas, missions,
                         meteor lab, journey, overlays, guided tour
+  ui/systems.ts         the NEARBY SYSTEMS rail
+  ui/voyage.ts          the interstellar crossing and its odometer
+  ui/exoinfo.ts         information-panel content for other stars' worlds
 scripts/
   flighttest.mjs        headless Chromium flight check (npm run test:flight)
+  startest.mjs          headless star-system check (npm run test:stars)
   orbitflight.mjs       headless orbital-manoeuvring check (npm run test:orbitflight)
   orbittest.mts         numerical two-body checks, no browser (npm run test:orbit)
 ```
+
+The neighbouring systems are the same trick applied one level up. There is
+one scene, and its origin is whichever star you are standing on; travelling
+to another does not load a second universe, it re-expresses the one universe
+around a new zero point. Because the camera's position is tracked in
+absolute light-years and converted to scene units every frame, the handover
+happens mid-crossing with nothing moving on screen. The Sun then appears
+where the Sun would appear from there, at the magnitude it would actually
+have, because both come out of the same subtraction.
+
+Interstellar scale is the one place the app cannot draw everything at once,
+and it says so. At true scale it does not compress at all - a light-year is
+63,241 AU and an AU is 100 units, so a light-year is 6,324,108 units and the
+compression readout says 1.00×. Explorer view compresses, but only as far as
+it can without contradicting itself: the Sun's own Oort cloud is modelled out
+to 60,000 AU, so the nearest star has to be drawn outside it, and the layout
+stays linear in light-years so relative distances remain exact.
 
 Spacecraft mode adds one observer to the existing world rather than a
 second world: same Kepler solver, same catalog, same meshes, same LOD.
@@ -272,7 +315,8 @@ camera near-plane tracks zoom depth. Initial payload is one JS bundle +
 ## Data sources & credits
 
 See [SOURCES.md](SOURCES.md) for the complete asset-by-asset list.
-Headlines: NASA Planetary Fact Sheets + JPL SSD/SBDB for data; USGS
+Headlines: NASA Planetary Fact Sheets + JPL SSD/SBDB for data; the NASA
+Exoplanet Archive, Gaia DR3 and SIMBAD for the nearby star systems; USGS
 Astrogeology public-domain mosaics, the New Horizons MVIC Pluto color map,
 Dawn, Cassini, Galileo, Voyager, Mars Express, OSIRIS-REx and Hayabusa2
 imagery for surfaces; Solar System Scope (CC BY 4.0) for the classic

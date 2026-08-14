@@ -44,6 +44,11 @@ const GROUPS: Group[] = [
       { key: 'grid', label: 'Reference grid', hint: 'AU rings' },
       { key: 'distanceScale', label: 'Distance readout' },
       { key: 'habitableZone', label: 'Habitable zone' },
+      {
+        key: 'nearbyStars',
+        label: 'Nearby star systems',
+        hint: 'real 3D positions - zoom out to see them',
+      },
     ],
   },
 ];
