@@ -111,33 +111,8 @@ const GALAXY_FRAG = /* glsl */ `
   }
 `;
 
-/**
- * Display shader.
- *
- * One cubemap fetch. The survey map is resampled into a cubemap once, so this
- * runs per frame against uniform texel density with working mipmaps - which is
- * what stops the star fields shimmering when the sky is minified, and what
- * removes the equirectangular seam and the polar pinch entirely.
- *
- * Nothing is added to the image here. An earlier version modulated it with a
- * noise octave to "sharpen" the band; that is exactly the procedural
- * invention this file exists to avoid, and it was fighting the real structure
- * underneath. Sharpness now comes from the catalogue stars drawn as points on
- * top (scene/sky.ts), which is real data as well.
- */
-const DISPLAY_FRAG = /* glsl */ `
-  precision highp float;
-  varying vec3 vDir;
-  uniform samplerCube uSky;
-  uniform float uIntensity;
-  void main() {
-    gl_FragColor = vec4(textureCube(uSky, normalize(vDir)).rgb * uIntensity, 1.0);
-  }
-`;
-
 export interface GalaxyOptions {
-  radius: number;
-  segments?: number;
+  /** Exposure applied to the survey map, not a change to the data. */
   intensity?: number;
   /** Base URL for /textures. */
   base?: string;
@@ -167,65 +142,71 @@ const SKY_TIERS: Record<SkyQuality, { map: string; cube: number }> = {
 };
 
 /**
- * The galactic band as a back-facing sphere the camera sits inside.
+ * The Milky Way as the scene's background.
  *
- * The survey map streams in after boot: it is between 90 kB and 3 MB depending
- * on the quality tier, and the app should not wait on it to show a sky. Until
- * it arrives the sphere draws nothing, so the star field and the planets are
- * there from the first frame and the band fades in behind them.
+ * It is deliberately NOT a mesh. It used to be a back-facing sphere with
+ * `transparent: true`, `depthTest: false` and additive blending, and that
+ * combination guarantees the bug it caused: a transparent material is drawn in
+ * three's transparent pass, which always runs after every opaque object, and
+ * `renderOrder` only sorts within that pass - it cannot move a transparent
+ * object in front of the opaque one. With depth testing off, the planets'
+ * depth values could not reject it either, so the band was additively
+ * composited on top of Mercury, the orbit lines, the labels and the cockpit
+ * frame. It went unnoticed while the band was dim procedural noise and became
+ * obvious the moment it carried a real survey map.
+ *
+ * Turning depth testing back on would not have been right either: in true
+ * scale the sky sphere sits at 5,880 units while Sedna's aphelion is 93,700
+ * and the Oort cloud reaches millions, so a depth-tested sky sphere would
+ * occlude the outer solar system instead.
+ *
+ * `scene.background` has neither problem. It is drawn by three before the
+ * scene, writes no depth and tests none, and is behind everything at any
+ * distance by construction - which is exactly what a celestial sphere is. It
+ * is also one less full-screen additive pass per frame.
  */
 export class MilkyWay {
-  readonly mesh: THREE.Mesh;
-  private material: THREE.ShaderMaterial;
   private target: THREE.WebGLCubeRenderTarget | null = null;
   private equirect: THREE.Texture | null = null;
-  private baked = false;
+  private sampler: THREE.ShaderMaterial;
+  private renderer: THREE.WebGLRenderer | null = null;
+  private scene: THREE.Scene | null = null;
   private intensity: number;
   private tier: { map: string; cube: number };
-  private renderer: THREE.WebGLRenderer | null = null;
+  private wanted = true;
+  /** What the background falls back to before the map arrives, or if it never
+   *  does: the same near-black the scene started with. */
+  private readonly empty = new THREE.Color(0x020308);
 
   constructor(opts: GalaxyOptions) {
-    const seg = opts.segments ?? 64;
     this.intensity = opts.intensity ?? 1;
     this.tier = SKY_TIERS[opts.quality ?? 'high'];
 
-    this.material = new THREE.ShaderMaterial({
+    this.sampler = new THREE.ShaderMaterial({
       vertexShader: GALAXY_VERT,
       fragmentShader: GALAXY_FRAG,
       uniforms: {
         uGal: { value: sceneToGalacticMatrix() },
         uMap: { value: null },
-        uIntensity: { value: this.intensity },
+        uIntensity: { value: 1 },
       },
       side: THREE.BackSide,
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.AdditiveBlending,
     });
-    this.mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(opts.radius, seg, Math.round(seg * 0.6)),
-      this.material,
-    );
-    this.mesh.frustumCulled = false;
-    // nothing to draw until the survey map is here
-    this.mesh.visible = false;
 
     const base = opts.base ?? '/';
     new THREE.TextureLoader().load(
       `${base}textures/sky/milkyway_${this.tier.map}.webp`,
       (tex) => {
         tex.colorSpace = THREE.SRGBColorSpace;
-        // The bake reads this once at full resolution; mips on the source
-        // would only blur what the cubemap is about to resample anyway.
+        // read once at full resolution by the bake; mips here would only blur
+        // what the cubemap is about to resample
         tex.minFilter = THREE.LinearFilter;
         tex.magFilter = THREE.LinearFilter;
         tex.generateMipmaps = false;
         tex.wrapS = THREE.RepeatWrapping;
         this.equirect = tex;
-        this.material.uniforms.uMap.value = tex;
-        this.mesh.visible = true;
-        if (this.renderer) this.bake(this.renderer);
+        this.sampler.uniforms.uMap.value = tex;
+        this.bake();
       },
       undefined,
       () => {
@@ -236,63 +217,64 @@ export class MilkyWay {
     );
   }
 
-  /**
-   * Resample the survey map into a cubemap and switch to sampling that.
-   *
-   * Safe to call before the texture has arrived - it records the renderer and
-   * bakes as soon as there is something to bake. A cubemap rather than the
-   * plate carree because sampling by direction has no seam at l = 180, no
-   * pinch at the galactic poles, and mipmaps that actually work: an
-   * equirectangular map wrapped in a shader has a discontinuity in its
-   * texture-coordinate derivatives at the wrap, which shows up as a bright
-   * line down the sky at exactly the place a 360 environment must not have one.
-   */
-  bake(renderer: THREE.WebGLRenderer, size?: number): void {
+  /** Give it a renderer and the scene whose background it becomes. */
+  attach(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
     this.renderer = renderer;
-    if (this.baked || !this.equirect) return;
-    this.baked = true;
+    this.scene = scene;
+    this.bake();
+    this.apply();
+  }
+
+  /**
+   * Resample the plate carree into a cubemap, once.
+   *
+   * A cubemap rather than the equirectangular map directly because sampling by
+   * direction has no seam at l = 180, no pinch at the galactic poles, and
+   * mipmaps that work - an equirectangular map wrapped in a shader has a
+   * discontinuity in its texture-coordinate derivatives at the wrap, which
+   * shows up as a bright line down the sky at exactly the place a 360
+   * environment must not have one.
+   */
+  private bake(): void {
+    if (this.target || !this.equirect || !this.renderer) return;
 
     const scene = new THREE.Scene();
     const geo = new THREE.SphereGeometry(10, 96, 64);
-    const shell = new THREE.Mesh(geo, this.material.clone());
-    const shellMat = shell.material as THREE.ShaderMaterial;
-    shellMat.blending = THREE.NormalBlending;
-    shellMat.transparent = false;
+    const shell = new THREE.Mesh(geo, this.sampler);
     scene.add(shell);
 
-    this.target = new THREE.WebGLCubeRenderTarget(size ?? this.tier.cube, {
+    this.target = new THREE.WebGLCubeRenderTarget(this.tier.cube, {
       generateMipmaps: true,
       minFilter: THREE.LinearMipmapLinearFilter,
       magFilter: THREE.LinearFilter,
     });
     this.target.texture.colorSpace = THREE.SRGBColorSpace;
     const cam = new THREE.CubeCamera(0.5, 40, this.target);
-    const prevTarget = renderer.getRenderTarget();
-    cam.update(renderer, scene);
-    renderer.setRenderTarget(prevTarget);
+    const prev = this.renderer.getRenderTarget();
+    cam.update(this.renderer, scene);
+    this.renderer.setRenderTarget(prev);
 
     geo.dispose();
-    shellMat.dispose();
-    // the plate carree has done its job; the cubemap is what gets sampled now
+    this.sampler.dispose();
+    // the plate carree has done its job
     this.equirect.dispose();
     this.equirect = null;
+    this.apply();
+  }
 
-    const display = new THREE.ShaderMaterial({
-      vertexShader: GALAXY_VERT,
-      fragmentShader: DISPLAY_FRAG,
-      uniforms: {
-        uSky: { value: this.target.texture },
-        uIntensity: { value: this.intensity },
-      },
-      side: THREE.BackSide,
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.AdditiveBlending,
-    });
-    this.mesh.material = display;
-    this.material.dispose();
-    this.material = display;
+  /** Put the cubemap (or the fallback) on the scene. */
+  private apply(): void {
+    if (!this.scene) return;
+    this.scene.background = this.wanted && this.target ? this.target.texture : this.empty;
+    // exposure, not a change to the data: the survey map is a long exposure and
+    // at full strength it is brighter than the solar system in front of it
+    this.scene.backgroundIntensity = this.intensity;
+  }
+
+  /** Diagnostic toggle, used by the compositing test to difference frames. */
+  setVisible(v: boolean): void {
+    this.wanted = v;
+    this.apply();
   }
 
   /** The baked band, for anything that wants to sample the real sky rather
@@ -306,8 +288,7 @@ export class MilkyWay {
   }
 
   dispose(): void {
-    this.mesh.geometry.dispose();
-    this.material.dispose();
+    this.sampler.dispose();
     this.equirect?.dispose();
     this.target?.dispose();
   }

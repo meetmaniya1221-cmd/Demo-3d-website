@@ -1060,10 +1060,33 @@ export class SpacecraftMode {
         this.ship.targetId = id;
         this.ensureTargetVisible(id);
       },
+      /**
+       * Test hook: stand off a body along an arbitrary scene direction.
+       *
+       * placeRelative only offers bearings defined by the Sun. The
+       * compositing test needs a bearing defined by the *sky* - it puts the
+       * galactic centre directly behind each body, which is the worst case
+       * for a background that composites wrongly and the view the report
+       * showed.
+       */
+      placeAlong: (id: string, dir: [number, number, number], radii = 3) => {
+        const target = bodyPositionTrue(id, this.simDays, new THREE.Vector3());
+        const away = new THREE.Vector3(...dir).normalize();
+        this.ship.pos.copy(target).addScaledVector(away, radii * bodyRadiusTrue(id));
+        this.ship.lookAtPoint(target);
+        this.ship.idle();
+        this.ship.startFollow(id, this.simDays);
+        this.ship.targetId = id;
+        this.ensureTargetVisible(id);
+      },
       /** Test hook: take the cockpit interior out of the frame so a capture
-       *  measures the sky rather than the hull around it. */
-      hideCockpit: () => {
-        this.cockpit.setVisible(false);
+       *  measures the sky rather than the hull around it. Toggling it back on
+       *  gives the compositing test an exact mask of the hull's own pixels -
+       *  whatever changes between the two frames is structure, and a
+       *  luminance threshold could never have separated that from the star
+       *  field behind the glass. */
+      hideCockpit: (hidden = true) => {
+        this.cockpit.setVisible(!hidden);
       },
       teleportTo: (id: string, factor = 1) => {
         this.ship.placeNear(id, this.simDays, factor);

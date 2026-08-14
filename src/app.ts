@@ -105,6 +105,15 @@ export class App implements TourHost {
   private lastPrChange = 0;
   private clock = new THREE.Clock();
   private elapsed = 0;
+  /**
+   * Stops the clock without stopping the render loop. Only the debug surface
+   * sets it, and only so a test can capture two frames that differ in exactly
+   * one thing. Every shader here is driven by `elapsed` - corona, clouds,
+   * atmosphere, star twinkle - so two captures taken half a second apart are
+   * never identical, and a difference test that does not freeze first measures
+   * the animation rather than whatever it meant to isolate.
+   */
+  private frozen = false;
   private scaleTarget = 0;
   private liveTimer = 0;
   /** Seconds of consistently slow frames. */
@@ -739,7 +748,10 @@ export class App implements TourHost {
   private warpNoteOn = false;
 
   private frame(): void {
-    const rawDt = this.clock.getDelta();
+    // drained either way, so unfreezing does not deliver the whole pause as
+    // one enormous delta
+    const tick = this.clock.getDelta();
+    const rawDt = this.frozen ? 0 : tick;
     const dt = Math.min(rawDt, 0.1);
     this.elapsed += dt;
     const flying = this.spacecraft.active;
@@ -782,7 +794,7 @@ export class App implements TourHost {
       // it here rather than in a render path means it happens exactly once
       // whichever view the session starts in.
       this.skyBaked = true;
-      this.system.sky.bake(this.renderer);
+      this.system.sky.bake(this.renderer, this.system.scene);
     }
 
     this.system.update(this.state.simDays, this.state.scaleT, this.elapsed, this.rig.camera);
@@ -1098,6 +1110,42 @@ export class App implements TourHost {
       spacecraft: this.spacecraft.debug,
       THREE,
       galacticMatrix: () => sceneToGalacticMatrix(),
+      setSkyVisible: (v: boolean) => this.system.sky.setMilkyWayVisible(v),
+      freeze: (v: boolean) => {
+        this.frozen = v;
+      },
+      /**
+       * A body's disc in CSS pixels: centre and radius on screen.
+       *
+       * The compositing test needs to know which pixels are solid globe. A
+       * luminance threshold cannot tell it that - it also catches the
+       * atmospheric halo, which extends well past the limb and is meant to be
+       * semi-transparent - so the test asks the scene for the geometry
+       * instead, and measures inside the projected disc.
+       */
+      discOf: (id: string) => {
+        const cam = this.rig.camera;
+        const pos = this.system.bodyPosition(id, new THREE.Vector3());
+        const radius = this.system.bodyRadius(id, this.state.scaleT);
+        const view = pos.clone().project(cam);
+        if (view.z > 1) return null;
+        const w = this.renderer.domElement.clientWidth;
+        const h = this.renderer.domElement.clientHeight;
+        // project a point one radius off the view axis to get the disc's size
+        const off = pos
+          .clone()
+          .addScaledVector(new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0), radius)
+          .project(cam);
+        return {
+          x: ((view.x + 1) / 2) * w,
+          y: ((1 - view.y) / 2) * h,
+          r: (Math.abs(off.x - view.x) / 2) * w,
+        };
+      },
+      setBloom: (v: boolean) => {
+        this.bloom.enabled = v;
+      },
+      bloomStrength: () => this.bloom.strength,
       earthDetail: () => this.system.planets.get('earth')?.earth?.detailState ?? null,
       moonDetail: () => this.system.moonDetailState(),
       mobileNav: this.mobileNav,

@@ -139,8 +139,6 @@ export class Sky {
     // it is resolved and how much memory the bake takes.
     const tier = qualityTier();
     this.milkyWay = new MilkyWay({
-      radius: SKY_RADIUS * 0.98,
-      segments: 48,
       base: textureBase,
       quality: tier === 'high' ? 'high' : tier === 'mid' ? 'medium' : 'low',
       // The survey map is a long exposure; shown at full strength it is
@@ -149,8 +147,13 @@ export class Sky {
       // how the survey recorded it.
       intensity: 0.62,
     });
-    this.milkyWay.mesh.renderOrder = -11;
-    this.group.add(this.milkyWay.mesh);
+  }
+
+  /** Diagnostic: drop the Milky Way so a capture can be differenced against
+   *  one with it, which is how the compositing test proves it contributes
+   *  nothing inside an opaque body's silhouette. */
+  setMilkyWayVisible(v: boolean): void {
+    this.milkyWay.setVisible(v);
   }
 
   update(elapsed: number): void {
@@ -158,9 +161,13 @@ export class Sky {
     this.milkyWay.update(elapsed);
   }
 
-  /** Bake the galactic band once the renderer exists. */
-  bake(renderer: THREE.WebGLRenderer): void {
-    this.milkyWay.bake(renderer);
+  /**
+   * Bake the galactic band once the renderer exists, and hand over the scene:
+   * the Milky Way becomes that scene's background, which is what keeps it
+   * behind every object at any distance.
+   */
+  bake(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
+    this.milkyWay.attach(renderer, scene);
   }
 
   /** The baked band as a cubemap, once it exists. */
