@@ -100,6 +100,13 @@ export class TextureLadder {
     }
   }
 
+  /** The rung currently on screen, and what is resident. For diagnostics and
+   *  for the LOD test, which asserts on the mechanism rather than on a pixel
+   *  statistic that the sky behind the planet can confound. */
+  get state(): { live: number; resident: number[] } {
+    return { live: this.live, resident: [...this.resident.keys()].sort() };
+  }
+
   dispose(): void {
     for (const tex of this.resident.values()) tex.dispose();
     this.resident.clear();

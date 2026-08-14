@@ -212,6 +212,11 @@ export class SatelliteSystem {
   }
 
   /** Ensure a specific moon's real surface is loaded (e.g. on selection). */
+  /** Earth's Moon LOD state, for the close-range test. */
+  get moonDetailState(): Record<string, number> | null {
+    return this.moonDetail?.detailState ?? null;
+  }
+
   activateMoon(id: string): void {
     const sat = this.sats.find((s) => s.def.id === id);
     if (sat) this.activate(sat);

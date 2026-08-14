@@ -2,6 +2,7 @@
  *  Sun → planets → their moons, then dwarf planets, TNOs, asteroids, comets
  *  and regions. Click any row to fly there. */
 import { ALL_OBJECTS, MOONS_BY_PARENT, catalogObject } from '../data/catalog';
+import { STAR_SYSTEMS, primaryStar } from '../data/catalog/starsystems';
 import type { CatalogObject } from '../data/types';
 import type { AppState } from '../sim/state';
 import { sound } from '../audio';
@@ -131,6 +132,49 @@ export class Atlas {
 
     parts.push(this.section('Regions'));
     for (const o of ALL_OBJECTS) if (o.type === 'region') parts.push(this.row(o, 0));
+
+    // The neighbourhood hangs off the same tree, because it is the same
+    // universe: the Sun's system, then the systems next door, expandable into
+    // their own stars and planets.
+    parts.push(this.section('Nearby star systems', 'within 41 light-years'));
+    for (const sys of [...STAR_SYSTEMS].sort((a, b) => a.distanceLy - b.distanceLy)) {
+      const open = this.expanded.has(sys.id);
+      const children = sys.stars.length + sys.planets.length;
+      parts.push(`
+        <div class="atlas-row" style="--depth:0" role="treeitem" aria-expanded="${open}">
+          <button class="atlas-caret${open ? ' open' : ''}" data-expand="${sys.id}" aria-label="${open ? 'Collapse' : 'Expand'} ${sys.name}">
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" aria-hidden="true"><path d="M2 0l4 4-4 4z"/></svg>
+          </button>
+          <button class="atlas-item" data-go="${primaryStar(sys).id}">
+            <i class="dot" style="background:#${sys.color.toString(16).padStart(6, '0')}"></i><span class="name">${sys.name}</span>
+            <span class="type">${sys.distanceLy.toFixed(2)} ly · ${children} object${children === 1 ? '' : 's'}</span>
+          </button>
+        </div>
+      `);
+      if (!open) continue;
+      for (const star of sys.stars) {
+        parts.push(`
+          <div class="atlas-row" style="--depth:1" role="treeitem">
+            <span class="atlas-caret-space"></span>
+            <button class="atlas-item" data-go="${star.id}">
+              <i class="dot" style="background:#${star.color.toString(16).padStart(6, '0')}"></i><span class="name">${star.name}</span>
+              <span class="type">${star.spectral}</span>
+            </button>
+          </div>
+        `);
+      }
+      for (const pl of sys.planets) {
+        parts.push(`
+          <div class="atlas-row" style="--depth:1" role="treeitem">
+            <span class="atlas-caret-space"></span>
+            <button class="atlas-item" data-go="${pl.id}">
+              <i class="dot" style="background:#${sys.color.toString(16).padStart(6, '0')}"></i><span class="name">${pl.name}</span>
+              <span class="type">${pl.status === 'confirmed' ? 'Confirmed' : pl.status === 'disputed' ? 'Disputed' : 'Candidate'}</span>
+            </button>
+          </div>
+        `);
+      }
+    }
 
     this.listEl.innerHTML = parts.join('');
 

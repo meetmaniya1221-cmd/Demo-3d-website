@@ -15,6 +15,13 @@ import {
   fmtTempC,
 } from './format';
 import { Sheet } from './sheet';
+import {
+  exoplanet,
+  hostStar,
+  systemOfPlanet,
+  systemOfStar,
+} from '../data/catalog/starsystems';
+import { renderExoplanet, renderHostStar, type PanelContent } from './exoinfo';
 
 export interface InfoPanelHost {
   /** Open the comparison overlay, optionally head-to-head with this body. */
@@ -223,7 +230,43 @@ export class InfoPanel {
     `;
   }
 
+  /**
+   * Stars and planets in the neighbouring systems render through the same
+   * panel, the same stylesheet and the same selection channel as everything in
+   * the Solar System - they are just objects with a different set of known
+   * facts, so they get a different content builder rather than a second panel.
+   */
+  private showInterstellar(id: string): boolean {
+    let content: PanelContent | null = null;
+    const star = hostStar(id);
+    if (star) {
+      const sys = systemOfStar(id);
+      if (sys) content = renderHostStar(sys, star);
+    } else {
+      const planet = exoplanet(id);
+      const sys = planet ? systemOfPlanet(id) : undefined;
+      if (planet && sys) content = renderExoplanet(sys, planet);
+    }
+    if (!content) return false;
+
+    this.currentId = id;
+    this.title.textContent = content.title;
+    this.kind.textContent = content.kind;
+    this.body.innerHTML = content.sections.join('');
+    this.distValue = null;
+    this.lightValue = null;
+    this.earthDelayValue = null;
+    this.activityValue = null;
+    this.body.querySelectorAll<HTMLButtonElement>('[data-body]').forEach((b) =>
+      b.addEventListener('click', () => this.state.select(b.dataset.body!)),
+    );
+    this.body.scrollTop = 0;
+    this.root.classList.add('open');
+    return true;
+  }
+
   private show(id: string): void {
+    if (this.showInterstellar(id)) return;
     const def = catalogObject(id);
     if (!def) return;
     this.currentId = id;

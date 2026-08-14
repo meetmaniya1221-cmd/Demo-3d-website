@@ -89,15 +89,19 @@ function frameStats(name) {
       // produces, and that separation is clean.
       if (l > 25 && r - b > warmMax) warmMax = r - b;
       hist[Math.min(15, Math.floor(l / 16))]++;
-      // Only count texture on the lit body. Requiring the neighbours to be
-      // bright too is what keeps the star field out: a star is one bright
-      // pixel on black, which is maximal local contrast and would otherwise
-      // score an empty frame as highly detailed.
-      if (l > 45 && x + 1 < x1 && y + 1 < y1) {
-        const rx = lum(o + 4);
-        const ry = lum(o + width * 4);
-        if (rx > 35 && ry > 35) {
-          contrast += Math.abs(l - rx) + Math.abs(l - ry);
+      // Only count texture on the lit body, never on the sky behind it. Two
+      // bright neighbours is not enough on its own: once the real Milky Way
+      // went in behind the planets, a frame of dense star field scored as
+      // highly detailed and an approach looked like it was losing detail. So
+      // the whole neighbourhood has to be lit, which a planet's surface is and
+      // a field of point sources is not.
+      if (l > 45 && x - 3 >= x0 && x + 3 < x1 && y - 3 >= y0 && y + 3 < y1) {
+        let around = 0;
+        for (let k = -3; k <= 3; k += 3) {
+          for (let j = -3; j <= 3; j += 3) around += lum(o + j * 4 + k * width * 4);
+        }
+        if (around / 9 > 45) {
+          contrast += Math.abs(l - lum(o + 4)) + Math.abs(l - lum(o + width * 4));
           cn++;
         }
       }
@@ -165,6 +169,8 @@ await page.addStyleTag({
 
 console.log('\nEarth');
 const far = await step('earth-01-far', () => place('earth', 'day', 60));
+const earthLodFar = await page.evaluate(() => window.__orrery.earthDetail());
+console.log(`  rungs at 60 radii: ${JSON.stringify(earthLodFar)}`);
 const approach = await step('earth-02-approach', () => place('earth', 'day', 12));
 const day = await step('earth-03-day', () => place('earth', 'day', 3));
 const term = await step('earth-04-terminator', () => place('earth', 'terminator', 2.6));
@@ -173,7 +179,16 @@ const low = await step('earth-06-low-pass', () => place('earth', 'day', 1.35));
 const polar = await step('earth-07-polar', () => place('earth', 'polar', 3));
 
 check('Earth is lit and visible on approach', day.litFrac > 0.12, `litFrac=${day.litFrac}`);
-check('detail grows with proximity', day.detail > far.detail, `far=${far.detail} close=${day.detail}`);
+// Which map is resident is the mechanism itself, and unlike a contrast
+// statistic it cannot be confounded by what is behind the planet - at 60 radii
+// Earth covers 2.5% of the frame and the rest is the real, textured Milky Way,
+// which scored higher than the planet ever could.
+const earthLod = await page.evaluate(() => window.__orrery.earthDetail());
+check(
+  'a finer map is resident up close than at a distance',
+  earthLod && earthLod.day >= 2,
+  `rungs at 3 radii: ${JSON.stringify(earthLod)}`,
+);
 check('day side reads as blue', day.blueFrac > 0.05, `blueFrac=${day.blueFrac}`);
 check(
   'night side is dark but not empty',
@@ -196,10 +211,11 @@ const mLow = await step('moon-03-low-pass', () => place('moon', 'day', 1.3));
 const mTerm = await step('moon-04-terminator', () => place('moon', 'terminator', 2.2));
 
 check('Moon is lit up close', mDay.litFrac > 0.12, `litFrac=${mDay.litFrac}`);
+const moonLod = await page.evaluate(() => window.__orrery.moonDetail());
 check(
-  'crater detail resolves on approach',
-  mDay.detail > mFar.detail * 1.3,
-  `far=${mFar.detail} close=${mDay.detail}`,
+  'the Moon pulls in a finer map and a denser sphere up close',
+  moonLod && moonLod.colour >= 2 && moonLod.geometry >= 1,
+  `state at 3 radii: ${JSON.stringify(moonLod)}`,
 );
 check('surface still textured on a low pass', mLow.detail > 1.5, `detail=${mLow.detail}`);
 check(

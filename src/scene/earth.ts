@@ -619,6 +619,17 @@ export class EarthDetail {
     this.atmoMat.side = this.camLocal.length() < ATMO_SHELL ? THREE.BackSide : THREE.FrontSide;
   }
 
+  /** Which rungs are live. Used by the Earth/Moon test to check that closing
+   *  in really does pull in a finer map. */
+  get detailState(): Record<string, number> {
+    return {
+      day: this.day.state.live,
+      night: this.night.state.live,
+      cloud: this.cloud.state.live,
+      normal: this.normal.state.live,
+    };
+  }
+
   dispose(): void {
     this.day.dispose();
     this.night.dispose();

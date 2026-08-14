@@ -24,10 +24,19 @@ import {
 import { BURN_AXES, BURN_EFFECT, BURN_LABEL } from '../spacecraft/orbit';
 import {
   KM_PER_UNIT,
+  bodyName,
+  interstellarFrame,
   targetableObjects,
   type Neighbour,
   type RegionInfo,
 } from '../spacecraft/ephemeris';
+import {
+  CRUISE_FRACTIONS,
+  CRUISE_NOTES,
+  type CruiseTelemetry,
+} from '../spacecraft/interstellar';
+import { STAR_SYSTEMS, starSystem } from '../data/catalog/starsystems';
+import { LY_PER_PC, SOL_ID, fmtSpan, positionLyOf } from '../sim/interstellar';
 
 export interface Telemetry {
   mode: FlightMode;
@@ -70,6 +79,18 @@ export interface Telemetry {
   fov: number;
   navOverlay: boolean;
   gazeLock: boolean;
+  /** Which star system the ship is in right now. */
+  systemId: string;
+  systemName: string;
+  /** Star system the interstellar computer is aimed at, if any. */
+  starTargetId: string | null;
+  /** Live crossing, when one is under way. */
+  cruise: CruiseTelemetry | null;
+  cruiseIndex: number;
+  /** Real kilometres covered on interstellar legs. */
+  interstellarKm: number;
+  /** How far the current system is from the Sun, in light-years. */
+  distanceFromSunLy: number;
 }
 
 export interface SpacecraftUiCallbacks {
@@ -88,6 +109,10 @@ export interface SpacecraftUiCallbacks {
   onPause: () => void;
   onFov: (deg: number) => void;
   onNavOverlay: (on: boolean) => void;
+  onSelectStar: (systemId: string) => void;
+  onCruiseSpeed: (index: number) => void;
+  onLaunchInterstellar: () => void;
+  onAbortInterstellar: () => void;
   onLookPreset: (yawDeg: number, pitchDeg: number) => void;
   onGazeLock: (on: boolean) => void;
   onAlign: () => void;
@@ -225,6 +250,15 @@ export class SpacecraftUI {
   private actionsEl!: HTMLElement;
   private abortBtn!: HTMLButtonElement;
 
+  // interstellar panel
+  private starHereEl!: HTMLElement;
+  private starListEl!: HTMLElement;
+  private starStats!: HTMLElement;
+  private cruiseRow!: HTMLElement;
+  private cruiseNoteEl!: HTMLElement;
+  private launchBtn!: HTMLButtonElement;
+  private holdBtn!: HTMLButtonElement;
+
   // location panel
   private regionEl!: HTMLElement;
   private locStats!: HTMLElement;
@@ -280,6 +314,7 @@ export class SpacecraftUI {
     this.buildReticle();
     this.buildNavPanel();
     this.buildLocationPanel();
+    this.buildInterstellarPanel();
     this.buildOrbitPanel();
     this.buildThrottle();
     this.buildMap();
@@ -357,7 +392,7 @@ export class SpacecraftUI {
     // is a plain on/off for the pair.
     this.panelBtn = el('button', 'sc-chip sc-panels-toggle', 'Panels');
     this.panelBtn.addEventListener('click', () => {
-      const states = isPhone() ? (this.orbiting ? 4 : 3) : 2;
+      const states = isPhone() ? (this.orbiting ? 5 : 4) : 2;
       this.panelMode = (this.panelMode + 1) % states;
       this.syncPanels();
     });
@@ -435,6 +470,149 @@ export class SpacecraftUI {
     t.appendChild(this.actionsEl);
     p.appendChild(t);
     this.root.appendChild(p);
+  }
+
+
+  /**
+   * Interstellar navigation.
+   *
+   * Deliberately separate from the local navigation panel: picking a moon and
+   * picking a star are not the same kind of decision, and the numbers that
+   * matter are different. Here they are the distance in light-years, the
+   * cruise velocity as a fraction of light speed, and - the one that carries
+   * the whole point of the mode - how many years the crossing takes.
+   */
+  private buildInterstellarPanel(): void {
+    const p = el('aside', 'sc-panel sc-star');
+    p.setAttribute('aria-label', 'Interstellar navigation');
+    p.appendChild(el('h2', undefined, 'Interstellar'));
+
+    this.starHereEl = el('div', 'sc-star-here');
+    p.appendChild(this.starHereEl);
+
+    this.starListEl = el('div', 'sc-star-list');
+    this.starListEl.setAttribute('role', 'listbox');
+    p.appendChild(this.starListEl);
+
+    p.appendChild(el('h3', undefined, 'Cruise velocity'));
+    this.cruiseRow = el('div', 'sc-cruise-row');
+    CRUISE_FRACTIONS.forEach((f, i) => {
+      const b = el('button', 'sc-cruise', `${(f * 100).toFixed(0)}% c`);
+      b.title = CRUISE_NOTES[f];
+      b.addEventListener('click', () => this.cb.onCruiseSpeed(i));
+      this.cruiseRow.appendChild(b);
+    });
+    p.appendChild(this.cruiseRow);
+    this.cruiseNoteEl = el('p', 'sc-cruise-note');
+    p.appendChild(this.cruiseNoteEl);
+
+    this.starStats = el('dl', 'sc-kv');
+    p.appendChild(this.starStats);
+
+    const acts = el('div', 'sc-actions');
+    this.launchBtn = el('button', 'sc-act primary', 'Engage');
+    this.launchBtn.title = 'Begin the crossing to the selected star system';
+    this.launchBtn.addEventListener('click', () => this.cb.onLaunchInterstellar());
+    this.holdBtn = el('button', 'sc-act danger', 'Hold');
+    this.holdBtn.title = 'Stop between the stars';
+    this.holdBtn.addEventListener('click', () => this.cb.onAbortInterstellar());
+    acts.append(this.launchBtn, this.holdBtn);
+    p.appendChild(acts);
+
+    p.appendChild(
+      el(
+        'p',
+        'sc-fine',
+        'Interstellar distances on screen are compressed so the neighbourhood fits in a frame; the layout is linear, so relative distances are exact. Every number here is the real one.',
+      ),
+    );
+    this.root.appendChild(p);
+    this.renderStarList();
+  }
+
+  private renderStarList(): void {
+    this.starListEl.innerHTML = '';
+    const rows: Array<{ id: string; name: string; detail: string; color: number }> = [
+      { id: SOL_ID, name: 'Solar System', detail: 'Home · G2 V', color: 0xffc46b },
+      ...[...STAR_SYSTEMS]
+        .sort((a, b) => a.distanceLy - b.distanceLy)
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          detail: `${s.distanceLy.toFixed(2)} ly · ${s.planets.length} planet${s.planets.length === 1 ? '' : 's'}`,
+          color: s.color,
+        })),
+    ];
+    for (const r of rows) {
+      const b = el('button', 'sc-list-row');
+      b.dataset.system = r.id;
+      b.innerHTML = `<span class="dot" style="background:#${r.color
+        .toString(16)
+        .padStart(6, '0')}"></span><b>${r.name}</b><i>${r.detail}</i>`;
+      b.addEventListener('click', () => this.cb.onSelectStar(r.id));
+      this.starListEl.appendChild(b);
+    }
+  }
+
+  /** Repaint the interstellar panel. Called on the HUD's slow tick. */
+  private updateInterstellar(t: Telemetry): void {
+    const hereLy = t.distanceFromSunLy;
+    this.starHereEl.innerHTML =
+      `<b>${t.systemName}</b><i>${
+        t.systemId === SOL_ID
+          ? 'The origin of the map'
+          : `${hereLy.toFixed(2)} ly from the Sun · ${(hereLy / LY_PER_PC).toFixed(2)} pc`
+      }</i>`;
+
+    this.starListEl.querySelectorAll<HTMLElement>('[data-system]').forEach((b) => {
+      const id = b.dataset.system!;
+      b.classList.toggle('here', id === t.systemId);
+      b.classList.toggle('active', id === t.starTargetId);
+    });
+
+    this.cruiseRow.querySelectorAll('button').forEach((b, i) => {
+      b.classList.toggle('active', i === t.cruiseIndex);
+    });
+    const f = CRUISE_FRACTIONS[t.cruiseIndex];
+    this.cruiseNoteEl.textContent = CRUISE_NOTES[f];
+
+    const rows: string[] = [];
+    const kv = (k: string, v: string) => rows.push(`<dt>${k}</dt><dd>${v}</dd>`);
+
+    kv('Current location', t.systemName);
+
+    const c = t.cruise;
+    if (c) {
+      const toName = c.toId === SOL_ID ? 'Solar System' : (starSystem(c.toId)?.name ?? c.toId);
+      kv('Target star', toName);
+      kv('Distance', `${c.totalLy.toFixed(3)} ly · ${(c.totalLy / LY_PER_PC).toFixed(3)} pc`);
+      kv('Travel distance', fmtSpan(t.interstellarKm));
+      kv(
+        'Travel time',
+        `${c.elapsedYears.toFixed(1)} / ${c.totalYears.toFixed(1)} years at ${(c.fractionC * 100).toFixed(0)}% c`,
+      );
+      kv('Time compression', `${c.compression.toExponential(1)}×`);
+      kv('Progress', `${(c.progress * 100).toFixed(1)}%`);
+      this.launchBtn.disabled = true;
+      this.holdBtn.disabled = false;
+    } else if (t.starTargetId) {
+      const toName =
+        t.starTargetId === SOL_ID ? 'Solar System' : (starSystem(t.starTargetId)?.name ?? t.starTargetId);
+      const ly = positionLyOf(t.starTargetId).distanceTo(positionLyOf(t.systemId));
+      kv('Target star', toName);
+      kv('Distance', `${ly.toFixed(3)} ly · ${(ly / LY_PER_PC).toFixed(3)} pc`);
+      kv('Travel distance', fmtSpan(ly * 9.4607e12));
+      kv('Travel time', `${(ly / f).toFixed(1)} years at ${(f * 100).toFixed(0)}% c`);
+      kv('Light travel time', `${ly.toFixed(2)} years`);
+      this.launchBtn.disabled = false;
+      this.holdBtn.disabled = true;
+    } else {
+      kv('Target star', 'None selected');
+      this.launchBtn.disabled = true;
+      this.holdBtn.disabled = true;
+    }
+    kv('Simulation time', `${fmtSimDate(t.simDays)} · ${fmtSimTime(t.simDays)}`);
+    this.starStats.innerHTML = rows.join('');
   }
 
   private buildLocationPanel(): void {
@@ -745,6 +923,40 @@ export class SpacecraftUI {
 
   private renderList(query: string): void {
     const q = query.trim().toLowerCase();
+    // At another star the navigation list is that system's own bodies - the
+    // Solar System's moons are not reachable destinations from TRAPPIST-1, and
+    // offering them would be a lie the flight computer then has to break.
+    const frame = interstellarFrame();
+    if (frame) {
+      const rows = frame
+        .ids()
+        .map((id) => ({ id, name: bodyName(id) }))
+        .filter((r) => !q || r.name.toLowerCase().includes(q) || r.id.includes(q));
+      const sys = starSystem(frame.systemId);
+      this.listEl.innerHTML = '';
+      for (const r of rows) {
+        const planet = sys?.planets.find((pl) => pl.id === r.id);
+        const star = sys?.stars.find((st) => st.id === r.id);
+        const b = el('button', 'sc-list-row');
+        b.dataset.id = r.id;
+        const color = star?.color ?? sys?.color ?? 0x9db4cc;
+        b.innerHTML = `<span class="dot" style="background:#${color
+          .toString(16)
+          .padStart(6, '0')}"></span><b>${r.name}</b><i>${
+          star ? star.spectral : planet ? `${planet.status === 'confirmed' ? 'Confirmed' : 'Unconfirmed'} planet` : ''
+        }</i>`;
+        b.addEventListener('click', () => {
+          this.cb.onSelectTarget(r.id);
+          this.searchInput.value = '';
+          this.renderList('');
+        });
+        this.listEl.appendChild(b);
+      }
+      if (!rows.length) {
+        this.listEl.innerHTML = '<p class="sc-empty">No bodies match.</p>';
+      }
+      return;
+    }
     let items: CatalogObject[] = targetableObjects();
     if (q) {
       items = items.filter(
@@ -820,18 +1032,23 @@ export class SpacecraftUI {
     // legal in portrait has to be re-checked rather than left where it was
     const phone = isPhone();
     if (!phone && this.panelMode > 1) this.panelMode = 1;
-    if (phone && this.panelMode === 3 && !this.orbiting) this.panelMode = 0;
+    if (phone && this.panelMode === 4 && !this.orbiting) this.panelMode = 0;
     const showNav = this.panelMode === 1;
     const showLoc = phone ? this.panelMode === 2 : this.panelMode === 1;
+    // The interstellar panel is a full-height card. On a phone it covered the
+    // middle of the glass permanently and swallowed the look drag, so it takes
+    // its turn in the cycle like the others rather than living on top.
+    const showStar = phone ? this.panelMode === 3 : true;
     // on a desktop the orbit panel shares the left column with navigation; on a
     // phone it takes its own turn in the single bottom sheet
-    const showOrbit = phone ? this.panelMode === 3 : true;
+    const showOrbit = phone ? this.panelMode === 4 : true;
     this.root.classList.toggle('nav-hidden', !showNav);
+    this.root.classList.toggle('star-hidden', !showStar);
     this.root.classList.toggle('loc-hidden', !showLoc);
     this.root.classList.toggle('orbit-hidden', !showOrbit);
     this.panelBtn.classList.toggle('active', this.panelMode !== 0);
     this.panelBtn.textContent = phone
-      ? ['Panels', 'Navigation', 'Location', 'Orbit'][this.panelMode]
+      ? ['Panels', 'Navigation', 'Location', 'Stars', 'Orbit'][this.panelMode]
       : 'Panels';
   }
 
@@ -876,6 +1093,7 @@ export class SpacecraftUI {
     if (this.textTimer > 0.125) {
       this.textTimer = 0;
       this.updateText(t);
+      this.updateInterstellar(t);
     }
     this.mapTimer += dt;
     if (this.mapTimer > 0.2) {

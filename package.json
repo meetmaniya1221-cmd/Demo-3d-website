@@ -14,7 +14,8 @@
     "test:earthmoon": "node scripts/earthmoontest.mjs",
     "test:flight": "node scripts/flighttest.mjs",
     "test:orbit": "node --experimental-strip-types scripts/orbittest.mts",
-    "test:orbitflight": "node scripts/orbitflight.mjs"
+    "test:orbitflight": "node scripts/orbitflight.mjs",
+    "test:stars": "node scripts/startest.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

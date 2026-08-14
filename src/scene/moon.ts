@@ -233,6 +233,15 @@ export class MoonDetail {
     (this.uniforms.uSunDir.value as THREE.Vector3).copy(sunDir);
   }
 
+  /** Which rungs are live, for the LOD test. */
+  get detailState(): Record<string, number> {
+    return {
+      colour: this.colour.state.live,
+      normal: this.normal.state.live,
+      geometry: this.geometryTier,
+    };
+  }
+
   dispose(): void {
     this.colour.dispose();
     this.normal.dispose();

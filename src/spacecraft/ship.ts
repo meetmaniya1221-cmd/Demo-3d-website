@@ -117,6 +117,9 @@ const FORWARD = new THREE.Vector3(0, 0, -1);
 const RIGHT = new THREE.Vector3(1, 0, 0);
 const UP = new THREE.Vector3(0, 1, 0);
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
+/** Used when the line of travel is within a degree of the pole and WORLD_UP
+ *  would be degenerate as a reference. */
+const UP_FALLBACK = new THREE.Vector3(0, 0, 1);
 const ORIGIN = new THREE.Vector3(0, 0, 0);
 
 export interface OrbitTelemetry {
@@ -455,6 +458,24 @@ export class Ship {
   }
 
   /** Swing the hull so the nose points where the pilot is looking. */
+  /**
+   * Point the hull's nose down a given direction, keeping "up" as close to the
+   * ecliptic north as the geometry allows. Used on an interstellar crossing,
+   * where there is no body to orient against and the only meaningful bearing is
+   * the line of travel itself.
+   */
+  faceDirection(dir: THREE.Vector3): void {
+    if (dir.lengthSq() < 1e-12) return;
+    const forward = dir.clone().normalize();
+    const up = Math.abs(forward.y) > 0.98 ? UP_FALLBACK : WORLD_UP;
+    // three.js cameras and this hull both look down −z
+    this.tmpM.lookAt(new THREE.Vector3(0, 0, 0), forward.negate(), up);
+    this.quat.setFromRotationMatrix(this.tmpM);
+    this.headYaw = 0;
+    this.headPitch = 0;
+    this.headYawTarget = this.headPitchTarget = 0;
+  }
+
   alignHullToGaze(): void {
     const q = this.headQuaternion(this.tmpQ);
     this.quat.multiply(q);

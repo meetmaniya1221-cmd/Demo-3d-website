@@ -17,6 +17,23 @@ import { Markers } from './markers';
 import { ReferenceGrid } from './grid';
 import { Constellations } from './constellations';
 import type { GeneratedTextures } from './textures';
+import { Neighbourhood } from './neighbourhood';
+import { StarSystemScene } from './starsystem';
+import { SOL_ID } from '../sim/interstellar';
+import { starSystem, systemOfPlanet, systemOfStar } from '../data/catalog/starsystems';
+import { setInterstellarFrame } from '../spacecraft/ephemeris';
+import { AU_KM } from '../data/bodies';
+
+/** True-scale radius in scene units of anything in a foreign system.
+ *  1 AU = 100 units, exactly as sim/scale defines it for the planets. */
+function trueRadiusOf(scene: StarSystemScene, id: string): number | null {
+  const km = scene.radiusKmOf(id);
+  return km === null ? null : (km / AU_KM) * 100;
+}
+
+/** How many foreign systems stay built after you leave them. Two is enough to
+ *  make an out-and-back instant without holding thirteen systems on the GPU. */
+const SYSTEM_CACHE_SIZE = 2;
 
 export class SolarSystem {
   readonly scene = new THREE.Scene();
@@ -31,10 +48,18 @@ export class SolarSystem {
   readonly constellations: Constellations;
   readonly pickables: THREE.Object3D[] = [];
   readonly sky: Sky;
+  /** The stellar neighbourhood, always present - it is the same universe. */
+  readonly neighbourhood = new Neighbourhood();
+  /** Everything the Solar System owns, so it can step aside for another star. */
+  private solGroup = new THREE.Group();
+  private foreignSystems = new Map<string, StarSystemScene>();
+  private systemOrder: string[] = [];
+  private activeId: string = SOL_ID;
   private mainBelt: Belt;
   private kuiperBelt: Belt;
   private oortCloud: OortCloud;
   private lastOrbitScaleT = -1;
+  private lastScaleT = 0;
   private lastSimDays = 0;
   private selectedId: string | null = null;
   private layers: Layers = { ...DEFAULT_LAYERS };
@@ -47,6 +72,13 @@ export class SolarSystem {
     this.sky = new Sky(textureBase);
     this.scene.add(this.sky.group);
 
+    // The Solar System's own contents live under one group so the scene can
+    // hand the origin to another star without tearing anything down. The sky,
+    // the galaxy, the grid and the neighbourhood stay put - they belong to the
+    // universe, not to the Sun.
+    this.scene.add(this.solGroup);
+    this.scene.add(this.neighbourhood.group);
+
     this.markers = new Markers();
     this.scene.add(this.markers.points);
 
@@ -58,7 +90,7 @@ export class SolarSystem {
     this.sky.group.add(this.constellations.group);
 
     this.sun = new Sun();
-    this.scene.add(this.sun.group);
+    this.solGroup.add(this.sun.group);
     this.pickables.push(this.sun.mesh);
 
     for (const def of PLANETS) {
@@ -66,12 +98,12 @@ export class SolarSystem {
         def.id === 'saturn' ? tex.saturnRing : def.id === 'uranus' ? tex.uranusRing : undefined;
       const planet = new Planet(def, tex.bodies[def.id], ringTex, textureBase);
       this.planets.set(def.id, planet);
-      this.scene.add(planet.group);
+      this.solGroup.add(planet.group);
       this.pickables.push(planet.hit);
 
       const orbit = new OrbitLine(def.orbit!, def.color);
       this.orbitLines.set(def.id, orbit);
-      this.scene.add(orbit.line);
+      this.solGroup.add(orbit.line);
 
       const moons = MOONS_BY_PARENT.get(def.id);
       if (moons?.length) {
@@ -88,7 +120,7 @@ export class SolarSystem {
       }
     }
 
-    this.smallBodies = new SmallBodies(this.scene, SMALL_BODIES, textureBase, this.markers);
+    this.smallBodies = new SmallBodies(this.solGroup, SMALL_BODIES, textureBase, this.markers);
     this.pickables.push(...this.smallBodies.pickables);
 
     // satellite systems around small-body parents (Pluto & Charon)
@@ -112,11 +144,11 @@ export class SolarSystem {
     this.mainBelt = new Belt(buildMainBelt(), MAIN_BELT_STYLE);
     this.kuiperBelt = new Belt(buildKuiperBelt(), KUIPER_BELT_STYLE);
     this.oortCloud = new OortCloud();
-    this.scene.add(this.mainBelt.points, this.kuiperBelt.points, this.oortCloud.points);
+    this.solGroup.add(this.mainBelt.points, this.kuiperBelt.points, this.oortCloud.points);
 
     this.hz = new HabitableZone();
     this.hz.mesh.visible = false;
-    this.scene.add(this.hz.mesh);
+    this.solGroup.add(this.hz.mesh);
 
     // fill so night sides read as dim spheres, not black cutouts, while the
     // lit side keeps a clear terminator
@@ -125,12 +157,32 @@ export class SolarSystem {
 
   update(simDays: number, scaleT: number, elapsed: number, camera: THREE.PerspectiveCamera): void {
     this.lastSimDays = simDays;
-    this.sun.update(elapsed, scaleT, simDays);
+    this.lastScaleT = scaleT;
     const cameraPos = camera.position;
     const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     const viewH = window.innerHeight;
     // pin the sky to the camera so the stars stay at optical infinity
     this.sky.group.position.copy(cameraPos);
+    this.sky.update(elapsed);
+
+    // The neighbourhood is drawn whichever system you are standing in - it is
+    // the same map, re-expressed around a different origin.
+    this.neighbourhood.update(cameraPos, scaleT);
+
+    if (this.activeId !== SOL_ID) {
+      const foreign = this.foreignSystems.get(this.activeId);
+      foreign?.update(simDays, scaleT, elapsed, cameraPos);
+      if (foreign) {
+        // once the whole system is smaller than a few pixels there is nothing
+        // to see but the star, so stop drawing thirty bodies nobody can resolve
+        const px = (foreign.extent(scaleT) / Math.max(cameraPos.length(), 1e-6) / (2 * halfTan)) * viewH;
+        foreign.setPlanetsVisible(px > 8);
+      }
+      this.markers.commit();
+      return;
+    }
+
+    this.sun.update(elapsed, scaleT, simDays);
 
     for (const planet of this.planets.values()) {
       const def = planet.def;
@@ -162,7 +214,6 @@ export class SolarSystem {
     this.mainBelt.update(simDays, scaleT);
     this.kuiperBelt.update(simDays, scaleT);
     this.oortCloud.update(scaleT, cameraPos.length());
-    this.sky.update(elapsed);
 
     if (Math.abs(scaleT - this.lastOrbitScaleT) > 0.0005) {
       this.lastOrbitScaleT = scaleT;
@@ -174,9 +225,141 @@ export class SolarSystem {
     this.hz.updateViewFade(cameraPos);
   }
 
+  // ------------------------------------------------------- system switching --
+
+  /** Which system the scene's origin currently sits on. */
+  get activeSystemId(): string {
+    return this.activeId;
+  }
+
+  /** The built scene for the active foreign system, if we are in one. */
+  get activeForeign(): StarSystemScene | undefined {
+    return this.activeId === SOL_ID ? undefined : this.foreignSystems.get(this.activeId);
+  }
+
+  /** Foreign systems currently resident on the GPU - the LOD budget. */
+  get builtSystemIds(): string[] {
+    return [...this.foreignSystems.keys()];
+  }
+
+  /** Any built foreign system, for code that needs to look one up by id. */
+  foreign(id: string): StarSystemScene | undefined {
+    return this.foreignSystems.get(id);
+  }
+
+  /**
+   * Build a system's geometry without moving to it, so a cinematic arrival has
+   * something to arrive at. Cheap to call twice - it returns the cached scene.
+   */
+  prepareSystem(id: string): StarSystemScene | null {
+    if (id === SOL_ID) return null;
+    const existing = this.foreignSystems.get(id);
+    if (existing) {
+      // freshen its place in the eviction queue
+      this.systemOrder = this.systemOrder.filter((s) => s !== id);
+      this.systemOrder.push(id);
+      return existing;
+    }
+    const def = starSystem(id);
+    if (!def) return null;
+    const built = new StarSystemScene(def);
+    built.group.visible = false;
+    this.scene.add(built.group);
+    this.foreignSystems.set(id, built);
+    this.systemOrder.push(id);
+    this.evict();
+    this.rebuildPickables();
+    built.setOrbitsVisible(this.layers.planetOrbits);
+    built.setHabitableZoneVisible(this.layers.habitableZone);
+    return built;
+  }
+
+  /** Hand the scene's origin to another system (or back to the Sun). */
+  setActiveSystem(id: string): void {
+    if (this.activeId === id) return;
+    if (id !== SOL_ID) this.prepareSystem(id);
+    this.activeId = id;
+    this.neighbourhood.setOrigin(id);
+
+    this.solGroup.visible = id === SOL_ID;
+    for (const [sysId, scene] of this.foreignSystems) {
+      scene.group.visible = sysId === id;
+    }
+    // the reference grid is a heliocentric AU ruler; it means nothing at
+    // another star, so it goes away until we come home
+    this.grid.setVisible(this.layers.grid && id === SOL_ID);
+    this.constellations.setVisible(this.layers.constellations && id === SOL_ID);
+    this.constellations.setDeepSkyVisible(this.layers.deepSky && id === SOL_ID);
+    this.rebuildPickables();
+    this.evict();
+    this.publishFrame();
+  }
+
+  /**
+   * Tell the spacecraft's ephemeris which system it is flying in. Without this
+   * the cockpit would keep answering "where is Europa" while parked at
+   * TRAPPIST-1 - the ship has to read the world it is actually inside.
+   */
+  private publishFrame(): void {
+    const scene = this.activeForeign;
+    if (!scene) {
+      setInterstellarFrame(null);
+      return;
+    }
+    setInterstellarFrame({
+      systemId: scene.def.id,
+      systemName: scene.def.name,
+      position: (id, simDays, out) => scene.positionAt(id, simDays, 1, out),
+      radiusUnits: (id) => (scene.has(id) ? trueRadiusOf(scene, id) : null),
+      radiusKm: (id) => scene.radiusKmOf(id),
+      ids: () => scene.targetIds(),
+      nameOf: (id) =>
+        scene.def.planets.find((p) => p.id === id)?.name ??
+        scene.def.stars.find((s) => s.id === id)?.name ??
+        null,
+    });
+  }
+
+  /** Drop systems nobody is looking at, keeping the most recent few. */
+  private evict(): void {
+    while (this.systemOrder.length > SYSTEM_CACHE_SIZE) {
+      const victim = this.systemOrder.find((s) => s !== this.activeId);
+      if (!victim) break;
+      this.systemOrder = this.systemOrder.filter((s) => s !== victim);
+      const scene = this.foreignSystems.get(victim);
+      if (scene) {
+        this.scene.remove(scene.group);
+        scene.dispose();
+        this.foreignSystems.delete(victim);
+      }
+    }
+  }
+
+  private solPickables: THREE.Object3D[] = [];
+
+  private rebuildPickables(): void {
+    if (this.solPickables.length === 0) this.solPickables = [...this.pickables];
+    this.pickables.length = 0;
+    if (this.activeId === SOL_ID) {
+      this.pickables.push(...this.solPickables);
+    } else {
+      const scene = this.foreignSystems.get(this.activeId);
+      if (scene) this.pickables.push(...scene.pickables);
+    }
+  }
+
+  /** Earth's Moon LOD state, for the close-range test. */
+  moonDetailState(): Record<string, number> | null {
+    return this.satSystems.get('earth')?.moonDetailState ?? null;
+  }
+
   /** Apply the layer visibility state to every scene subsystem. */
   setLayers(layers: Layers): void {
     this.layers = { ...layers };
+    for (const scene of this.foreignSystems.values()) {
+      scene.setOrbitsVisible(layers.planetOrbits);
+      scene.setHabitableZoneVisible(layers.habitableZone);
+    }
     for (const [id, planet] of this.planets) {
       planet.group.visible = layers.planets;
       const orbit = this.orbitLines.get(id);
@@ -187,10 +370,17 @@ export class SolarSystem {
     this.smallBodies.setLayers(layers);
     for (const sats of this.satSystems.values()) sats.setOrbitsVisible(layers.planetOrbits);
     this.applyRegionVisibility();
-    this.grid.setVisible(layers.grid);
-    this.constellations.setVisible(layers.constellations);
-    this.constellations.setDeepSkyVisible(layers.deepSky);
+    this.grid.setVisible(layers.grid && this.activeId === SOL_ID);
+    // Constellation figures are lines drawn between stars as seen from Earth,
+    // and the Messier marks are catalogued in Earth's sky. Neither survives a
+    // move of several light-years, so both stand down when the origin does -
+    // the star field and the galaxy behind them do not change measurably and
+    // stay exactly as they are.
+    const atHome = this.activeId === SOL_ID;
+    this.constellations.setVisible(layers.constellations && atHome);
+    this.constellations.setDeepSkyVisible(layers.deepSky && atHome);
     this.hz.mesh.visible = layers.habitableZone;
+    this.neighbourhood.setEnabled(layers.nearbyStars);
   }
 
   private parentDisplayRadius(parentId: string): number {
@@ -219,6 +409,7 @@ export class SolarSystem {
 
   setHighlightedOrbit(id: string | null): void {
     this.selectedId = id;
+    for (const scene of this.foreignSystems.values()) scene.setSelected(id);
     // while a body is focused, other orbits recede so they don't slice the shot
     for (const [pid, o] of this.orbitLines) o.setHighlight(pid === id, id !== null);
     this.smallBodies.setSelected(id);
@@ -243,8 +434,10 @@ export class SolarSystem {
     return this.planets.get(id)?.def;
   }
 
-  /** World position of any selectable body. */
+  /** World position of any selectable body, in this system or another star's. */
   bodyPosition(id: string, out: THREE.Vector3): THREE.Vector3 {
+    const foreign = this.activeForeign;
+    if (foreign?.has(id)) return foreign.position(id, out) ?? out.set(0, 0, 0);
     if (id === 'sun') return out.set(0, 0, 0);
     const p = this.planets.get(id);
     if (p) return out.copy(p.group.position);
@@ -252,11 +445,17 @@ export class SolarSystem {
     for (const sats of this.satSystems.values()) {
       if (sats.worldPosition(id, out)) return out;
     }
+    // an id belonging to a system we are not standing in resolves to that
+    // system's place in the neighbourhood, so navigation can still aim at it
+    const owning = systemOfPlanet(id)?.id ?? systemOfStar(id)?.id;
+    if (owning) return this.neighbourhood.positionOf(owning, this.lastScaleT, out);
     return out.set(0, 0, 0);
   }
 
   /** Current display radius of any selectable body. */
   bodyRadius(id: string, scaleT: number): number {
+    const foreign = this.activeForeign;
+    if (foreign?.has(id)) return foreign.radiusOf(id);
     if (id === 'sun') return this.sun.radius;
     const p = this.planets.get(id);
     if (p) return p.radius;
@@ -267,10 +466,19 @@ export class SolarSystem {
     return 1;
   }
 
+  /** The system id that owns a selectable id, or 'sol' for anything local. */
+  systemOf(id: string): string {
+    return systemOfPlanet(id)?.id ?? systemOfStar(id)?.id ?? SOL_ID;
+  }
+
   /** Should this body's label be considered right now? */
   labelVisible(id: string, camPos: THREE.Vector3, selectedId: string | null): boolean {
+    const foreign = this.activeForeign;
+    if (foreign?.has(id)) return true;
     const def = catalogObject(id);
     if (!def) return false;
+    // the Solar System's own labels have nothing to point at from another star
+    if (this.activeId !== SOL_ID) return false;
     if (id === selectedId) return true;
     if (def.type === 'star') return true;
     if (def.type === 'planet') return this.layers.planets;
@@ -302,6 +510,7 @@ export class SolarSystem {
 
   /** Forward render-resolution changes to every DPR-aware point shader. */
   setPixelRatio(pr: number): void {
+    this.neighbourhood.setPixelRatio(pr);
     this.sky.setPixelRatio(pr);
     this.mainBelt.setPixelRatio(pr);
     this.kuiperBelt.setPixelRatio(pr);
