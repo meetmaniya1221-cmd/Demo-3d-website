@@ -195,10 +195,27 @@ check(
   night.mean < day.mean * 0.55 && night.litFrac > 0.004,
   `night mean=${night.mean} vs day=${day.mean}, litFrac=${night.litFrac}`,
 );
+// Warmth is measured with the Milky Way hidden.
+//
+// warmMax is the largest red-minus-blue anywhere in the frame, and the frame
+// contains the sky as well as the planet. The bulge is a warm object, so a
+// single sky pixel could win the comparison and the statistic would be about
+// where the ship happened to be pointing rather than about Earth's
+// atmosphere. Hiding the sky leaves only the body, which is what this check
+// has always been a claim about: sunlight through a long air path is redder
+// than sunlight from overhead.
+const warmthOf = async (name, bearing, radii) => {
+  await page.evaluate(() => window.__orrery.setSkyVisible(false));
+  const s = await step(name, () => place('earth', bearing, radii), 2000);
+  await page.evaluate(() => window.__orrery.setSkyVisible(true));
+  return s;
+};
+const dayWarm = await warmthOf('earth-08-day-nosky', 'day', 3);
+const termWarm = await warmthOf('earth-09-terminator-nosky', 'terminator', 2.6);
 check(
   'terminator light is redder than full daylight',
-  term.warmMax > day.warmMax + 6,
-  `peak warmth ${term.warmMax} at the terminator vs ${day.warmMax} in full sun`,
+  termWarm.warmMax > dayWarm.warmMax + 6,
+  `peak warmth ${termWarm.warmMax} at the terminator vs ${dayWarm.warmMax} in full sun`,
 );
 check('low pass still renders', low.litFrac > 0.15, `litFrac=${low.litFrac}`);
 check('polar view renders', polar.litFrac > 0.08, `litFrac=${polar.litFrac}`);
