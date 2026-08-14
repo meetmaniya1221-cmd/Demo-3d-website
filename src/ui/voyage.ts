@@ -229,6 +229,7 @@ export class Voyage {
       if (this.t >= DEPART_SECONDS) {
         this.phase = 'cruising';
         this.t = 0;
+        this.beginWormhole();
       }
       return;
     }
@@ -281,6 +282,34 @@ export class Voyage {
   private aimAtDestination(cam: THREE.PerspectiveCamera): void {
     this.toScene(positionLyOf(this.toId), this.look);
     cam.lookAt(this.look);
+    const wormhole = this.host.system.wormhole;
+    if (wormhole.active) {
+      wormhole.setAxis(this.look.clone().sub(cam.position));
+    }
+  }
+
+  /**
+   * Arm the transition for the crossing.
+   *
+   * Its length is the cruise plus the arrival, so the throat is still shut
+   * while the scene's origin changes hands and the opening finishes widening
+   * at the moment the camera settles on the destination system. What shows
+   * through the opening is that system itself - already built during the
+   * departure, already rendering - so there is nothing to reveal but the real
+   * thing.
+   */
+  private beginWormhole(): void {
+    const { state, system } = this.host;
+    if (state.travelEffects === 'off') return;
+    const axis = this.toScene(positionLyOf(this.toId), new THREE.Vector3())
+      .sub(this.host.camera.position);
+    system.wormhole.start(axis, {
+      duration: CRUISE_SECONDS + ARRIVE_SECONDS,
+      // do not open onto a system that is still being assembled, or onto a
+      // crossing that a slow frame rate has left half-finished
+      hold: () => this.phase === 'cruising',
+      maxHold: 40,
+    });
   }
 
   /** Odometer and progress bar. Throttled - this is DOM work in a render loop. */
@@ -299,6 +328,7 @@ export class Voyage {
   }
 
   private finish(): void {
+    this.host.system.wormhole.abort();
     if (this.host.system.activeSystemId !== this.toId) {
       this.host.system.setActiveSystem(this.toId);
     }
@@ -314,6 +344,7 @@ export class Voyage {
   /** Cancel without arriving - used when another mode takes over the camera. */
   abort(): void {
     if (!this.active) return;
+    this.host.system.wormhole.abort();
     this.phase = 'idle';
     this.root.classList.remove('open');
     this.root.inert = true;

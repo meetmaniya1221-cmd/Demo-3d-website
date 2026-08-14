@@ -140,6 +140,11 @@ export class Sky {
     this.milkyWay.bake(renderer);
   }
 
+  /** The baked band as a cubemap, once it exists. */
+  get milkyWayCubemap(): THREE.CubeTexture | null {
+    return this.milkyWay.cubemap;
+  }
+
   setPixelRatio(pr: number): void {
     this.starMat.uniforms.uPr.value = pr;
   }

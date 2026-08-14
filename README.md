@@ -46,6 +46,19 @@ you can orbit, click and read. Habitable zones are computed per star from
 its own luminosity and temperature (Kopparapu et al. 2014), including the
 Sun's.
 
+**A cinematic jump for long distances.** Travel is classified by the distance
+it actually covers, and nothing else. Under a third of an AU is an ordinary
+fly-to; out to three AU the autopilot cruises as it always has; beyond that -
+Earth to Saturn, or anything interstellar - a wormhole sequence plays over the
+flight. The background bent around its throat is the real baked Milky Way,
+deflected by the 1/b falloff of gravitational lensing, which is where the ring,
+the curved light and the dark centre all come from. It is a picture, not a
+claim, and it says so on screen for as long as it is up: the flight computer
+underneath covers every real kilometre at the real velocity, and the distance,
+the velocity and the elapsed simulation time stay on the HUD as three separate
+numbers throughout. Quality is Cinematic / Reduced / Off in the View panel, and
+starts at Off if the system asks for reduced motion.
+
 **Real NASA surfaces.** 22 mission-imagery global mosaics (USGS
 Astrogeology / New Horizons / Cassini / Galileo / Dawn / Hayabusa2 -
 see [SOURCES.md](SOURCES.md)). Where no map exists the app paints a
@@ -227,6 +240,7 @@ src/
   sim/scale.ts          explorer ↔ true-scale mapping (single source of truth)
   sim/interstellar.ts   RA/Dec/parallax → 3D position; the interstellar scale
   sim/habitable.ts      Kopparapu et al. (2014) habitable-zone limits
+  sim/travel.ts         short / medium / long, and what each one looks like
   sim/state.ts          app state + event emitter
   scene/galaxy.ts       the Milky Way in galactic coordinates, baked to a cubemap
   scene/                sun, planets, satellites, small bodies, comet tails,
@@ -235,6 +249,7 @@ src/
   scene/starsystem.ts   one foreign system, built on arrival and disposed
   scene/hoststar.ts     a star coloured by its measured temperature
   scene/exoplanet.ts    procedural worlds driven by size, mass, temperature
+  scene/wormhole.ts     the long-distance transition: lensed sky, throat, streaks
   spacecraft/           first-person mode: true-scale ephemeris, flight
                         computer, two-body orbital mechanics, trajectory
                         preview, cockpit geometry, mode orchestration
@@ -246,6 +261,7 @@ src/
 scripts/
   flighttest.mjs        headless Chromium flight check (npm run test:flight)
   startest.mjs          headless star-system check (npm run test:stars)
+  warptest.mjs          headless travel-transition check (npm run test:warp)
   orbitflight.mjs       headless orbital-manoeuvring check (npm run test:orbitflight)
   orbittest.mts         numerical two-body checks, no browser (npm run test:orbit)
 ```
@@ -266,6 +282,15 @@ compression readout says 1.00×. Explorer view compresses, but only as far as
 it can without contradicting itself: the Sun's own Oort cloud is modelled out
 to 60,000 AU, so the nearest star has to be drawn outside it, and the layout
 stays linear in light-years so relative distances remain exact.
+
+The travel transition is an overlay on that one scene rather than a place of
+its own. It draws over the finished frame and is transparent inside its throat,
+so what shows through the opening is the destination system itself, already
+built and already rendering - there is nothing to swap at the end, the aperture
+just opens until the overlay is gone. The throat also waits: while the flight
+underneath is still running, or a system is still being assembled, the sequence
+holds shut rather than opening onto something half-finished, which is what
+turns it into the loading screen this app otherwise does not have.
 
 Spacecraft mode adds one observer to the existing world rather than a
 second world: same Kepler solver, same catalog, same meshes, same LOD.
@@ -306,6 +331,14 @@ camera near-plane tracks zoom depth. Initial payload is one JS bundle +
   are then quoted relative to it - the Location panel names the frame in
   use. The Sun's near-field corona and prominences are procedural, informed
   by coronagraph imagery rather than derived from it, and say so on screen.
+- The wormhole is the one thing in the app that is frankly not real, and it is
+  the one thing that is labelled every single time it appears. It changes no
+  state: the same autopilot flies the same route at the same commanded
+  velocity, the odometer counts the same kilometres, and the simulation clock
+  advances by the real flight time. A long haul does command a higher cruise
+  velocity, the way a pilot would, and the HUD shows that too - 36.9 days of
+  flight at 400 km/s, compressed a million to one, is what the event line says
+  while Earth-to-Saturn is playing.
 - Orbits are genuine two-body trajectories: circular-orbit speed really is
   √(GM/r), the reported period really is 2π√(a³/μ), and a burn changes the orbit
   because it changed the state vector. Perturbations are not modelled - no third

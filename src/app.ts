@@ -90,6 +90,7 @@ export class App implements TourHost {
   private systemLabels: SystemLabels;
   private voyage: Voyage;
   private toastEl: HTMLElement;
+  private warpNote!: HTMLElement;
   private liveRegion!: HTMLElement;
   private toastTimer = 0;
   private frameTimeEma = 16;
@@ -233,6 +234,16 @@ export class App implements TourHost {
       announce: (text) => this.announce(text),
     });
 
+    // The transition is cinema over a real flight, and it says so while it
+    // plays. Nothing here travelled faster than the flight computer reports.
+    this.warpNote = document.createElement('div');
+    this.warpNote.className = 'warp-note';
+    this.warpNote.setAttribute('aria-hidden', 'true');
+    this.warpNote.innerHTML =
+      '<b>Transit visualisation</b>' +
+      '<span>A stylised wormhole, not a physical one. Distance, velocity and elapsed time are unchanged - the flight computer is still flying the real route.</span>';
+    root.appendChild(this.warpNote);
+
     this.toastEl = document.createElement('div');
     this.toastEl.className = 'toast';
     this.toastEl.setAttribute('role', 'status');
@@ -304,6 +315,11 @@ export class App implements TourHost {
         );
       }
     });
+    this.state.on('travelEffects', (mode) => {
+      this.system.wormhole.setQuality(mode);
+      if (mode === 'off') this.system.wormhole.abort();
+    });
+    this.system.wormhole.setQuality(this.state.travelEffects);
     this.state.on('layers', () => {
       this.system.setLayers(this.state.layers);
       this.distance.setVisible(this.state.layers.distanceScale);
@@ -614,6 +630,8 @@ export class App implements TourHost {
   // --------------------------------------------------------------- frame --
 
   private skyBaked = false;
+  private wormholeSkyReady = false;
+  private warpNoteOn = false;
 
   private frame(): void {
     const rawDt = this.clock.getDelta();
@@ -643,6 +661,16 @@ export class App implements TourHost {
       this.state.scaleT = this.scaleTarget;
     }
 
+    // The transition bends the real baked galaxy, so it can only be handed the
+    // cubemap once that exists - which is the frame after the bake below.
+    if (this.skyBaked && !this.wormholeSkyReady) {
+      const cube = this.system.sky.milkyWayCubemap;
+      if (cube) {
+        this.system.wormhole.setSkyTexture(cube);
+        this.wormholeSkyReady = true;
+      }
+    }
+
     if (!this.skyBaked) {
       // One-off, before any mode branch: turn the galactic band into a cubemap
       // so it stops costing a full-screen noise evaluation every frame. Doing
@@ -653,6 +681,14 @@ export class App implements TourHost {
     }
 
     this.system.update(this.state.simDays, this.state.scaleT, this.elapsed, this.rig.camera);
+    // the transition runs in both modes and after the world has been stepped,
+    // so the frame it covers is the finished one
+    this.system.wormhole.update(Math.min(rawDt, 0.5), this.rig.camera);
+    const warping = this.system.wormhole.active;
+    if (warping !== this.warpNoteOn) {
+      this.warpNoteOn = warping;
+      this.warpNote.classList.toggle('show', warping);
+    }
     if (flying) {
       this.spacecraft.postUpdate(dt);
       this.composer.render();
@@ -922,6 +958,13 @@ export class App implements TourHost {
         };
       },
       interstellarPos: (id: string) => positionLyOf(id).toArray(),
+      wormhole: () => ({
+        active: this.system.wormhole.active,
+        phase: this.system.wormhole.phase,
+        progress: this.system.wormhole.progress,
+        quality: this.state.travelEffects,
+      }),
+      setTravelEffects: (m: 'cinematic' | 'reduced' | 'off') => this.state.setTravelEffects(m),
       builtSystems: () => this.system.builtSystemIds,
     };
   }

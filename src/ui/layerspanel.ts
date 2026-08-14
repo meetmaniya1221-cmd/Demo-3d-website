@@ -3,6 +3,11 @@
 import { AppState, type LayerKey } from '../sim/state';
 import { getUnitMode, setUnitMode, type UnitMode } from './format';
 import { sound } from '../audio';
+import {
+  TRAVEL_EFFECT_HINT,
+  TRAVEL_EFFECT_LABEL,
+  type TravelEffects,
+} from '../sim/travel';
 
 interface Row {
   key: LayerKey;
@@ -130,6 +135,43 @@ export class LayersPanel {
     unitsRow.append(metricBtn, imperialBtn);
     unitsGroup.appendChild(unitsRow);
     this.panel.appendChild(unitsGroup);
+
+    // Travel effects: the wormhole sequence on very long jumps. It is a piece
+    // of cinema over a real flight, so it gets a plain off switch and the note
+    // says what it is rather than implying anything travelled faster.
+    const travelGroup = document.createElement('div');
+    travelGroup.className = 'layers-group';
+    travelGroup.innerHTML = '<div class="layers-group-title">Travel effects</div>';
+    const travelRow = document.createElement('div');
+    travelRow.className = 'units-row';
+    travelRow.setAttribute('role', 'group');
+    travelRow.setAttribute('aria-label', 'Long-distance travel transition');
+    const travelHint = document.createElement('p');
+    travelHint.className = 'layers-note';
+    const travelButtons: Array<[HTMLButtonElement, TravelEffects]> = [];
+    const syncTravel = () => {
+      for (const [b, m] of travelButtons) {
+        b.classList.toggle('active', state.travelEffects === m);
+        b.setAttribute('aria-pressed', String(state.travelEffects === m));
+      }
+      travelHint.textContent = TRAVEL_EFFECT_HINT[state.travelEffects];
+    };
+    for (const mode of ['cinematic', 'reduced', 'off'] as const) {
+      const b = document.createElement('button');
+      b.className = 'chip unit-chip';
+      b.textContent = TRAVEL_EFFECT_LABEL[mode];
+      b.addEventListener('click', () => {
+        if (state.travelEffects === mode) return;
+        state.setTravelEffects(mode);
+        sound.play('click', 0.18);
+        syncTravel();
+      });
+      travelButtons.push([b, mode]);
+      travelRow.appendChild(b);
+    }
+    travelGroup.append(travelRow, travelHint);
+    this.panel.appendChild(travelGroup);
+    syncTravel();
 
     const actions = document.createElement('div');
     actions.className = 'layers-actions';

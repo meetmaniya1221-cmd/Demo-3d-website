@@ -40,6 +40,7 @@ import {
 import { SpacecraftUI, type Telemetry } from '../ui/spacecraftui';
 import { InterstellarCruise, type CruiseTelemetry } from './interstellar';
 import { SOL_ID, positionLyOf } from '../sim/interstellar';
+import { travelKind, wormholeDuration } from '../sim/travel';
 import { primaryStar, starSystem } from '../data/catalog/starsystems';
 
 export interface SpacecraftDeps {
@@ -165,7 +166,7 @@ export class SpacecraftMode {
     this.ui = new SpacecraftUI(root, {
       onExit: () => this.exit(),
       onSelectTarget: (id) => this.selectTarget(id),
-      onTravel: (closeness) => this.withTarget((id) => this.ship.startTransit(id, this.simDays, closeness)),
+      onTravel: (closeness) => this.withTarget((id) => this.beginTransit(id, closeness)),
       onOrbit: () => this.withTarget((id) => this.ship.startOrbit(id, this.simDays)),
       onFlyby: () => this.withTarget((id) => this.ship.startFlyby(id, this.simDays)),
       onFollow: () => this.withTarget((id) => this.ship.startFollow(id, this.simDays)),
@@ -292,6 +293,7 @@ export class SpacecraftMode {
 
   private finishExit(): void {
     const { camera, state, system } = this.deps;
+    system.wormhole.abort();
     const s = this.saved;
     this.phase = 'off';
     // the scale-mode and layer restores below fire app-level notifications;
@@ -367,6 +369,61 @@ export class SpacecraftMode {
     if (key && !this.deps.state.layers[key]) this.applyLayers({ [key]: true });
   }
 
+  /**
+   * Start a run to a body in this system, with the transition if it earns one.
+   *
+   * The distinction is the distance and nothing else. A hop to a moon is a few
+   * hundred thousand kilometres and the autopilot has always handled it
+   * cleanly; Earth to Saturn is 8.5 AU, which at 400 km/s is a hundred and
+   * seventeen days of nothing at all. The second one gets the wormhole - over
+   * the top of the same flight, not instead of it. The ship still covers every
+   * kilometre, the clock still advances by the real flight time, and the HUD
+   * still shows the velocity and the compression as separate numbers.
+   */
+  private beginTransit(id: string, closeness: number): void {
+    const { state } = this.deps;
+    bodyPositionTrue(id, state.simDays, this.tmpA);
+    const distAU = this.ship.pos.distanceTo(this.tmpA) / UNITS_PER_AU;
+    const kind = travelKind(distAU);
+    const effects = state.travelEffects;
+
+    if (kind !== 'long' || effects === 'off') {
+      // short and medium runs are exactly what they always were
+      this.ship.startTransit(id, state.simDays, closeness);
+      return;
+    }
+
+    // A long haul is flown faster, the way a pilot would fly one: the clock's
+    // compression tops out at a million to one, so on its own an eight-AU run
+    // at the default 50 km/s still takes half a minute of real time. Commanding
+    // a higher cruise is the other knob, and it is the honest one - the HUD
+    // shows the new velocity, and the flight time it implies (weeks, not
+    // seconds) is what the event line reports.
+    const seconds = wormholeDuration(effects);
+    const runKm = distAU * 149_597_870.7;
+    const wantKms = runKm / (1e6 * seconds * 0.6);
+    let idx = this.ship.throttleIndex;
+    while (idx < THROTTLE_STEPS.length - 1 && THROTTLE_STEPS[idx] < wantKms) idx += 1;
+    if (idx > this.ship.throttleIndex) this.ship.setThrottleIndex(idx);
+    this.ship.startTransit(id, state.simDays, closeness, seconds * 0.62);
+    this.armWormhole(id, seconds);
+  }
+
+  /** Point the sequence at a body in this system and run it. */
+  private armWormhole(targetId: string, seconds: number): void {
+    const { state, system } = this.deps;
+    bodyPositionTrue(targetId, state.simDays, this.tmpA);
+    this.tmpB.copy(this.tmpA).sub(this.ship.pos);
+    this.ship.faceDirection(this.tmpB);
+    system.wormhole.start(this.tmpB, {
+      duration: seconds,
+      // hold the throat shut until the autopilot has actually arrived, so the
+      // opening always reveals the ship where it really is
+      hold: () => this.ship.mode === 'transit',
+      maxHold: 40,
+    });
+  }
+
   // ------------------------------------------------------- interstellar leg --
 
   /** Aim the navigation computer at another star system, without launching. */
@@ -402,6 +459,16 @@ export class SpacecraftMode {
     this.cruise.start(from, this.starTargetId);
     if (!this.cruise.active) return;
     const t = this.cruise.telemetry();
+    if (this.deps.state.travelEffects !== 'off') {
+      // aimed down the real line between the two stars; the throat is shut
+      // while the scene's origin changes hands at the midpoint
+      this.cruise.heading(this.tmpB);
+      this.deps.system.wormhole.start(this.tmpB, {
+        duration: 16,
+        hold: () => this.cruise.active,
+        maxHold: 60,
+      });
+    }
     this.ui.announce(
       `Departing. ${t.totalLy.toFixed(2)} light-years at ${(t.fractionC * 100).toFixed(0)}% of light speed - a ${t.totalYears.toFixed(0)}-year crossing, compressed ${t.compression.toExponential(1)}×.`,
     );
@@ -412,6 +479,7 @@ export class SpacecraftMode {
   abortInterstellarCruise(): void {
     if (!this.cruise.active) return;
     this.cruise.abort();
+    this.deps.system.wormhole.abort();
     this.ui.announce('Cruise held. The ship is between stars.');
   }
 
@@ -437,11 +505,13 @@ export class SpacecraftMode {
     // point the hull along the line of travel so the destination is ahead
     this.cruise.heading(this.tmpB);
     this.ship.faceDirection(this.tmpB);
+    if (system.wormhole.active) system.wormhole.setAxis(this.tmpB);
 
     if (wasActive && !this.cruise.active) this.arriveInterstellar();
   }
 
   private arriveInterstellar(): void {
+    this.deps.system.wormhole.abort();
     const { system, state } = this.deps;
     const destination = this.cruise.destination;
     if (system.activeSystemId !== destination) system.setActiveSystem(destination);
@@ -571,7 +641,7 @@ export class SpacecraftMode {
         return;
       case 't':
         if (this.ship.targetId) {
-          this.ship.startTransit(this.ship.targetId, this.simDays);
+          this.beginTransit(this.ship.targetId, 1);
           this.flushShipEvent();
         }
         return;
@@ -889,8 +959,9 @@ export class SpacecraftMode {
       ship: this.ship,
       phase: () => this.phase,
       target: (id: string) => this.selectTarget(id),
-      travel: (closeness = 1) =>
-        this.withTarget((id) => this.ship.startTransit(id, this.simDays, closeness)),
+      // routes through the same classifier the UI uses, so a test exercises the
+      // real decision rather than a shortcut around it
+      travel: (closeness = 1) => this.withTarget((id) => this.beginTransit(id, closeness)),
       orbit: () => this.withTarget((id) => this.ship.startOrbit(id, this.simDays)),
       flyby: () => this.withTarget((id) => this.ship.startFlyby(id, this.simDays)),
       follow: () => this.withTarget((id) => this.ship.startFollow(id, this.simDays)),

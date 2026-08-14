@@ -11,7 +11,8 @@
     "test:flight": "node scripts/flighttest.mjs",
     "test:orbit": "node --experimental-strip-types scripts/orbittest.mts",
     "test:orbitflight": "node scripts/orbitflight.mjs",
-    "test:stars": "node scripts/startest.mjs"
+    "test:stars": "node scripts/startest.mjs",
+    "test:warp": "node scripts/warptest.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

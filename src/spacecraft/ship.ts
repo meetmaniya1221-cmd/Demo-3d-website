@@ -493,12 +493,26 @@ export class Ship {
   // --------------------------------------------------------- flight plans --
 
   /** Cruise to a body and park in its vicinity. `closeness` < 1 flies closer. */
-  startTransit(id: string, simDays: number, closeness = 1): void {
+  /**
+   * @param wallSeconds roughly how long the run should take in real time. The
+   *        default keeps a long haul watchable; a caller playing a transition
+   *        over the top asks for a shorter one so the flight finishes while the
+   *        throat is still closed. This changes the CLOCK only - the physical
+   *        velocity, the distance covered and the elapsed simulation time are
+   *        all exactly what they were, and the HUD keeps showing all three.
+   */
+  startTransit(id: string, simDays: number, closeness = 1, wallSeconds = 60): void {
     const target = bodyPositionTrue(id, simDays, this.tmpA);
     const standoff = Math.max(arrivalDistance(id) * closeness, minSafeDistance(id) * 1.35);
     this.targetId = id;
     const rel = this.tmpB.copy(this.pos).sub(target);
-    if (rel.length() <= standoff * 1.06) {
+    // Grab the length BEFORE the direction maths below normalises this vector
+    // in place. Reading it afterwards measured a unit vector, so every long run
+    // computed a flight time of zero, skipped the compression it was supposed
+    // to pick, and crawled to the outer planets at whatever the clock happened
+    // to be set to.
+    const separation = rel.length();
+    if (separation <= standoff * 1.06) {
       // already inside the arrival shell - hold station instead of backing off
       this.startFollow(id, simDays);
       this.event = `Already in ${this.nameOf(id)} vicinity - holding station.`;
@@ -520,11 +534,11 @@ export class Ship {
     // Pick a compression that makes the trip watchable. The physical velocity
     // is untouched - only how fast the simulation clock runs - and the HUD keeps
     // showing both, so the honesty of the distance survives the convenience.
-    const runKm = Math.max(0, rel.length() - standoff) * KM_PER_UNIT;
+    const runKm = Math.max(0, separation - standoff) * KM_PER_UNIT;
     const simSeconds = runKm / Math.max(this.cmdKms, 1);
     while (
       this.timeIndex < TIME_STEPS.length - 1 &&
-      simSeconds / TIME_STEPS[this.timeIndex] > 60
+      simSeconds / TIME_STEPS[this.timeIndex] > wallSeconds
     ) {
       this.setTimeIndex(this.timeIndex + 1);
     }
@@ -852,7 +866,7 @@ export class Ship {
   }
 
   /** Distance (scene units) still to run on the current transit. */
-  private transitRemaining(simDays: number): number {
+  transitRemaining(simDays: number): number {
     if (!this.transit || !this.anchorId) return 0;
     const target = bodyPositionTrue(this.anchorId, simDays, this.tmpA);
     const aim = this.tmpB.copy(target).addScaledVector(this.transit.approachDir, this.transit.standoff);
