@@ -83,6 +83,15 @@ export function fmtDays(days: number): string {
  */
 export function fmtDistanceAuto(au: number): string {
   const km = au * AU_KM;
+  // past a few thousand AU an astronomer stops counting in AU, and so does
+  // this: light-years (with parsecs alongside) is the unit that means
+  // something once you are out among the stars
+  if (au >= 20_000) {
+    const ly = au / 63_241.077;
+    const pc = ly / 3.261_563_777;
+    return `${ly < 10 ? ly.toFixed(3) : ly.toFixed(2)} ly · ${pc.toFixed(2)} pc`;
+  }
+  if (au >= 2000) return `${Math.round(au).toLocaleString('en-US')} AU`;
   if (au >= 0.35) return `${au.toFixed(au >= 10 ? 1 : 2)} AU`;
   if (unitMode === 'imperial') {
     const mi = km / KM_PER_MI;

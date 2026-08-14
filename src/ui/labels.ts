@@ -5,12 +5,24 @@
  *  active) keep the sky readable. */
 import * as THREE from 'three';
 import { ALL_OBJECTS } from '../data/catalog';
-import type { CatalogObject } from '../data/types';
+import { STAR_SYSTEMS } from '../data/catalog/starsystems';
+import type { ObjectType } from '../data/types';
 import type { SolarSystem } from '../scene/system';
 import type { AppState } from '../sim/state';
 
+/** The minimum a label needs to know. Solar System objects supply it from the
+ *  catalog; the neighbouring systems' stars and planets supply it directly, so
+ *  both kinds share one renderer, one declutter pass and one stylesheet. */
+interface LabelDef {
+  id: string;
+  name: string;
+  color: number;
+  type: ObjectType;
+  parent: string | null;
+}
+
 interface LabelEntry {
-  def: CatalogObject;
+  def: LabelDef;
   el: HTMLButtonElement;
   world: THREE.Vector3;
 }
@@ -35,8 +47,21 @@ export class Labels {
     this.container.id = 'labels';
     parent.appendChild(this.container);
 
-    for (const def of ALL_OBJECTS) {
-      if (def.type === 'region') continue;
+    const defs: LabelDef[] = [];
+    for (const o of ALL_OBJECTS) {
+      if (o.type === 'region') continue;
+      defs.push({ id: o.id, name: o.name, color: o.color, type: o.type, parent: o.parent });
+    }
+    for (const sys of STAR_SYSTEMS) {
+      for (const s of sys.stars) {
+        defs.push({ id: s.id, name: s.name, color: s.color, type: 'star', parent: null });
+      }
+      for (const p of sys.planets) {
+        defs.push({ id: p.id, name: p.name, color: sys.color, type: 'planet', parent: sys.id });
+      }
+    }
+
+    for (const def of defs) {
       const el = document.createElement('button');
       el.className = `body-label${def.type === 'star' || def.type === 'planet' ? '' : ' minor'}`;
       el.dataset.body = def.id;

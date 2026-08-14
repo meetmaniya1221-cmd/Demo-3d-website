@@ -84,7 +84,7 @@ export class SkyNotes {
     }
 
     // deep-sky markers ride the same sky sphere behind their own layer
-    const showDso = state.layers.deepSky;
+    const showDso = state.layers.deepSky && system.constellations.dsoVisible;
     for (const note of this.dsoNotes) {
       if (!showDso) {
         note.el.style.display = 'none';

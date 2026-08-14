@@ -160,6 +160,48 @@ NASA imagery is public domain.
 | M104 Sombrero | Hubble ([opo0328a](https://esahubble.org/images/opo0328a/)) | NASA, Hubble Heritage Team (STScI/AURA) |
 | Sagittarius A* | EHT ([eso2208-eht-mwa](https://www.eso.org/public/images/eso2208-eht-mwa/)) | EHT Collaboration |
 
+## Nearby star systems
+
+Thirteen systems out to 40.7 light-years, with every planet the sources
+below will vouch for. Nothing is filled in by analogy: a field no source
+gives is left blank and the panel omits the row.
+
+| What | Source |
+| --- | --- |
+| Planet parameters (period, semi-major axis, eccentricity, radius, mass, equilibrium temperature, insolation, discovery) | [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/) `pscomppars`, queried via its TAP service |
+| Controversy flags (the Tau Ceti signals) | NASA Exoplanet Archive `pl_controv_flag` |
+| Astrometry: position, parallax, proper motion, radial velocity | [SIMBAD](https://simbad.cds.unistra.fr/simbad/) (serving [Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3)) |
+| Alpha Centauri A/B parallax, radii, temperatures | [Kervella et al. 2016/2017](https://www.aanda.org/articles/aa/full_html/2017/01/aa29505-16/aa29505-16.html) - Gaia saturates on stars this bright |
+| Sirius A/B masses and the 50.09-year orbit | [Bond et al. 2017 (ApJ)](https://iopscience.iop.org/article/10.3847/1538-4357/aa6af8); Hipparcos parallax |
+| Barnard's Star: four sub-Earths | [Basant et al. 2025 (ApJL)](https://iopscience.iop.org/article/10.3847/2041-8213/adb8d5); [ESO](https://www.eso.org/public/news/eso2417/) |
+| Proxima b | [Anglada-Escudé et al. 2016](https://www.eso.org/public/news/eso1629/); [NASA](https://science.nasa.gov/exoplanet-catalog/proxima-centauri-b/) |
+| TRAPPIST-1 radii and transit-timing masses | [Agol et al. 2021 (PSJ)](https://iopscience.iop.org/article/10.3847/PSJ/abd022); [Gillon et al. 2017 (Nature)](https://www.nature.com/articles/nature21360); [NASA](https://science.nasa.gov/mission/webb/trappist-1/) |
+| Epsilon Indi Ab direct image | [Matthews et al. 2024 (Nature)](https://www.nature.com/articles/s41586-024-07837-8); [ESA/Webb](https://esawebb.org/news/weic2419/) |
+| GJ 876 Laplace resonance | [Rivera et al. 2010 (ApJ)](https://iopscience.iop.org/article/10.1088/0004-637X/719/1/890) |
+| Habitable-zone limits (every star, the Sun included) | [Kopparapu et al. 2014 (ApJL 787, L29)](https://iopscience.iop.org/article/10.1088/2041-8205/787/2/L29) |
+
+**Two kinds of number are marked rather than mixed in with measurements.**
+For a radial-velocity planet the archive publishes a radius derived from
+mass through a mass-radius relation; it is a model output, not an
+observation, and the panel says *estimated from mass, not measured*. A
+radial-velocity mass is a lower bound unless the orbit's tilt is known, and
+the panel says *minimum mass*. Only the transiting TRAPPIST-1 planets here
+have radii and true masses that were actually measured.
+
+**Every world in these systems is drawn, not photographed.** There is no
+image of any of these surfaces. Each planet is generated from its size,
+mass, temperature and the starlight it receives, using the ordinary
+physical expectations for a body of that class at that temperature, and
+every panel carries an *Artistic rendering* badge saying so. Star colours
+are computed from measured effective temperatures; granulation and
+starspots are procedural.
+
+**Orbits.** The shape and size of every ellipse are the measured ones.
+Where a planet sits along its orbit, and how its orbital plane is oriented
+in space, are almost never known for these systems - so the phase is an
+arbitrary but stable choice, the planes are drawn coplanar except where an
+inclination was actually measured, and the panel says so.
+
 ## Audio
 
 - UI sounds: [Kenney](https://kenney.nl) "Interface Sounds" / "Sci-Fi Sounds" (CC0)

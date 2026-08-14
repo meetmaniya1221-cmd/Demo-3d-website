@@ -38,6 +38,9 @@ import {
   type Neighbour,
 } from './ephemeris';
 import { SpacecraftUI, type Telemetry } from '../ui/spacecraftui';
+import { InterstellarCruise, type CruiseTelemetry } from './interstellar';
+import { SOL_ID, positionLyOf } from '../sim/interstellar';
+import { primaryStar, starSystem } from '../data/catalog/starsystems';
 
 export interface SpacecraftDeps {
   state: AppState;
@@ -94,6 +97,10 @@ export class SpacecraftMode {
   private trajectory = new TrajectoryPreview();
   private ui: SpacecraftUI;
   private veil: HTMLElement;
+  /** The interstellar leg. Same universe, same clock, real distances. */
+  private cruise = new InterstellarCruise();
+  /** Star system the navigation computer is aimed at, if any. */
+  private starTargetId: string | null = null;
 
   phase: Phase = 'off';
   /** Spacecraft mode owns the explorer↔true-scale blend while it is running. */
@@ -188,6 +195,15 @@ export class SpacecraftMode {
         this.ship.releaseOrbit();
         this.flushShipEvent();
       },
+      onSelectStar: (id) => this.setInterstellarTarget(id),
+      onCruiseSpeed: (i) => {
+        this.cruise.setCruiseIndex(i);
+        this.ui.announce(
+          `Cruise velocity set to ${(this.cruise.fractionC * 100).toFixed(0)}% of light speed.`,
+        );
+      },
+      onLaunchInterstellar: () => this.startInterstellarCruise(),
+      onAbortInterstellar: () => this.abortInterstellarCruise(),
     });
   }
 
@@ -241,8 +257,12 @@ export class SpacecraftMode {
     this.nakedEye.setEnabled(true);
 
     if (this.ship.unplaced) {
-      this.ship.placeNear('earth', state.simDays, 2.4);
-      this.ship.targetId = 'earth';
+      // board wherever the explorer was standing: Earth at home, the host star
+      // when the camera is already parked at another system
+      const here = starSystem(system.activeSystemId);
+      const anchorId = here ? primaryStar(here).id : 'earth';
+      this.ship.placeNear(anchorId, state.simDays, here ? 3.2 : 2.4);
+      this.ship.targetId = anchorId;
     } else {
       // returning pilot: same place, same target, engines idle so re-entering
       // never launches you off at whatever throttle you left set
@@ -345,6 +365,95 @@ export class SpacecraftMode {
               ? 'moons'
               : null;
     if (key && !this.deps.state.layers[key]) this.applyLayers({ [key]: true });
+  }
+
+  // ------------------------------------------------------- interstellar leg --
+
+  /** Aim the navigation computer at another star system, without launching. */
+  setInterstellarTarget(systemId: string): void {
+    if (this.cruise.active) return;
+    if (systemId === this.deps.system.activeSystemId) {
+      this.starTargetId = null;
+      this.ui.announce('Already in that system.');
+      return;
+    }
+    this.starTargetId = systemId;
+    const name = systemId === SOL_ID ? 'the Solar System' : (starSystem(systemId)?.name ?? systemId);
+    const ly = positionLyOf(systemId).distanceTo(positionLyOf(this.deps.system.activeSystemId));
+    const years = ly / this.cruise.fractionC;
+    this.ui.announce(
+      `Interstellar target: ${name}. ${ly.toFixed(2)} light-years - ${years.toFixed(0)} years at ${(this.cruise.fractionC * 100).toFixed(0)}% of light speed.`,
+    );
+    this.deps.announce(`Interstellar target set to ${name}, ${ly.toFixed(2)} light-years away.`);
+  }
+
+  /**
+   * Leave for another star. Everything local is released first: an orbit or a
+   * follow is attached to a body that is about to be light-years behind.
+   */
+  startInterstellarCruise(): void {
+    if (this.cruise.active || !this.starTargetId) {
+      if (!this.starTargetId) this.ui.announce('Select a star system first.');
+      return;
+    }
+    const from = this.deps.system.activeSystemId;
+    this.ship.fullStop();
+    this.ship.abort();
+    this.cruise.start(from, this.starTargetId);
+    if (!this.cruise.active) return;
+    const t = this.cruise.telemetry();
+    this.ui.announce(
+      `Departing. ${t.totalLy.toFixed(2)} light-years at ${(t.fractionC * 100).toFixed(0)}% of light speed - a ${t.totalYears.toFixed(0)}-year crossing, compressed ${t.compression.toExponential(1)}×.`,
+    );
+    this.deps.announce('Interstellar cruise under way.');
+  }
+
+  /** Stop between the stars. The ship stays wherever it has got to. */
+  abortInterstellarCruise(): void {
+    if (!this.cruise.active) return;
+    this.cruise.abort();
+    this.ui.announce('Cruise held. The ship is between stars.');
+  }
+
+  /**
+   * Drive the crossing: move the ship along the real line, hand the scene's
+   * origin over at the midpoint, and park at the destination star on arrival.
+   */
+  private updateCruise(dt: number): void {
+    const { state, system } = this.deps;
+    const wasActive = this.cruise.active;
+    const simSeconds = this.cruise.advance(dt);
+    state.simDays += simSeconds / 86_400;
+
+    // Halfway across, both stars are equally far off and neither is more than
+    // a point. That is the moment to move the origin - the ship's position is
+    // held in absolute light-years, so nothing on screen jumps.
+    if (this.cruise.pastMidpoint && system.activeSystemId !== this.cruise.destination) {
+      system.setActiveSystem(this.cruise.destination);
+    }
+
+    this.cruise.scenePosition(system.activeSystemId, 1, this.tmpA);
+    this.ship.pos.copy(this.tmpA);
+    // point the hull along the line of travel so the destination is ahead
+    this.cruise.heading(this.tmpB);
+    this.ship.faceDirection(this.tmpB);
+
+    if (wasActive && !this.cruise.active) this.arriveInterstellar();
+  }
+
+  private arriveInterstellar(): void {
+    const { system, state } = this.deps;
+    const destination = this.cruise.destination;
+    if (system.activeSystemId !== destination) system.setActiveSystem(destination);
+    const sys = starSystem(destination);
+    const anchorId = sys ? primaryStar(sys).id : 'sun';
+    this.ship.placeNear(anchorId, state.simDays, 3.2);
+    this.ship.targetId = anchorId;
+    this.ship.gazeLock = true;
+    this.starTargetId = null;
+    const name = sys?.name ?? 'the Solar System';
+    this.ui.announce(`Arrived at ${name}. Engines idle.`);
+    this.deps.announce(`Arrived at ${name}.`);
   }
 
   private selectTarget(id: string): void {
@@ -548,8 +657,14 @@ export class SpacecraftMode {
 
     if (this.phase === 'flying') {
       this.readInput();
-      const simDt = this.ship.update(dt, state.simDays);
-      state.simDays += simDt / 86_400;
+      if (this.cruise.active) {
+        // between stars the local flight computer has nothing to hold on to -
+        // the crossing drives the ship instead, on the same clock
+        this.updateCruise(dt);
+      } else {
+        const simDt = this.ship.update(dt, state.simDays);
+        state.simDays += simDt / 86_400;
+      }
       this.flushShipEvent();
       camera.position.copy(this.ship.pos);
       this.ship.headQuaternion(this.headQ);
@@ -597,20 +712,28 @@ export class SpacecraftMode {
 
     this.neighbours = nearestBodies(this.ship.pos, state.simDays, 8);
 
-    // ---- naked-eye handover -------------------------------------------------
-    this.nakedEye.update(this.ship.pos, state.simDays, halfTan, viewH);
-    system.sun.setDiscVisible(this.nakedEye.pixelsOf('sun') > DISC_PIXELS);
-    for (const [id, planet] of system.planets) {
-      planet.setDiscVisible(this.nakedEye.pixelsOf(id) > DISC_PIXELS);
-    }
+    // The naked-eye point renderer and the ring LOD both speak specifically
+    // about the Sun's planets. At another star there are none of those to
+    // speak about, so both stand down rather than drawing eight bodies piled
+    // on the origin.
+    const atHome = system.activeSystemId === SOL_ID && !this.cruise.active;
+    this.nakedEye.setEnabled(atHome);
+    if (atHome) {
+      // ---- naked-eye handover -----------------------------------------------
+      this.nakedEye.update(this.ship.pos, state.simDays, halfTan, viewH);
+      system.sun.setDiscVisible(this.nakedEye.pixelsOf('sun') > DISC_PIXELS);
+      for (const [id, planet] of system.planets) {
+        planet.setDiscVisible(this.nakedEye.pixelsOf(id) > DISC_PIXELS);
+      }
 
-    // ---- Saturn and Uranus: fine ring structure appears with proximity ------
-    for (const id of ['saturn', 'uranus']) {
-      const planet = system.planets.get(id);
-      if (!planet?.hasRings) continue;
-      const d = this.ship.pos.distanceTo(bodyPositionTrue(id, state.simDays, this.tmpA));
-      const radii = d / Math.max(bodyRadiusTrue(id), 1e-9);
-      planet.setRingDetail(1 - THREE.MathUtils.smoothstep(radii, 6, 46));
+      // ---- Saturn and Uranus: fine ring structure appears with proximity ----
+      for (const id of ['saturn', 'uranus']) {
+        const planet = system.planets.get(id);
+        if (!planet?.hasRings) continue;
+        const d = this.ship.pos.distanceTo(bodyPositionTrue(id, state.simDays, this.tmpA));
+        const radii = d / Math.max(bodyRadiusTrue(id), 1e-9);
+        planet.setRingDetail(1 - THREE.MathUtils.smoothstep(radii, 6, 46));
+      }
     }
 
     // ---- trajectory preview --------------------------------------------------
@@ -631,9 +754,11 @@ export class SpacecraftMode {
       this.trajectory.setVisible(false);
     }
 
-    // ---- Sun near field ------------------------------------------------------
+    // ---- host star near field -------------------------------------------------
+    // The corona shader belongs to the Sun's mesh; away from home it is not on
+    // screen, so it is armed only when the Sun is the star we are next to.
     const sunDist = this.ship.pos.length();
-    const sunRadii = system.sun.setObserver(sunDist, true);
+    const sunRadii = atHome ? system.sun.setObserver(sunDist, true) : sunDist;
 
     // ---- cockpit -------------------------------------------------------------
     this.cockpit.build(camera.aspect, this.fov);
@@ -720,7 +845,22 @@ export class SpacecraftMode {
       fov: this.fov,
       navOverlay: this.navOverlay,
       gazeLock: ship.gazeLock,
+      systemId: this.deps.system.activeSystemId,
+      systemName:
+        this.deps.system.activeSystemId === SOL_ID
+          ? 'Solar System'
+          : (starSystem(this.deps.system.activeSystemId)?.name ?? 'Unknown'),
+      starTargetId: this.starTargetId,
+      cruise: this.cruise.active ? this.cruise.telemetry() : null,
+      cruiseIndex: this.cruise.cruiseIndex,
+      interstellarKm: this.cruise.travelledKm,
+      distanceFromSunLy: positionLyOf(this.deps.system.activeSystemId).length(),
     };
+  }
+
+  /** Where the ship is in the wider neighbourhood, for the location panel. */
+  get cruiseTelemetry(): CruiseTelemetry | null {
+    return this.cruise.active ? this.cruise.telemetry() : null;
   }
 
   /** Draw the cabin over the finished space image. */
@@ -763,6 +903,11 @@ export class SpacecraftMode {
         const st = this.ship.orbitState;
         return st ? { r: st.r.toArray(), v: st.v.toArray(), mu: st.mu, anchor: st.anchorId } : null;
       },
+      setStarTarget: (id: string) => this.setInterstellarTarget(id),
+      launchInterstellar: () => this.startInterstellarCruise(),
+      abortInterstellar: () => this.abortInterstellarCruise(),
+      setCruiseIndex: (i: number) => this.cruise.setCruiseIndex(i),
+      cruise: () => this.cruiseTelemetry,
       setPaused: (v: boolean) => {
         this.ship.paused = v;
       },
@@ -786,6 +931,8 @@ export class SpacecraftMode {
         near: this.deps.camera.near,
         far: this.deps.camera.far,
         travelledKm: this.ship.distanceTravelledKm,
+        interstellarKm: this.cruise.travelledKm,
+        systemId: this.deps.system.activeSystemId,
         warning: this.ship.warning,
         frame: this.ship.frameId,
         hold: this.ship.hold,

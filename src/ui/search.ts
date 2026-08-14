@@ -4,17 +4,26 @@
 import { ALL_OBJECTS, MISSIONS_SORTED } from '../data/catalog';
 import { NEAR_STARS } from '../data/catalog/stars';
 import { DEEP_SKY } from '../data/catalog/deepsky';
+import {
+  PLANET_CLASS_LABEL,
+  STAR_SYSTEMS,
+  planetClass,
+  primaryStar,
+} from '../data/catalog/starsystems';
+import { LY_PER_PC } from '../sim/interstellar';
 import { TYPE_LABEL } from '../data/types';
 import { sound } from '../audio';
 
 interface SearchItem {
   id: string;
-  kind: 'object' | 'mission' | 'sky';
+  kind: 'object' | 'mission' | 'sky' | 'system';
   name: string;
   detail: string;
   color: string;
   /** lowercase haystacks, in priority order */
   keys: string[];
+  /** Nudges a result up or down the ranking against equally good matches. */
+  bias?: number;
 }
 
 export interface SearchHost {
@@ -22,7 +31,27 @@ export interface SearchHost {
   openMission: (id: string) => void;
   /** Open the Observatory focused on a star or deep-sky object. */
   openSky: (id: string) => void;
+  /** Travel to a nearby star system. */
+  goToSystem: (id: string) => void;
 }
+
+/**
+ * Stars that used to be only a dot in the Observatory and now have a system
+ * you can stand in. Searching one of these should fly you there, so the
+ * Observatory entry for the same star drops down the ranking and says what it
+ * is instead of quietly competing.
+ */
+const SKY_TO_SYSTEM: Record<string, string> = {
+  proxima: 'alpha-centauri',
+  'alphacen-ab': 'alpha-centauri',
+  barnard: 'barnards-star',
+  'sirius-ab': 'sirius',
+  epsiloneri: 'epsilon-eridani',
+  ross128: 'ross-128',
+  epsilonindi: 'epsilon-indi',
+  tauceti: 'tau-ceti',
+  lalande21185: 'lalande-21185',
+};
 
 const ALIASES: Record<string, string[]> = {
   moon: ['the moon', 'luna'],
@@ -78,14 +107,65 @@ function buildIndex(): SearchItem[] {
     });
   }
   for (const s of NEAR_STARS) {
+    const travelable = SKY_TO_SYSTEM[s.id];
     items.push({
       id: s.id,
       kind: 'sky',
       name: s.name,
-      detail: `Star · ${s.distanceLy < 100 ? s.distanceLy.toFixed(1) : Math.round(s.distanceLy)} light-years`,
+      detail: travelable
+        ? `Night-sky view · ${s.distanceLy.toFixed(1)} light-years`
+        : `Star · ${s.distanceLy < 100 ? s.distanceLy.toFixed(1) : Math.round(s.distanceLy)} light-years`,
       color: '#cdd9ff',
       keys: [norm(s.name), norm(s.spectral), 'star'],
+      // a star you can actually visit should not be beaten to the top by the
+      // entry that only points at it from Earth
+      bias: travelable ? -22 : 0,
     });
+  }
+
+  // ---- the neighbourhood: systems, their stars, and every planet in them
+  for (const sys of STAR_SYSTEMS) {
+    const color = `#${sys.color.toString(16).padStart(6, '0')}`;
+    const confirmed = sys.planets.filter((p) => p.status === 'confirmed').length;
+    items.push({
+      id: sys.id,
+      kind: 'system',
+      name: sys.name,
+      detail: `Star system · ${sys.distanceLy.toFixed(2)} ly · ${(sys.distanceLy / LY_PER_PC).toFixed(2)} pc · ${confirmed} confirmed planet${confirmed === 1 ? '' : 's'}`,
+      color,
+      keys: [norm(sys.name), ...sys.aliases.map(norm), 'star system', 'nearby star'],
+      bias: 8,
+    });
+    for (const star of sys.stars) {
+      items.push({
+        id: star.id,
+        kind: 'object',
+        name: star.name,
+        detail: `${star.spectral} star · ${sys.name} · ${(star.distanceLy ?? sys.distanceLy).toFixed(2)} ly`,
+        color,
+        keys: [norm(star.name), norm(sys.name), norm(star.spectral), 'star'],
+        bias: 6,
+      });
+    }
+    for (const p of sys.planets) {
+      // "TRAPPIST-1e", "TRAPPIST-1 e" and "trappist 1e" must all land here
+      const spaced = `${sys.name} ${p.letter}`;
+      items.push({
+        id: p.id,
+        kind: 'object',
+        name: p.name,
+        detail: `${PLANET_CLASS_LABEL[planetClass(p)]}${p.status === 'confirmed' ? '' : ` · ${p.status}`} · ${sys.name}, ${sys.distanceLy.toFixed(2)} ly`,
+        color,
+        keys: [
+          norm(p.name),
+          norm(spaced),
+          norm(p.name.replace(/[-\s]/g, '')),
+          norm(`${primaryStar(sys).name} ${p.letter}`),
+          'exoplanet',
+        ],
+        bias: 6,
+      });
+    }
   }
   for (const o of DEEP_SKY) {
     items.push({
@@ -112,7 +192,7 @@ function score(item: SearchItem, q: string): number {
     if (s > 0) s -= k * 4; // primary name beats alias beats category
     best = Math.max(best, s);
   }
-  return best;
+  return best > 0 ? best + (item.bias ?? 0) : best;
 }
 
 export class Search {
@@ -139,12 +219,12 @@ export class Search {
       <div class="search-card">
         <div class="search-input-row">
           <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.7"/><path d="M10.2 10.2L14 14"/></svg>
-          <input type="text" placeholder="Search planets, moons, comets, missions…"
+          <input type="text" placeholder="Search planets, moons, comets, missions, nearby stars…"
                  aria-label="Search" autocomplete="off" spellcheck="false" />
           <kbd>esc</kbd>
         </div>
         <div class="search-results" role="listbox"></div>
-        <div class="search-hint">↑↓ navigate · Enter to fly there · Try “Europa”, “Halley”, “Cassini”, “Kuiper”</div>
+        <div class="search-hint">↑↓ navigate · Enter to fly there · Try “Europa”, “Halley”, “TRAPPIST-1e”, “Proxima Centauri”</div>
       </div>
     `;
     this.input = this.root.querySelector('input')!;
@@ -231,6 +311,11 @@ export class Search {
       this.results = featured
         .map((id) => items.find((i) => i.kind === 'object' && i.id === id))
         .filter((i): i is SearchItem => !!i);
+      // one taste of the neighbourhood, so it is discoverable from an empty box
+      const nearest = items.find((i) => i.kind === 'system' && i.id === 'alpha-centauri');
+      const trappist = items.find((i) => i.kind === 'system' && i.id === 'trappist-1');
+      if (nearest) this.results.splice(3, 0, nearest);
+      if (trappist) this.results.push(trappist);
     } else {
       this.results = items
         .map((item) => ({ item, s: score(item, q) }))
@@ -256,7 +341,7 @@ export class Search {
           <i class="dot" style="background:${r.color}"></i>
           <span class="name">${r.name}</span>
           <span class="detail">${r.detail}</span>
-          <span class="go">${r.kind === 'mission' ? 'mission' : r.kind === 'sky' ? 'observatory' : '→ fly'}</span>
+          <span class="go">${r.kind === 'mission' ? 'mission' : r.kind === 'sky' ? 'observatory' : r.kind === 'system' ? '→ travel' : '→ fly'}</span>
         </button>`,
       )
       .join('');
@@ -289,6 +374,7 @@ export class Search {
     this.close();
     if (r.kind === 'mission') this.host.openMission(r.id);
     else if (r.kind === 'sky') this.host.openSky(r.id);
+    else if (r.kind === 'system') this.host.goToSystem(r.id);
     else this.host.selectObject(r.id);
   }
 }

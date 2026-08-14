@@ -252,6 +252,10 @@ export class ReferenceGrid {
    */
   labelStates(): GridLabelState[] {
     this.labelPool.length = 0;
+    // The ladder measures AU from the Sun. Hidden means hidden: at another
+    // star these rings are not just switched off, they are meaningless, and
+    // their labels must not outlive them.
+    if (!this.group.visible) return this.labelPool;
     let poolIdx = 0;
     const take = (): GridLabelState => this.labelStatesPool[poolIdx++];
     let outermost: number | null = null;
