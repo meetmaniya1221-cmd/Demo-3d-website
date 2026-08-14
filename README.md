@@ -176,6 +176,19 @@ is a NASA product, listed with its source in `SOURCES.md`; all of it streams
 by distance, so none of it is downloaded by a viewer who stays in the
 overview.
 
+**The sky is a survey, not a texture.** The Milky Way behind everything is
+NASA's Deep Star Maps 2020 - 1.7 billion stars from Gaia DR2, Hipparcos-2 and
+Tycho-2 - as an all-sky map in galactic coordinates. The Great Rift, the
+Sagittarius star clouds, the bulge and both Magellanic Clouds are where the
+survey measured them, and the sphere carries the real J2000 rotation from the
+scene's ecliptic axes into the galactic frame, so the band agrees with the
+constellation figures drawn over it. The map is resampled into a cubemap and
+sampled by direction: there is no seam at l = 180°, no pinch at the galactic
+poles, and nothing that behaves like a cylinder when you look straight up. It
+sits at infinity - fly to Saturn and the sky does not move, because it is 26,000
+light years away and Saturn is 9 AU. Sharpness comes from the real star
+catalogue drawn as points on top; nothing about the band is procedural.
+
 **On a phone.** The mobile layout is not the desktop one scaled down. A
 viewport-and-pointer probe (`src/ui/device.ts`) publishes what kind of device
 is looking, and below a 500px short edge the app swaps shell: the twelve-chip

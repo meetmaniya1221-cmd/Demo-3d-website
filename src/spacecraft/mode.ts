@@ -844,6 +844,11 @@ export class SpacecraftMode {
         this.ship.targetId = id;
         this.ensureTargetVisible(id);
       },
+      /** Test hook: take the cockpit interior out of the frame so a capture
+       *  measures the sky rather than the hull around it. */
+      hideCockpit: () => {
+        this.cockpit.setVisible(false);
+      },
       teleportTo: (id: string, factor = 1) => {
         this.ship.placeNear(id, this.simDays, factor);
         this.ship.targetId = id;

@@ -1,33 +1,35 @@
 /**
- * The Milky Way, drawn where the Milky Way actually is.
+ * The Milky Way, from inside it, out of real survey data.
  *
- * The band is not a picture pasted on a sphere and it is not tilted by eye. It
- * is evaluated per fragment in *galactic* coordinates - the same (l, b) frame
- * astronomers use - and the sphere carries the real J2000 rotation that takes
- * the scene's ecliptic axes into that frame. So the band crosses Sagittarius
- * and Cygnus where it should, the bulge sits toward l = 0 rather than wherever
- * looked nice, and it agrees with the constellation figures drawn over it.
+ * The band is a photograph of the sky, not a model of one. The texture is
+ * NASA SVS "Deep Star Maps 2020" - 1.7 billion stars from Gaia DR2,
+ * Hipparcos-2 and Tycho-2, published as an all-sky plate carree in *galactic*
+ * coordinates. So the Great Rift, the Scutum and Sagittarius star clouds, the
+ * bulge and both Magellanic Clouds are where the survey measured them, at the
+ * brightness it measured, rather than where noise happened to put them.
  *
- * Evaluating it in a shader rather than baking a canvas buys three things that
- * matter here: there is no equirectangular seam and no polar pinch, because the
- * noise is sampled on the 3D direction itself; detail holds up when a cockpit
- * window magnifies a patch of sky; and boot spends no time painting a texture.
+ * Orientation is not eyeballed either. The sphere carries the standard J2000
+ * rotation from the scene's ecliptic axes into the galactic frame, so the band
+ * crosses Sagittarius and Cygnus where it should and agrees with the
+ * constellation figures drawn over it.
  *
- * The structure is the physics, roughly stated:
- *   - an exponential disc, thin toward the centre and flaring to the anticentre
- *   - a bulge, broad and warm, concentrated within ~20° of l = 0
- *   - arm tangents, where a line of sight runs down a spiral arm and the
- *     surface brightness piles up (Scutum, Sagittarius, Carina, Cygnus)
- *   - dust: dark filaments hugging the plane, which is what makes the Great
- *     Rift split the band from Cygnus to Sagittarius
- *   - reddening, applied *because* of that dust rather than painted on, so the
- *     obscured regions go amber the way the real thing does
+ * The map's own axis convention was determined from the data rather than
+ * assumed: the Large and Small Magellanic Clouds were located in the image by
+ * searching for the brightest compact sources away from the plane, and their
+ * pixel positions were tested against all four possible conventions. Galactic
+ * longitude increasing to the left with latitude increasing downward matched
+ * to within 4 pixels at 2048x1024; the other three were wrong by 640 to 820.
+ * Getting this backwards would mirror the sky - the kind of error that looks
+ * fine until you compare it with a star chart.
  *
- * Reference for the geometry: NASA/IPAC and the standard J2000 galactic pole
- * (RA 192.859508°, Dec 27.128336°, ascending node 32.932°).
+ * At runtime the equirectangular map is baked once into a cubemap and sampled
+ * by direction. That is what makes it a true all-sky environment: no seam to
+ * line up at l = 180, no pinch at the galactic poles, and nothing that behaves
+ * like a cylinder when you look straight up.
+ *
+ * Galactic pole reference: RA 192.859508°, Dec 27.128336°, node 32.932°.
  */
 import * as THREE from 'three';
-import { SNOISE_GLSL } from './glslnoise';
 
 /** Obliquity of the ecliptic at J2000, degrees. */
 const OBLIQUITY = 23.4392911;
@@ -91,164 +93,108 @@ const GALAXY_FRAG = /* glsl */ `
   precision highp float;
   varying vec3 vDir;
   uniform mat3 uGal;
-  uniform float uTime;
+  uniform sampler2D uMap;
   uniform float uIntensity;
-  ${SNOISE_GLSL}
 
-  float fbm(vec3 p, int oct) {
-    float a = 0.5;
-    float s = 0.0;
-    for (int i = 0; i < 6; i++) {
-      if (i >= oct) break;
-      s += snoise(p) * a;
-      p *= 2.03;
-      a *= 0.5;
-    }
-    return s;
-  }
-
-  // Ridged noise: zero crossings become filaments. Dust lanes are filamentary,
-  // not blobby, and this is the cheapest honest way to say so.
-  float ridge(vec3 p, int oct) {
-    float a = 0.5;
-    float s = 0.0;
-    for (int i = 0; i < 5; i++) {
-      if (i >= oct) break;
-      s += (1.0 - abs(snoise(p))) * a;
-      p *= 2.11;
-      a *= 0.5;
-    }
-    return s;
-  }
+  const float PI = 3.141592653589793;
 
   void main() {
-    // ---- into galactic coordinates
+    // into galactic coordinates, then onto the survey's plate carree
     vec3 g = normalize(uGal * normalize(vDir));
-    float sb = clamp(g.z, -1.0, 1.0);
-    float b = asin(sb);                 // galactic latitude, radians
-    float l = atan(g.y, g.x);           // galactic longitude, radians (-pi..pi)
-    float absB = abs(b);
-    // 0 at the centre, 1 at the anticentre
-    float fromCentre = abs(l) / 3.14159265;
-
-    // ---- the disc. Thin looking inward, flaring outward, with a gentle warp
-    // so the plane is not a mathematically straight line across the sky.
-    float warp = 0.030 * sin(l + 0.6) + 0.016 * sin(2.0 * l - 1.1);
-    float bb = b - warp;
-    float scaleH = mix(0.055, 0.125, fromCentre);   // radians
-    float disc = exp(-abs(bb) / scaleH);
-
-    // brightness falls off away from the centre: we are 8 kpc out, so the
-    // inner galaxy is behind far more stars than the outer galaxy is
-    float lon = mix(1.0, 0.30, smoothstep(0.0, 1.0, fromCentre));
-
-    // ---- the bulge
-    float bulge = exp(-(l * l) / 0.16 - (bb * bb) / 0.045);
-
-    // ---- arm tangents: lines of sight that run down an arm pile up light
-    float arms = 0.0;
-    arms += 0.55 * exp(-pow((l - 0.55) / 0.16, 2.0));   // Scutum / Sagittarius
-    arms += 0.40 * exp(-pow((l + 0.50) / 0.18, 2.0));   // Carina
-    arms += 0.34 * exp(-pow((l - 1.30) / 0.22, 2.0));   // Cygnus
-    arms += 0.22 * exp(-pow((l + 1.25) / 0.24, 2.0));   // Vela
-    arms *= exp(-abs(bb) / (scaleH * 1.3));
-
-    // ---- star clouds: large-scale clumping along the band
-    float cloud = fbm(g * 3.4 + vec3(0.0, 0.0, 1.7), 4) * 0.5 + 0.5;
-    float fine = fbm(g * 11.0, 4) * 0.5 + 0.5;
-
-    float surface = (disc * lon * (0.55 + 0.85 * cloud) + bulge * 1.45 + arms) * (0.72 + 0.56 * fine);
-    surface *= 0.33;
-
-    // ---- dust. Filaments that live in the plane, thickest toward the centre,
-    // and they *subtract*: the Great Rift is the absence of light, not a grey
-    // smear painted over it.
-    float dustBand = exp(-abs(bb) / (scaleH * 0.62));
-    float lanes = ridge(g * 5.5 + vec3(3.1, 0.0, 0.0), 4);
-    lanes = pow(clamp(lanes - 0.38, 0.0, 1.0) * 1.9, 1.25);
-    float fineLane = pow(clamp(ridge(g * 15.0, 3) - 0.55, 0.0, 1.0) * 2.0, 1.2);
-    float tau = (lanes * 3.1 + fineLane * 1.2) * dustBand * mix(1.6, 0.6, fromCentre);
-    float extinction = exp(-tau);
-
-    // ---- colour. The disc is a mix of old yellow and young blue populations;
-    // the bulge is old and warm. Reddening then follows the dust column, which
-    // is why the obscured stretches run amber rather than simply dark.
-    vec3 young = vec3(0.68, 0.78, 1.00);
-    vec3 old   = vec3(1.00, 0.90, 0.72);
-    vec3 col = mix(young, old, clamp(0.35 + 0.5 * (1.0 - fromCentre) + 0.35 * bulge, 0.0, 1.0));
-    vec3 reddened = vec3(col.r, col.g * exp(-tau * 0.30), col.b * exp(-tau * 0.75));
-    col = mix(col, reddened, 0.9);
-
-    float bright = surface * extinction;
-    // a faint diffuse floor so the plane never cuts to pure black at its edges
-    bright += disc * 0.022 * lon;
-
-    // Additive blending already scales by alpha, so brightness belongs in the
-    // colour and the alpha stays at 1 - folding it into both was squaring the
-    // term and left the band a grey smudge.
-    gl_FragColor = vec4(col * clamp(bright, 0.0, 1.1) * uIntensity, 1.0);
+    float b = asin(clamp(g.z, -1.0, 1.0));   // galactic latitude
+    float l = atan(g.y, g.x);                // galactic longitude, -pi..pi
+    // NASA SVS galactic maps run longitude to the LEFT and latitude downward
+    // (south galactic pole at the top) - verified against the measured
+    // positions of the Magellanic Clouds, see the note at the top of this file
+    vec2 uv = vec2(0.5 - l / (2.0 * PI), 0.5 + b / PI);
+    gl_FragColor = vec4(texture2D(uMap, uv).rgb * uIntensity, 1.0);
   }
 `;
 
 /**
  * Display shader.
  *
- * The band never changes, so the fifteen-octave evaluation above is baked once
- * into a cubemap and this is what runs per frame: one texture fetch plus a
- * single octave of fine grain, added only where there is light to modulate.
- * That keeps the band crisp when a cockpit window magnifies a patch of sky
- * without paying for the whole model every frame - measured, the full shader
- * was halving the frame rate all on its own.
+ * One cubemap fetch. The survey map is resampled into a cubemap once, so this
+ * runs per frame against uniform texel density with working mipmaps - which is
+ * what stops the star fields shimmering when the sky is minified, and what
+ * removes the equirectangular seam and the polar pinch entirely.
  *
- * A cubemap rather than an equirectangular map on purpose: sampled by
- * direction, it has no seam to line up and no pinch at the poles.
+ * Nothing is added to the image here. An earlier version modulated it with a
+ * noise octave to "sharpen" the band; that is exactly the procedural
+ * invention this file exists to avoid, and it was fighting the real structure
+ * underneath. Sharpness now comes from the catalogue stars drawn as points on
+ * top (scene/sky.ts), which is real data as well.
  */
 const DISPLAY_FRAG = /* glsl */ `
   precision highp float;
   varying vec3 vDir;
   uniform samplerCube uSky;
   uniform float uIntensity;
-  ${SNOISE_GLSL}
   void main() {
-    vec3 d = normalize(vDir);
-    vec3 c = textureCube(uSky, d).rgb;
-    float lum = dot(c, vec3(0.299, 0.587, 0.114));
-    float n = snoise(d * 30.0) * 0.5 + 0.5;
-    c *= 0.82 + 0.36 * n * smoothstep(0.015, 0.22, lum);
-    gl_FragColor = vec4(c * uIntensity, 1.0);
+    gl_FragColor = vec4(textureCube(uSky, normalize(vDir)).rgb * uIntensity, 1.0);
   }
 `;
 
 export interface GalaxyOptions {
   radius: number;
-  /** Fewer segments on weak hardware; the shader does the detail anyway. */
   segments?: number;
   intensity?: number;
+  /** Base URL for /textures. */
+  base?: string;
+  /**
+   * Which rung of the survey map to load, and how large a cubemap to bake it
+   * into. Every rung is the same measured sky - the structure never changes,
+   * only how finely it is resolved.
+   */
+  quality?: SkyQuality;
 }
+
+export type SkyQuality = 'low' | 'medium' | 'high';
+
+/**
+ * Source resolution and bake size per quality level.
+ *
+ * The pairs are matched: a 1024-per-face cubemap resolves 11.4 pixels per
+ * degree, and a 4096-wide plate carree carries 11.4 pixels per degree. Feeding
+ * a larger source into the same bake would throw the extra away, and a larger
+ * bake is what actually costs memory - 1024 per face is 25 MB resident, 2048
+ * would be 100 MB.
+ */
+const SKY_TIERS: Record<SkyQuality, { map: string; cube: number }> = {
+  low: { map: '1k', cube: 512 },
+  medium: { map: '2k', cube: 768 },
+  high: { map: '4k', cube: 1024 },
+};
 
 /**
  * The galactic band as a back-facing sphere the camera sits inside.
  *
- * Starts out running the full model directly. Call `bake` once a renderer
- * exists and it swaps itself for the cheap sampler; until then it still draws
- * correctly, just expensively, so there is no frame where the sky is missing.
+ * The survey map streams in after boot: it is between 90 kB and 3 MB depending
+ * on the quality tier, and the app should not wait on it to show a sky. Until
+ * it arrives the sphere draws nothing, so the star field and the planets are
+ * there from the first frame and the band fades in behind them.
  */
 export class MilkyWay {
   readonly mesh: THREE.Mesh;
   private material: THREE.ShaderMaterial;
   private target: THREE.WebGLCubeRenderTarget | null = null;
+  private equirect: THREE.Texture | null = null;
   private baked = false;
   private intensity: number;
+  private tier: { map: string; cube: number };
+  private renderer: THREE.WebGLRenderer | null = null;
 
   constructor(opts: GalaxyOptions) {
     const seg = opts.segments ?? 64;
     this.intensity = opts.intensity ?? 1;
+    this.tier = SKY_TIERS[opts.quality ?? 'high'];
+
     this.material = new THREE.ShaderMaterial({
       vertexShader: GALAXY_VERT,
       fragmentShader: GALAXY_FRAG,
       uniforms: {
         uGal: { value: sceneToGalacticMatrix() },
-        uTime: { value: 0 },
+        uMap: { value: null },
         uIntensity: { value: this.intensity },
       },
       side: THREE.BackSide,
@@ -262,27 +208,63 @@ export class MilkyWay {
       this.material,
     );
     this.mesh.frustumCulled = false;
+    // nothing to draw until the survey map is here
+    this.mesh.visible = false;
+
+    const base = opts.base ?? '/';
+    new THREE.TextureLoader().load(
+      `${base}textures/sky/milkyway_${this.tier.map}.webp`,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        // The bake reads this once at full resolution; mips on the source
+        // would only blur what the cubemap is about to resample anyway.
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.generateMipmaps = false;
+        tex.wrapS = THREE.RepeatWrapping;
+        this.equirect = tex;
+        this.material.uniforms.uMap.value = tex;
+        this.mesh.visible = true;
+        if (this.renderer) this.bake(this.renderer);
+      },
+      undefined,
+      () => {
+        // No sky map is better than a fake one: the star field and the
+        // constellations still carry the sky, and nothing here pretends to be
+        // survey data it could not load.
+      },
+    );
   }
 
   /**
-   * Render the model into a cubemap once and switch to sampling it.
+   * Resample the survey map into a cubemap and switch to sampling that.
    *
-   * 512 per face is ample for something this diffuse, and it keeps the one-off
-   * cost to roughly a frame and a half even on a software renderer - the whole
-   * point is to not pay it sixty times a second.
+   * Safe to call before the texture has arrived - it records the renderer and
+   * bakes as soon as there is something to bake. A cubemap rather than the
+   * plate carree because sampling by direction has no seam at l = 180, no
+   * pinch at the galactic poles, and mipmaps that actually work: an
+   * equirectangular map wrapped in a shader has a discontinuity in its
+   * texture-coordinate derivatives at the wrap, which shows up as a bright
+   * line down the sky at exactly the place a 360 environment must not have one.
    */
-  bake(renderer: THREE.WebGLRenderer, size = 512): void {
-    if (this.baked) return;
+  bake(renderer: THREE.WebGLRenderer, size?: number): void {
+    this.renderer = renderer;
+    if (this.baked || !this.equirect) return;
     this.baked = true;
 
     const scene = new THREE.Scene();
-    const geo = new THREE.SphereGeometry(10, 64, 40);
+    const geo = new THREE.SphereGeometry(10, 96, 64);
     const shell = new THREE.Mesh(geo, this.material.clone());
-    (shell.material as THREE.ShaderMaterial).blending = THREE.NormalBlending;
-    (shell.material as THREE.ShaderMaterial).transparent = false;
+    const shellMat = shell.material as THREE.ShaderMaterial;
+    shellMat.blending = THREE.NormalBlending;
+    shellMat.transparent = false;
     scene.add(shell);
 
-    this.target = new THREE.WebGLCubeRenderTarget(size);
+    this.target = new THREE.WebGLCubeRenderTarget(size ?? this.tier.cube, {
+      generateMipmaps: true,
+      minFilter: THREE.LinearMipmapLinearFilter,
+      magFilter: THREE.LinearFilter,
+    });
     this.target.texture.colorSpace = THREE.SRGBColorSpace;
     const cam = new THREE.CubeCamera(0.5, 40, this.target);
     const prevTarget = renderer.getRenderTarget();
@@ -290,7 +272,10 @@ export class MilkyWay {
     renderer.setRenderTarget(prevTarget);
 
     geo.dispose();
-    (shell.material as THREE.Material).dispose();
+    shellMat.dispose();
+    // the plate carree has done its job; the cubemap is what gets sampled now
+    this.equirect.dispose();
+    this.equirect = null;
 
     const display = new THREE.ShaderMaterial({
       vertexShader: GALAXY_VERT,
@@ -310,13 +295,14 @@ export class MilkyWay {
     this.material = display;
   }
 
-  update(elapsed: number): void {
-    if (this.material.uniforms.uTime) this.material.uniforms.uTime.value = elapsed;
+  update(_elapsed: number): void {
+    // the sky does not animate: it is a fixed map of a real sky
   }
 
   dispose(): void {
     this.mesh.geometry.dispose();
     this.material.dispose();
+    this.equirect?.dispose();
     this.target?.dispose();
   }
 }

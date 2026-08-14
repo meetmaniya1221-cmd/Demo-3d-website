@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "test:sky": "node scripts/skytest.mjs",
     "test:mobile": "node scripts/mobileaudit.mjs",
     "test:touch": "node scripts/mobiletouch.mjs",
     "test:earthmoon": "node scripts/earthmoontest.mjs",

@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from './noise';
 import { galacticStarDensity, MilkyWay, sceneToGalacticMatrix } from './galaxy';
-import { renderBudget } from './budget';
+import { renderBudget, qualityTier } from './budget';
 
 const SKY_RADIUS = 6000;
 
@@ -59,7 +59,7 @@ export class Sky {
   private starMat: THREE.ShaderMaterial;
   private milkyWay!: MilkyWay;
 
-  constructor() {
+  constructor(textureBase = '/') {
     const rnd = mulberry32(2024);
     // Scene directions come out of the galactic frame, so build the inverse
     // once: the matrix is orthonormal, so its transpose is its inverse.
@@ -69,7 +69,12 @@ export class Sky {
     // texture, not the real catalogue - which is drawn separately and is never
     // thinned. They are the cheapest points on the screen to give up, and 26k
     // additive sprites is a lot to ask of a phone.
-    const count = Math.round(26000 * renderBudget().particleScale);
+    // The survey map now carries the background star field, so these are here
+    // only for the crispness a texture cannot give: real point sources that
+    // stay sharp when a cockpit window magnifies a patch of sky. At the old
+    // count they doubled up with the map and read as sensor grain over the
+    // whole sky.
+    const count = Math.round(11000 * renderBudget().particleScale);
     const pos = new Float32Array(count * 3);
     const size = new Float32Array(count);
     const color = new Float32Array(count * 3);
@@ -130,7 +135,20 @@ export class Sky {
     // galactic orientation rather than a tilt chosen to look right
     this.group.add(stars);
 
-    this.milkyWay = new MilkyWay({ radius: SKY_RADIUS * 0.98, segments: 48 });
+    // The survey map is the sky's structure; the tier decides only how finely
+    // it is resolved and how much memory the bake takes.
+    const tier = qualityTier();
+    this.milkyWay = new MilkyWay({
+      radius: SKY_RADIUS * 0.98,
+      segments: 48,
+      base: textureBase,
+      quality: tier === 'high' ? 'high' : tier === 'mid' ? 'medium' : 'low',
+      // The survey map is a long exposure; shown at full strength it is
+      // brighter than the solar system in front of it. This is the exposure,
+      // not a change to the data - every structure stays exactly where and
+      // how the survey recorded it.
+      intensity: 0.62,
+    });
     this.milkyWay.mesh.renderOrder = -11;
     this.group.add(this.milkyWay.mesh);
   }

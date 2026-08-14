@@ -44,7 +44,7 @@ export class SolarSystem {
   constructor(tex: GeneratedTextures, textureBase: string) {
     this.scene.background = new THREE.Color(0x020308);
 
-    this.sky = new Sky();
+    this.sky = new Sky(textureBase);
     this.scene.add(this.sky.group);
 
     this.markers = new Markers();

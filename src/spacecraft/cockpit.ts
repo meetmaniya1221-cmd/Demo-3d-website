@@ -182,6 +182,12 @@ class ConsoleScreen {
 
 export class Cockpit {
   readonly scene = new THREE.Scene();
+  /** Hide the hull. Used by the sky test so a capture measures the view out of
+   *  the window rather than the frame around it. */
+  setVisible(v: boolean): void {
+    this.scene.visible = v;
+  }
+
   readonly camera: THREE.PerspectiveCamera;
   private root = new THREE.Group();
   private sunLight: THREE.DirectionalLight;

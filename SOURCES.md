@@ -106,6 +106,44 @@ The USGS maps were retrieved from the USGS Astrogeology Science Center
 public archive (`planetarymaps.usgs.gov` / `asc-pds-services` mirror);
 the Pluto color map from NASA's science.nasa.gov asset library.
 
+## The all-sky background
+
+| Data | Source | Notes |
+| --- | --- | --- |
+| Milky Way all-sky map | [NASA SVS "Deep Star Maps 2020"](https://svs.gsfc.nasa.gov/4851/) (Ernie Wright) | Plotted from 1.7 billion stars: **Gaia DR2**, **Hipparcos-2** and **Tycho-2**, with Yale Bright Star, UCAC3 and XHIP for completeness. Public domain (US Gov) |
+
+`public/textures/sky/milkyway_{1k,2k,4k}.webp` is built by
+`scripts/buildsky.mjs` from two of that entry's products - `milkyway_2020_8k_gal.exr`
+(the diffuse Milky Way) and `starmap_2020_8k_gal.exr` (the resolved stars) -
+composited, tone-mapped from linear half-float to 8-bit sRGB, and downsampled.
+Both sources are **galactic** plate carrée, which is why the renderer can
+sample them with the same J2000 scene→galactic matrix it uses for orientation.
+SVS corrected the galactic images in January 2021 to use the Hipparcos/Gaia
+transformation rather than a B1950 one; these are the corrected versions.
+
+**Nothing in the band is invented.** The Great Rift, the Scutum and Sagittarius
+star clouds, the bulge, the dark nebulae and both Magellanic Clouds are where
+the survey measured them, at the brightness it measured. The only judgement
+applied is exposure: a tone curve anchored to the data's own percentiles, and a
+0.62 intensity so the sky does not outshine the solar system in front of it.
+An earlier version of this file generated the band procedurally from noise;
+that is gone.
+
+**The map's axis convention was measured, not assumed.** The Large and Small
+Magellanic Clouds were located in the image by searching for the brightest
+compact sources away from the plane, and their pixel positions tested against
+all four possible conventions. Galactic longitude increasing to the left with
+latitude increasing downward matched to within 4 pixels at 2048×1024; the other
+three were wrong by 640 to 820 pixels. `scripts/buildsky.mjs` re-checks the
+orientation on every run and fails if the galactic centre is not the brightest
+region.
+
+At runtime the equirectangular map is resampled once into a cubemap and sampled
+by direction, which is what makes it a true all-sky environment: no seam at
+l = 180°, no pinch at the galactic poles, and working mipmaps. Three quality
+tiers (1k→512, 2k→768, 4k→1024 per face) differ only in how finely the same
+measured sky is resolved.
+
 ## Sky catalog
 
 | Data | Source | Notes |

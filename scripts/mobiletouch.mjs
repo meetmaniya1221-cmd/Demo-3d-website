@@ -259,17 +259,25 @@ check('cockpit chrome leaves most of the glass',
 check('no panel overlaps the deck', cockpit.nav === 'hidden' || cockpit.nav[1] + cockpit.nav[3] <= cockpit.deck[1] + 2,
   `nav=${JSON.stringify(cockpit.nav)} deck=${JSON.stringify(cockpit.deck)}`);
 
-// 360 look: drag far enough to run past the neck's limit and into hull yaw
-const look0 = await page.evaluate(() => window.__orrery.spacecraft.ship.quat.toArray());
-for (let i = 0; i < 6; i++) await swipe(300, 400, 60, 400, 10, 8);
-await page.waitForTimeout(600);
+// 360 look: the head yaw is unbounded, so dragging far enough must carry the
+// view straight through where the old 148-degree stop used to be, and the
+// hull must NOT rotate - looking around is not steering.
+const look0 = await page.evaluate(() => ({
+  quat: window.__orrery.spacecraft.ship.quat.toArray(),
+  headYaw: window.__orrery.spacecraft.ship.headYaw,
+}));
+for (let i = 0; i < 8; i++) await swipe(320, 400, 60, 400, 10, 8);
+await page.waitForTimeout(700);
 const look1 = await page.evaluate(() => ({
   quat: window.__orrery.spacecraft.ship.quat.toArray(),
   headYaw: window.__orrery.spacecraft.ship.headYaw,
 }));
-const hullTurned = Math.hypot(...look1.quat.map((v, i) => v - look0[i]));
-check('dragging past the neck limit turns the hull, giving a full 360',
-  hullTurned > 0.05, `hull quaternion moved ${hullTurned.toFixed(3)}, headYaw=${look1.headYaw.toFixed(2)}`);
+const swept = Math.abs(look1.headYaw - look0.headYaw) * (180 / Math.PI);
+const hullMoved = Math.hypot(...look1.quat.map((v, i) => v - look0.quat[i]));
+check('a touch drag sweeps the view past the old 148 degree stop',
+  swept > 160, `swept ${swept.toFixed(0)} degrees`);
+check('looking around does not steer the ship',
+  hullMoved < 1e-6, `hull quaternion moved ${hullMoved.toExponential(1)}`);
 await page.screenshot({ path: `${OUT}/04-cockpit-look.png` });
 
 // the dock

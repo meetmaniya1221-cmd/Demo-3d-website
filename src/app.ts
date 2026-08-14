@@ -9,6 +9,7 @@ import { SolarSystem } from './scene/system';
 import { enhanceSurfaces } from './scene/surfaces';
 
 import { renderBudget } from './scene/budget';
+import { sceneToGalacticMatrix } from './scene/galaxy';
 import { MobileNav } from './ui/mobilenav';
 import { isCompact, onDeviceChange } from './ui/device';
 import { CameraRig } from './scene/camera';
@@ -855,6 +856,8 @@ export class App implements TourHost {
       exitSpacecraft: () => this.spacecraft.exit(),
       spacecraftActive: () => this.spacecraft.active,
       spacecraft: this.spacecraft.debug,
+      THREE,
+      galacticMatrix: () => sceneToGalacticMatrix(),
       mobileNav: this.mobileNav,
     };
   }
