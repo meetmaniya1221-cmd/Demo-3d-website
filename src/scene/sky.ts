@@ -1,6 +1,7 @@
 /** Deep-space backdrop: ~7000 individually tinted stars + a Milky Way band. */
 import * as THREE from 'three';
 import { mulberry32 } from './noise';
+import { renderBudget } from './budget';
 
 const SKY_RADIUS = 6000;
 
@@ -48,7 +49,9 @@ export class Sky {
 
   constructor(milkyWay: THREE.CanvasTexture) {
     const rnd = mulberry32(2024);
-    const count = 7000;
+    // The background star field is pure decoration - the real catalogue is
+    // drawn separately. On a phone these are the cheapest points to give up.
+    const count = Math.round(7000 * renderBudget().particleScale);
     const pos = new Float32Array(count * 3);
     const size = new Float32Array(count);
     const color = new Float32Array(count * 3);

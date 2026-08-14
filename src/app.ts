@@ -7,6 +7,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 import { SolarSystem } from './scene/system';
 import { enhanceSurfaces } from './scene/surfaces';
+
+import { renderBudget } from './scene/budget';
+import { MobileNav } from './ui/mobilenav';
+import { isCompact, onDeviceChange } from './ui/device';
 import { CameraRig } from './scene/camera';
 import { sound } from './audio';
 import type { GeneratedTextures } from './scene/textures';
@@ -50,6 +54,7 @@ export class App implements TourHost {
   private infoPanel: InfoPanel;
   private labels: Labels;
   private layersPanel: LayersPanel;
+  private mobileNav!: MobileNav;
   private distance: DistanceReadout;
   private skyNotes: SkyNotes;
   private compare: CompareOverlay;
@@ -69,15 +74,20 @@ export class App implements TourHost {
   private liveRegion!: HTMLElement;
   private toastTimer = 0;
   private frameTimeEma = 16;
+  /** Seconds of consistently good frames, for the adaptive resolution loop. */
   private goodFrames = 0;
   private lastPrChange = 0;
   private clock = new THREE.Clock();
   private elapsed = 0;
   private scaleTarget = 0;
   private liveTimer = 0;
+  /** Seconds of consistently slow frames. */
   private slowFrames = 0;
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
+  private activeTouches = new Set<number>();
+  private pinching = false;
+  private lastSize = { w: 0, h: 0 };
   private downPos: { x: number; y: number; t: number } | null = null;
   private tmpV = new THREE.Vector3();
 
@@ -86,7 +96,12 @@ export class App implements TourHost {
     // does not need (and would waste) its own antialiasing
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    // A 3x-DPR phone asked to render natively is drawing more fragments than
+    // most laptops, then resampling them again through bloom. Start inside the
+    // device's budget and let trackFrameCost climb from there if it can.
+    // (The subsystem setters are applied once everything exists - see the
+    // setPixelRatio call at the end of the constructor.)
+    this.renderer.setPixelRatio(renderBudget().startPixelRatio);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.domElement.className = 'scene';
@@ -107,8 +122,14 @@ export class App implements TourHost {
     // its default single-sample HDR target.
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.system.scene, this.rig.camera));
+    // UnrealBloomPass allocates a bright-pass target plus five mip pairs, all
+    // RGBA16F. At full resolution on a phone that is tens of megabytes of
+    // bandwidth every frame for an effect that is deliberately soft anyway, so
+    // constrained devices run it at half resolution - visually almost
+    // indistinguishable, and roughly a quarter of the fill.
+    const bloomScale = renderBudget().bloomScale;
     this.bloom = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      new THREE.Vector2(window.innerWidth / bloomScale, window.innerHeight / bloomScale),
       0.55,
       0.7,
       0.85,
@@ -164,6 +185,25 @@ export class App implements TourHost {
       onMeteors: () => this.meteors.open(),
       onObservatory: () => this.observatory.open(),
       onSpacecraft: () => this.enterSpacecraft(),
+    });
+    // The compact shell replaces the chip row entirely on phones; it shares
+    // these same callbacks so there is one set of behaviours, two presentations.
+    this.mobileNav = new MobileNav(root, this.state, {
+      onSearch: () => this.search.open(),
+      onAtlas: () => this.atlas.toggle(),
+      onTour: () => this.tour.start(),
+      onJourney: () => this.startJourney(),
+      onObservatory: () => this.observatory.open(),
+      onMissions: () => this.missions.open(),
+      onMeteors: () => this.meteors.open(),
+      onCompare: () => this.compare.open(),
+      onGravity: () => this.gravity.open(),
+      onSpacecraft: () => this.enterSpacecraft(),
+      onLayers: () => this.layersPanel.setOpen(true),
+      onResetView: () => {
+        if (this.state.selectedId) this.state.select(null);
+        else this.focusOverview();
+      },
     });
     this.infoPanel = new InfoPanel(root, this.state, {
       onCompare: (id) => (id ? this.compare.openWith(id) : this.compare.open()),
@@ -284,15 +324,52 @@ export class App implements TourHost {
       const dx = e.clientX - this.downPos.x;
       const dy = e.clientY - this.downPos.y;
       const dt = performance.now() - this.downPos.t;
+      const touch = e.pointerType !== 'mouse';
       this.downPos = null;
-      if (dx * dx + dy * dy > 36 || dt > 500) return; // it was a drag
+      // A finger is not a mouse. A deliberate tap routinely travels 10-15px
+      // and takes longer than half a second, so the mouse thresholds threw
+      // away a large share of real taps and the app felt unresponsive to
+      // touch. Multi-touch never selects - that is a pinch, not a tap.
+      const slop = touch ? 14 * 14 : 36;
+      const hold = touch ? 900 : 500;
+      if (dx * dx + dy * dy > slop || dt > hold) return;
+      if (touch && this.pinching) return;
       if (this.journey.active || this.spacecraft.active) return;
-      this.pick(e.clientX, e.clientY);
+      this.pick(e.clientX, e.clientY, touch);
     });
-    window.addEventListener('resize', () => this.resize());
+    // a second finger down means the gesture is a pinch or a two-finger pan
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      this.activeTouches.add(e.pointerId);
+      if (this.activeTouches.size > 1) this.pinching = true;
+    });
+    const endTouch = (e: PointerEvent) => {
+      this.activeTouches.delete(e.pointerId);
+      if (this.activeTouches.size === 0) {
+        // clear on the next frame so the pointerup that ends the pinch is
+        // still seen as part of it
+        requestAnimationFrame(() => {
+          if (this.activeTouches.size === 0) this.pinching = false;
+        });
+      }
+    };
+    canvas.addEventListener('pointerup', endTouch);
+    canvas.addEventListener('pointercancel', endTouch);
+    // device.ts already listens to resize, orientationchange and
+    // visualViewport; subscribing here as well ran the whole GL resize path
+    // two or three times per rotation, reallocating every post-processing
+    // target each time.
+    onDeviceChange(() => this.resize());
+    this.watchContextLoss(canvas, root);
     window.addEventListener('keydown', (e) => this.onKey(e));
 
     this.hud.updateClock();
+    // Now that every subsystem exists, push the starting ratio through all of
+    // them. Point sprites size themselves from it, so leaving them on their
+    // constructor default made every star, belt particle and marker draw at
+    // the wrong width - additively blended, with no depth write, which is the
+    // most expensive way to be wrong about fill.
+    this.setPixelRatio(renderBudget().startPixelRatio);
     this.renderer.setAnimationLoop(() => this.frame());
 
     // stream in the photographic surface maps over the procedural ones
@@ -390,13 +467,26 @@ export class App implements TourHost {
 
   // --------------------------------------------------------------- input --
 
-  private pick(clientX: number, clientY: number): void {
-    this.pointer.set(
-      (clientX / window.innerWidth) * 2 - 1,
-      -(clientY / window.innerHeight) * 2 + 1,
-    );
-    this.raycaster.setFromCamera(this.pointer, this.rig.camera);
-    const hits = this.raycaster.intersectObjects(this.system.pickables, false);
+  private pick(clientX: number, clientY: number, touch = false): void {
+    let hits = this.rayAt(clientX, clientY);
+    if (hits.length === 0 && touch) {
+      // A fingertip covers about 40px; a single ray through its centre misses
+      // anything the user was plainly aiming at. Sweep a ring outward and take
+      // the first thing found, so small moons are actually selectable.
+      outer: for (const radius of [14, 26]) {
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          const probe = this.rayAt(
+            clientX + Math.cos(a) * radius,
+            clientY + Math.sin(a) * radius,
+          );
+          if (probe.length > 0) {
+            hits = probe;
+            break outer;
+          }
+        }
+      }
+    }
     if (hits.length > 0) {
       // a moon's pick proxy can sit inside its parent's generous proxy -
       // prefer the moon when the ray also passes through it anywhere within
@@ -412,6 +502,20 @@ export class App implements TourHost {
     } else if (this.state.selectedId) {
       this.state.select(null);
     }
+  }
+
+  /** Raycast the pickables through one screen point. */
+  private rayAt(clientX: number, clientY: number): THREE.Intersection[] {
+    // against the canvas's own rect, not the window's: they agree today only
+    // because the canvas is inset:0, and a stray page pinch-zoom already
+    // separates clientX from innerWidth
+    const r = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(
+      ((clientX - r.left) / r.width) * 2 - 1,
+      -((clientY - r.top) / r.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(this.pointer, this.rig.camera);
+    return this.raycaster.intersectObjects(this.system.pickables, false);
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -512,7 +616,7 @@ export class App implements TourHost {
     } else {
       this.rig.update(Math.min(rawDt, 0.5));
     }
-    const panelInset = this.state.selectedId && window.innerWidth > 720 ? 372 : 0;
+    const panelInset = this.state.selectedId && !isCompact() ? 372 : 0;
     this.labels.update(this.system, this.rig.camera, this.state, panelInset);
     this.skyNotes.update(this.system, this.rig.camera, this.state);
 
@@ -555,6 +659,10 @@ export class App implements TourHost {
     }
 
     this.trackFrameCost(rawDt);
+    // The simulation above still advances - time keeps running, bodies keep
+    // moving - only the drawing is skipped, so nothing is out of date when the
+    // sheet closes.
+    if (this.sceneObscured) return;
     this.composer.render();
   }
 
@@ -563,20 +671,30 @@ export class App implements TourHost {
    *  drivers show a garbage frame when targets churn mid-session. Clamp the
    *  sample so one hidden-tab gap can't poison the average into a downscale. */
   private trackFrameCost(rawDt: number): void {
-    this.frameTimeEma += (Math.min(rawDt, 0.25) * 1000 - this.frameTimeEma) * 0.05;
+    const dt = Math.min(rawDt, 0.25);
+    this.frameTimeEma += (dt * 1000 - this.frameTimeEma) * 0.05;
     const pr = this.renderer.getPixelRatio();
-    const maxPr = Math.min(window.devicePixelRatio || 1, 2);
+    const budget = renderBudget();
+    const maxPr = budget.maxPixelRatio;
+    const minPr = budget.minPixelRatio;
     const cooledDown = this.elapsed - this.lastPrChange > 8;
-    if (this.frameTimeEma > 34 && pr > 1) {
-      if (++this.slowFrames > 45 && cooledDown) {
-        this.setPixelRatio(Math.max(1, pr - 0.25));
+    // Accumulate seconds, not frames. Counting frames means the response time
+    // scales with the frame rate itself - a phone struggling at 5 fps waited
+    // nine seconds to shed resolution, which is exactly when it could least
+    // afford to. Coming down is deliberately four times quicker than going
+    // back up: a stutter should be answered immediately, a recovery earned.
+    if (this.frameTimeEma > 34 && pr > minPr) {
+      this.goodFrames = 0;
+      this.slowFrames += dt;
+      if (this.slowFrames > 0.75 && cooledDown) {
+        this.setPixelRatio(Math.max(minPr, pr - 0.25));
         this.lastPrChange = this.elapsed;
         this.slowFrames = 0;
-        this.goodFrames = 0;
       }
     } else if (this.frameTimeEma < 20 && pr < maxPr) {
       this.slowFrames = 0;
-      if (++this.goodFrames > 600 && cooledDown) {
+      this.goodFrames += dt;
+      if (this.goodFrames > 6 && cooledDown) {
         this.setPixelRatio(Math.min(maxPr, pr + 0.25));
         this.lastPrChange = this.elapsed;
         this.goodFrames = 0;
@@ -585,6 +703,22 @@ export class App implements TourHost {
       this.slowFrames = 0;
       this.goodFrames = 0;
     }
+  }
+
+  /**
+   * True when something opaque covers the whole viewport.
+   *
+   * Behind a full-screen overlay the entire solar system, its bloom composite
+   * and every label are still being redrawn at the animation-loop rate, for a
+   * viewer who cannot see any of it. On a phone that is the difference between
+   * reading about the Apollo missions and watching the battery indicator move.
+   */
+  private get sceneObscured(): boolean {
+    // Only full-coverage overlays qualify. The info panel also sets
+    // `sheet-open`, but it rests at 42% of the screen with the planet it is
+    // describing visible above it - skipping the render there would freeze
+    // exactly the thing the user is looking at.
+    return isCompact() && document.body.classList.contains('overlay-open');
   }
 
   private setPixelRatio(value: number): void {
@@ -596,9 +730,51 @@ export class App implements TourHost {
     this.spacecraft.setPixelRatio(value);
   }
 
+  /**
+   * WebGL context loss.
+   *
+   * Mobile browsers drop the GL context far more readily than desktop ones -
+   * on a background tab, under memory pressure, on some rotations - and the
+   * default outcome is a frozen black canvas with no explanation. Chromium
+   * will usually hand the context back, so the honest behaviour is to say what
+   * happened, stop the render loop from throwing into the void, and reload
+   * when the context returns.
+   */
+  private watchContextLoss(canvas: HTMLCanvasElement, root: HTMLElement): void {
+    const panel = document.createElement('div');
+    panel.className = 'gl-error';
+    panel.setAttribute('role', 'alertdialog');
+    panel.innerHTML =
+      '<h2>Graphics paused</h2>' +
+      '<p>The browser released this page&rsquo;s 3D context, usually to free memory for ' +
+      'something else. Reloading will rebuild the Solar System.</p>';
+    const retry = document.createElement('button');
+    retry.textContent = 'Reload';
+    retry.addEventListener('click', () => location.reload());
+    panel.appendChild(retry);
+    root.appendChild(panel);
+
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault(); // without this the context is never restored
+      this.renderer.setAnimationLoop(null);
+      panel.classList.add('show');
+      retry.focus();
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      // Rebuilding every texture, geometry and program by hand is a large
+      // amount of code to keep correct for an event this rare; a reload is
+      // honest, quick, and cannot leave half the scene missing.
+      location.reload();
+    });
+  }
+
   private resize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
+    // the iOS URL bar slides for several frames, firing a resize each time at
+    // the same width; reallocating half-float targets for that is pure waste
+    if (w === this.lastSize.w && h === this.lastSize.h) return;
+    this.lastSize = { w, h };
     this.renderer.setSize(w, h);
     // composer.setSize resizes every pass (including bloom) in device pixels
     this.composer.setSize(w, h);
@@ -617,7 +793,9 @@ export class App implements TourHost {
   private updateViewOffset(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const mobile = w <= 720;
+    // the compact shell puts a sheet across the bottom, so the focused body
+    // has to sit in the upper part of the frame to stay visible behind it
+    const mobile = isCompact();
     if (mobile && (this.state.selectedId !== null || this.state.tourStep !== null)) {
       this.rig.camera.setViewOffset(w, h, 0, h * 0.16, w, h);
     } else if (!mobile && this.state.selectedId !== null) {
@@ -666,6 +844,7 @@ export class App implements TourHost {
       exitSpacecraft: () => this.spacecraft.exit(),
       spacecraftActive: () => this.spacecraft.active,
       spacecraft: this.spacecraft.debug,
+      mobileNav: this.mobileNav,
     };
   }
 }

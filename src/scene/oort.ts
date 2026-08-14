@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from './noise';
 import { EXPLORER_A, EXPLORER_GAMMA, TRUE_UNITS_PER_AU, mapDistanceAU } from '../sim/scale';
+import { renderBudget } from './budget';
 
 const INNER_AU = 2000;
 const OUTER_AU = 60000;
@@ -54,7 +55,7 @@ export class OortCloud {
   private enabled = true;
   private baseOpacity = 0.5;
 
-  constructor(count = 9000, seed = 991) {
+  constructor(count = Math.round(9000 * renderBudget().particleScale), seed = 991) {
     const rnd = mulberry32(seed);
     const pos = new Float32Array(count * 3);
     const shade = new Float32Array(count);

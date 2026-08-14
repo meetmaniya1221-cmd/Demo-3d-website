@@ -8,6 +8,7 @@ import { ALL_OBJECTS } from '../data/catalog';
 import type { CatalogObject } from '../data/types';
 import type { SolarSystem } from '../scene/system';
 import type { AppState } from '../sim/state';
+import { isTouch } from './device';
 
 interface LabelEntry {
   def: CatalogObject;
@@ -38,6 +39,11 @@ export class Labels {
     for (const def of ALL_OBJECTS) {
       if (def.type === 'region') continue;
       const el = document.createElement('button');
+      // On touch these are captions, not controls - the tap goes through to
+      // the canvas so a drag over a label still orbits the camera. A control
+      // that cannot be activated should not be reachable by keyboard or
+      // announced as a button either.
+      if (isTouch()) el.tabIndex = -1;
       el.className = `body-label${def.type === 'star' || def.type === 'planet' ? '' : ' minor'}`;
       el.dataset.body = def.id;
       el.setAttribute('aria-label', `Select ${def.name}`);

@@ -161,6 +161,26 @@ is a NASA product, listed with its source in `SOURCES.md`; all of it streams
 by distance, so none of it is downloaded by a viewer who stays in the
 overview.
 
+**On a phone.** The mobile layout is not the desktop one scaled down. A
+viewport-and-pointer probe (`src/ui/device.ts`) publishes what kind of device
+is looking, and below a 500px short edge the app swaps shell: the twelve-chip
+top row - which on a phone became a horizontal scroller with no affordance,
+hiding seven features entirely - is replaced by a slim search bar, a
+thumb-reach tab bar, and a sheet that shows every feature as a labelled tile.
+The info panel becomes a real bottom sheet that rests at 42% so the world it
+describes stays visible, and is dragged, snapped and flicked away rather than
+closed with a hunt for an X. Every overlay inherits the same behaviour from
+one place. Taps get a threshold a finger can actually meet and a raycast that
+sweeps out to 26px, because a fingertip is not a mouse cursor. In the cockpit
+the permanent control deck collapses to a four-tab dock, panels stop stacking
+on each other in landscape, and running out of neck at 148° now turns the hull
+instead of stopping - so the 360° look works with only a touchscreen. Pinching
+the glass changes the field of view. Render budgets are chosen by device class:
+a phone starts well inside its pixel ratio rather than at 3x, runs bloom at
+half resolution, thins the decorative particle fields, never reaches for the
+8k Earth and Moon maps, and stops drawing the solar system entirely behind a
+full-screen sheet.
+
 **First-person spacecraft mode.** Board a research vessel and fly the
 Solar System from inside its cockpit. This is not a free camera with a
 frame drawn over it: the world is pinned to true scale, so a scene unit is

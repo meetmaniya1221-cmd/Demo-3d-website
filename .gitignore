@@ -1,6 +1,6 @@
-node_modules/
-dist/
 *.log
 .asset-cache/
-shots/
+dist/
+node_modules/
 shots-orbit/
+shots/

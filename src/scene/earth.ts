@@ -15,6 +15,7 @@
  */
 import * as THREE from 'three';
 import { TextureLadder, colourMap, dataMap, blankTexture } from './texladder';
+import { renderBudget } from './budget';
 
 /** Volumetric mean radius, NASA Earth fact sheet. */
 const EARTH_RADIUS_KM = 6371;
@@ -518,7 +519,10 @@ export class EarthDetail {
    * and not about which scale mode the app happens to be in.
    */
   setDistance(radii: number): void {
-    const rung = rungForDistance(radii);
+    // An 8k map decodes to about 134 MB of RGBA on the GPU. Two of them will
+    // get the tab killed on a phone long before the detail is appreciated, so
+    // the ladder is capped by what the device can actually hold.
+    const rung = Math.min(rungForDistance(radii), renderBudget().maxTextureRung);
     // full close-range treatment inside ~14 radii, none beyond ~40
     const closeness = THREE.MathUtils.clamp((40 - radii) / 26, 0, 1);
     this.uniforms.uCloseness.value = closeness;

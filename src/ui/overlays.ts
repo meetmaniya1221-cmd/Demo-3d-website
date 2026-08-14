@@ -4,6 +4,7 @@ import { ALL_OBJECTS, catalogObject } from '../data/catalog';
 import type { CatalogObject } from '../data/types';
 import { fmtDays, fmtHours, fmtInt, fmtMass, fmtTempC } from './format';
 import { sound } from '../audio';
+import { Sheet } from './sheet';
 
 function colorOf(def: BodyDef): string {
   return `#${def.color.toString(16).padStart(6, '0')}`;
@@ -19,6 +20,7 @@ export abstract class Overlay {
   private closeBtn: HTMLButtonElement;
   private restoreFocus: HTMLElement | null = null;
   private hideTimer: number | undefined;
+  private sheet!: Sheet;
 
   constructor(parent: HTMLElement, title: string, titleId: string) {
     this.root = document.createElement('div');
@@ -41,6 +43,14 @@ export abstract class Overlay {
     `;
     this.bodyEl = this.root.querySelector('.overlay-body')!;
     this.closeBtn = this.root.querySelector('.close')!;
+    // On compact layouts every overlay is a bottom sheet. Doing it here means
+    // the atlas, missions, structure, cutaway, compare, gravity, meteors and
+    // observatory all gain the same drag-to-dismiss behaviour from one place.
+    this.sheet = new Sheet(this.root.querySelector('.overlay-card') as HTMLElement, {
+      scroller: this.bodyEl,
+      onDismiss: () => this.close(),
+      handles: [this.root.querySelector('.overlay-head') as HTMLElement],
+    });
     this.closeBtn.addEventListener('click', () => this.close());
     this.root.addEventListener('click', (e) => {
       if (e.target === this.root) this.close();
@@ -71,9 +81,15 @@ export abstract class Overlay {
     return this.root.classList.contains('open');
   }
 
+  /** Release anything expensive the overlay was holding. Overlays that own a
+   *  render loop or a second GL context should implement this. */
+  protected onClose(): void {}
+
   open(): void {
     window.clearTimeout(this.hideTimer);
     this.root.hidden = false;
+    this.sheet.reset();
+    document.body.classList.add('sheet-open', 'overlay-open');
     // next frame so the opacity transition runs
     requestAnimationFrame(() => this.root.classList.add('open'));
     this.restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -84,8 +100,11 @@ export abstract class Overlay {
   close(): void {
     if (this.isOpen) sound.play('back', 0.3);
     this.root.classList.remove('open');
+    document.body.classList.remove('sheet-open', 'overlay-open');
+    this.onClose();
     this.hideTimer = window.setTimeout(() => {
       this.root.hidden = true;
+      this.sheet.reset();
     }, 320);
     this.restoreFocus?.focus();
     this.restoreFocus = null;

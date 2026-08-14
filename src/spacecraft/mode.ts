@@ -128,6 +128,9 @@ export class SpacecraftMode {
   private dragging = false;
   private pointerId = -1;
   private lastPointer = { x: 0, y: 0 };
+  private touches = new Map<number, { x: number; y: number }>();
+  private pinchStart = 0;
+  private pinchFov = 52;
   private neighbours: Neighbour[] = [];
   private region = regionOf(new THREE.Vector3(), 0);
   private slowTimer = 0;
@@ -356,6 +359,7 @@ export class SpacecraftMode {
   private attachInput(): void {
     const c = this.deps.canvas;
     c.addEventListener('pointerdown', this.bound.down);
+    window.addEventListener('pointercancel', this.bound.up);
     window.addEventListener('pointermove', this.bound.move);
     window.addEventListener('pointerup', this.bound.up);
     window.addEventListener('pointercancel', this.bound.up);
@@ -377,23 +381,67 @@ export class SpacecraftMode {
 
   private onPointerDown(e: PointerEvent): void {
     if (this.phase !== 'flying') return;
+    // a press that lands on an instrument is for the instrument, not the view
+    if ((e.target as HTMLElement | null)?.closest('.sc-hud button, .sc-hud input, .sc-nav, .sc-loc, .sc-deck, .sc-orbit, .sc-help')) {
+      return;
+    }
+    if (e.pointerType !== 'mouse') {
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.touches.size === 2) {
+        // second finger: this is a pinch, so stop looking and start zooming
+        this.dragging = false;
+        this.pinchStart = this.touchSpread();
+        this.pinchFov = this.fov;
+        return;
+      }
+    }
     this.dragging = true;
     this.pointerId = e.pointerId;
     this.lastPointer = { x: e.clientX, y: e.clientY };
   }
 
   private onPointerMove(e: PointerEvent): void {
+    if (e.pointerType !== 'mouse' && this.touches.has(e.pointerId)) {
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.touches.size === 2 && this.pinchStart > 0) {
+        // Pinching the glass changes the field of view - the one zoom that is
+        // honest here, because it changes the lens and not the distance. What
+        // the pilot sees still comes from where the ship actually is.
+        const spread = this.touchSpread();
+        if (spread > 0) {
+          this.fov = THREE.MathUtils.clamp(
+            this.pinchFov * (this.pinchStart / spread),
+            38,
+            72,
+          );
+          this.ui.setFov(this.fov);
+        }
+        return;
+      }
+    }
     if (!this.dragging || e.pointerId !== this.pointerId) return;
     const dx = e.clientX - this.lastPointer.x;
     const dy = e.clientY - this.lastPointer.y;
     this.lastPointer = { x: e.clientX, y: e.clientY };
-    // scale by field of view so the sensitivity feels the same at any FOV
-    const k = (THREE.MathUtils.degToRad(this.fov) / window.innerHeight) * 1.15;
+    // scale by field of view so the sensitivity feels the same at any FOV, and
+    // again for touch, where a thumb crosses far fewer pixels than a mouse
+    const touch = e.pointerType !== 'mouse';
+    const k =
+      (THREE.MathUtils.degToRad(this.fov) / window.innerHeight) * (touch ? 1.75 : 1.15);
     this.ship.look(-dx * k, -dy * k);
   }
 
   private onPointerUp(e: PointerEvent): void {
+    this.touches.delete(e.pointerId);
+    if (this.touches.size < 2) this.pinchStart = 0;
     if (e.pointerId === this.pointerId) this.dragging = false;
+  }
+
+  /** Distance between the two active touches, in pixels. */
+  private touchSpread(): number {
+    const [a, b] = [...this.touches.values()];
+    if (!a || !b) return 0;
+    return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
   private onWheel(e: WheelEvent): void {

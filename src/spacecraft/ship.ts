@@ -91,6 +91,8 @@ export const DEFAULT_TIME_INDEX = 4; // x10,000
 export const FASTEST_PROBE_KMS = 191; // Parker Solar Probe, Dec 2024 perihelion
 
 const MAX_HEAD_YAW = THREE.MathUtils.degToRad(148);
+/** The hull's own up axis, for spilling a look past the neck's limit. */
+const HULL_UP = new THREE.Vector3(0, 1, 0);
 const MAX_HEAD_PITCH_UP = THREE.MathUtils.degToRad(78);
 const MAX_HEAD_PITCH_DOWN = THREE.MathUtils.degToRad(66);
 
@@ -421,15 +423,39 @@ export class Ship {
     this.event = reason;
   }
 
-  /** Drag input from the pointer, in radians. */
+  /**
+   * Drag input from the pointer, in radians.
+   *
+   * A pilot's neck stops at 148 degrees, which on a desktop is fine - the
+   * keyboard can yaw the hull. With only a touchscreen, that limit meant the
+   * view simply stopped part-way round and there was no way to see behind the
+   * ship at all. So once the head is at its stop, any further drag in the same
+   * direction spills into the hull: you turn the chair when you run out of
+   * neck. The result is continuous 360-degree panning with no discontinuity,
+   * and the cockpit frame comes round with it because the hull really did
+   * rotate - the view is not a camera trick laid over a fixed ship.
+   *
+   * Pitch does not spill. Rolling the hull backwards to look further up would
+   * tumble the vessel, and a tumbling ship is a different feature.
+   */
   look(dYaw: number, dPitch: number): void {
     this.gazeLock = false;
-    this.headYawTarget = THREE.MathUtils.clamp(this.headYawTarget + dYaw, -MAX_HEAD_YAW, MAX_HEAD_YAW);
+    const wanted = this.headYawTarget + dYaw;
+    const held = THREE.MathUtils.clamp(wanted, -MAX_HEAD_YAW, MAX_HEAD_YAW);
+    this.headYawTarget = held;
+    const spill = wanted - held;
+    if (spill !== 0) this.yawHull(spill);
     this.headPitchTarget = THREE.MathUtils.clamp(
       this.headPitchTarget + dPitch,
       -MAX_HEAD_PITCH_DOWN,
       MAX_HEAD_PITCH_UP,
     );
+  }
+
+  /** Rotate the hull about its own vertical axis, so the horizon stays level. */
+  private yawHull(rad: number): void {
+    this.tmpQ.setFromAxisAngle(HULL_UP, rad);
+    this.quat.multiply(this.tmpQ);
   }
 
   /** Snap the pilot's head to a preset window. */

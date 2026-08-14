@@ -10,6 +10,7 @@
  * the body itself gets in the way.
  */
 import * as THREE from 'three';
+import { isCompact } from './device';
 import { catalogObject } from '../data/catalog';
 import type { CatalogObject } from '../data/types';
 import { CutawayScene, MAX_CUT } from '../scene/cutaway';
@@ -144,6 +145,26 @@ export class CutawayOverlay extends Overlay {
   get info(): { body: string; layers: number; objects: number } {
     const c = this.scene?.contents ?? { layers: 0, objects: 0 };
     return { body: this.currentId, ...c };
+  }
+
+  /**
+   * Tear the viewer down on close.
+   *
+   * This overlay owns a second WebGLRenderer - its own context, its own MSAA
+   * framebuffer and its own five-mip bloom composer - and it used to keep all
+   * of it alive for the rest of the session after a single visit. Two live
+   * contexts is a lot to ask of a phone, and it is the classic cause of iOS
+   * reloading a tab with "a problem repeatedly occurred". On a compact device
+   * the context goes back; on a desktop it is kept, because rebuilding it
+   * costs more than holding it and there is memory to spare.
+   */
+  protected onClose(): void {
+    cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    if (isCompact() && this.scene) {
+      this.scene.dispose();
+      this.scene = null;
+    }
   }
 
   protected onOpen(): void {

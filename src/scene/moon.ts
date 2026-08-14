@@ -13,6 +13,7 @@
  */
 import * as THREE from 'three';
 import { TextureLadder, colourMap, dataMap } from './texladder';
+import { renderBudget } from './budget';
 
 /** LOLA reference sphere (km) - the radius every LDEM height is relative to. */
 const MOON_RADIUS_KM = 1737.4;
@@ -149,7 +150,8 @@ export class MoonDetail {
 
   /** `radii` is the camera's distance from the Moon's centre, in Moon radii. */
   setDistance(radii: number): void {
-    const rung = rungFor(radii);
+    const budget = renderBudget();
+    const rung = Math.min(rungFor(radii), budget.maxTextureRung);
     this.uniforms.uPhotometric.value = THREE.MathUtils.clamp((70 - radii) / 45, 0, 1);
 
     const col = this.colour.want(rung, (t) => this.applyColour(t));
@@ -165,11 +167,14 @@ export class MoonDetail {
       this.mat.normalScale.set(s, s);
     }
 
-    this.setGeometryTier(radii <= 9 ? 2 : radii <= 40 ? 1 : 0);
+    // 512x256 of displaced sphere is 131k vertices; a low-tier phone should
+    // not be asked to transform that every frame for a 20 km bump
+    const maxTier = budget.maxTextureRung >= 3 ? 2 : budget.maxTextureRung >= 2 ? 1 : 0;
+    this.setGeometryTier(Math.min(radii <= 9 ? 2 : radii <= 40 ? 1 : 0, maxTier));
 
     // real relief on the limb, but only where the silhouette is big enough
     // for a 20 km bump to be worth 130k vertices
-    if (radii <= 9) {
+    if (radii <= 9 && maxTier >= 2) {
       const h = this.height.want(0, (t) => this.applyHeight(t));
       if (h) this.applyHeight(h);
     } else if (this.displaced) {

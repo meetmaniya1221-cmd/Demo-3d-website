@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { TYPE_LABEL, type CatalogObject } from '../data/types';
 import { catalogObject } from '../data/catalog';
+import { isCompact, onDeviceChange } from './device';
 import { fmtInt, fmtSimDate, fmtSimTime } from './format';
 import { magnitudeNote } from '../scene/nakedeye';
 import {
@@ -166,9 +167,17 @@ function fmtTimeScale(t: number): string {
   return `${fmtInt(t)}×`;
 }
 
-/** Narrow enough that instrument panels and a usable window cannot coexist. */
+/**
+ * Narrow enough that instrument panels and a usable window cannot coexist.
+ *
+ * This used to ask `innerWidth <= 760`, which is true of a phone held upright
+ * and false of the same phone turned on its side - so landscape fell through
+ * to the desktop layout and drew the navigation panel, the location panel and
+ * the control deck on top of one another. Height is just as scarce as width;
+ * the device module weighs both.
+ */
 function isPhone(): boolean {
-  return window.innerWidth <= 760;
+  return isCompact();
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -182,12 +191,24 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
+type DockGroup = 'engine' | 'time' | 'view' | 'ship';
+
 export class SpacecraftUI {
   private root: HTMLElement;
   private cb: SpacecraftUiCallbacks;
   private textTimer = 0;
   private mapTimer = 0;
   private lastTargetId: string | null = null;
+
+  // control deck
+  private topBar!: HTMLElement;
+  private topRight!: HTMLElement;
+  private exitBtn!: HTMLElement;
+  private shipGroup!: HTMLElement;
+  private deckEl!: HTMLElement;
+  private dockGroup: DockGroup | null = null;
+  private dockTabs: Partial<Record<DockGroup, HTMLButtonElement>> = {};
+  private deviceUnsub?: () => void;
 
   // top strip
   private velEl!: HTMLElement;
@@ -241,6 +262,7 @@ export class SpacecraftUI {
   private gazeBtn!: HTMLButtonElement;
   private navBtn!: HTMLButtonElement;
   private fovInput!: HTMLInputElement;
+  private fovValue!: HTMLElement;
   private helpEl!: HTMLElement;
   private panelBtn!: HTMLButtonElement;
   /** 0 = both panels (desktop) / none (phone), 1 = navigation, 2 = location,
@@ -273,7 +295,14 @@ export class SpacecraftUI {
     const badge = el('div', 'sc-badge');
     badge.innerHTML =
       '<b>ORRERY EVA</b><span>Research vessel · first-person</span>';
-    const exit = el('button', 'sc-exit', 'Exit spacecraft');
+    // the label is replaced by an icon on compact layouts (CSS), so the text
+    // lives in a span the stylesheet can hide without losing the accessible
+    // name on the button itself
+    const exit = el(
+      'button',
+      'sc-exit',
+      '<svg class="sc-exit-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M9 8l-4 4 4 4M5 12h10"/></svg><span>Exit spacecraft</span>',
+    );
     exit.setAttribute('aria-label', 'Exit spacecraft mode and return to the Solar System explorer');
     exit.addEventListener('click', () => this.cb.onExit());
 
@@ -317,6 +346,7 @@ export class SpacecraftUI {
       fovVal.textContent = `${this.fovInput.value}°`;
       this.cb.onFov(Number(this.fovInput.value));
     });
+    this.fovValue = fovVal;
     fovWrap.append(this.fovInput, fovVal);
 
     const helpBtn = el('button', 'sc-chip', 'Controls');
@@ -334,6 +364,9 @@ export class SpacecraftUI {
 
     right.append(this.navBtn, this.gazeBtn, fovWrap, helpBtn, this.panelBtn);
     bar.append(badge, strip, right, exit);
+    this.topBar = bar;
+    this.topRight = right;
+    this.exitBtn = exit;
     this.root.appendChild(bar);
 
     this.eventEl = el('div', 'sc-event');
@@ -489,6 +522,7 @@ export class SpacecraftUI {
     deck.setAttribute('aria-label', 'Propulsion and time controls');
 
     const propulsion = el('div', 'sc-deck-group');
+    propulsion.dataset.group = 'engine';
     this.propulsionLabel = el('i', 'sc-deck-label', 'Main engine · physical velocity');
     propulsion.appendChild(this.propulsionLabel);
     const row = el('div', 'sc-deck-row');
@@ -523,6 +557,7 @@ export class SpacecraftUI {
     // keyboard, and "look out of the left window" is a thing people want to do
     // without learning a drag gesture first.
     const viewGroup = el('div', 'sc-deck-group');
+    viewGroup.dataset.group = 'view';
     viewGroup.appendChild(el('i', 'sc-deck-label', 'Windows'));
     const vrow = el('div', 'sc-deck-row');
     const presets: Array<[string, number, number, string]> = [
@@ -545,6 +580,7 @@ export class SpacecraftUI {
     viewGroup.appendChild(vrow);
 
     const timeGroup = el('div', 'sc-deck-group');
+    timeGroup.dataset.group = 'time';
     timeGroup.appendChild(
       el('i', 'sc-deck-label', 'Time compression · simulated seconds per real second'),
     );
@@ -560,8 +596,71 @@ export class SpacecraftUI {
     this.throttleReadout = el('div', 'sc-rate');
     timeGroup.appendChild(this.throttleReadout);
 
-    deck.append(propulsion, timeGroup, viewGroup);
+    // On a phone all three groups stacked came to 314 px - nearly half the
+    // screen, permanently, in a mode whose entire point is looking out of the
+    // window. Compact layouts get a dock instead: one row of tabs, one group
+    // open at a time, and nothing open by default.
+    const dock = el('div', 'sc-dock');
+    dock.setAttribute('role', 'tablist');
+    dock.setAttribute('aria-label', 'Flight controls');
+    // A fourth group holds the chips that live in the top bar on desktop.
+    // Three rows of chrome across the top of a phone is most of the window.
+    this.shipGroup = el('div', 'sc-deck-group');
+    this.shipGroup.dataset.group = 'ship';
+    this.shipGroup.appendChild(el('i', 'sc-deck-label', 'Ship systems'));
+
+    const tabs: Array<[DockGroup, string]> = [
+      ['engine', 'Engine'],
+      ['time', 'Time'],
+      ['view', 'Windows'],
+      ['ship', 'Ship'],
+    ];
+    for (const [key, label] of tabs) {
+      const b = el('button', 'sc-dock-tab', label);
+      b.setAttribute('role', 'tab');
+      b.dataset.dock = key;
+      b.addEventListener('click', () => this.setDock(this.dockGroup === key ? null : key));
+      dock.appendChild(b);
+      this.dockTabs[key] = b;
+    }
+    this.deckEl = deck;
+    deck.append(dock, propulsion, timeGroup, viewGroup, this.shipGroup);
     this.root.appendChild(deck);
+    this.setDock(null);
+  }
+
+  /**
+   * Move the ship chips between the top bar and the dock.
+   *
+   * Same buttons, same handlers - only the parent changes, so there is one set
+   * of controls rather than a mobile copy that can drift out of step with the
+   * desktop one.
+   */
+  private relayoutChrome(): void {
+    const compact = isCompact();
+    if (compact) {
+      if (this.topRight.parentElement !== this.shipGroup) this.shipGroup.appendChild(this.topRight);
+    } else if (this.topRight.parentElement !== this.topBar) {
+      this.topBar.insertBefore(this.topRight, this.exitBtn);
+    }
+  }
+
+  /** Reflect a field of view set from outside - a pinch on the glass. */
+  setFov(deg: number): void {
+    const v = Math.round(deg);
+    this.fovInput.value = String(v);
+    this.fovValue.textContent = `${v}°`;
+  }
+
+  /** Show one deck group, or none. Compact layouts only; desktop shows all. */
+  private setDock(group: DockGroup | null): void {
+    this.dockGroup = group;
+    this.deckEl.dataset.dock = group ?? 'none';
+    for (const [key, btn] of Object.entries(this.dockTabs)) {
+      const on = key === group;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', String(on));
+    }
   }
 
   private buildMap(): void {
@@ -693,6 +792,15 @@ export class SpacecraftUI {
 
   show(): void {
     this.root.classList.add('on');
+    this.deviceUnsub?.();
+    // a rotation swaps which layout is legal, so re-evaluate rather than
+    // leaving a portrait panel arrangement on a landscape screen
+    this.deviceUnsub = onDeviceChange(() => {
+      this.syncPanels();
+      this.relayoutChrome();
+      if (!isCompact()) this.setDock(null);
+    });
+    this.relayoutChrome();
     this.root.setAttribute('aria-hidden', 'false');
     // phones start with the glass clear; desktops have room for both panels
     this.panelMode = isPhone() ? 0 : 1;
@@ -703,6 +811,8 @@ export class SpacecraftUI {
 
   /** Re-evaluate which panels are on screen (also called on resize). */
   syncPanels(): void {
+    // rotating the phone changes which layout applies, so a panel that was
+    // legal in portrait has to be re-checked rather than left where it was
     const phone = isPhone();
     if (!phone && this.panelMode > 1) this.panelMode = 1;
     if (phone && this.panelMode === 3 && !this.orbiting) this.panelMode = 0;
@@ -721,6 +831,8 @@ export class SpacecraftUI {
   }
 
   hide(): void {
+    this.deviceUnsub?.();
+    this.deviceUnsub = undefined;
     this.root.classList.remove('on');
     this.root.setAttribute('aria-hidden', 'true');
     this.helpEl.classList.remove('open');
