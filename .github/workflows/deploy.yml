@@ -1,15 +1,15 @@
 name: Deploy to GitHub Pages
 
+# NOTE: the `github-pages` environment has a deployment branch policy that
+# only admits `claude/3d-solar-system-edu-rxmhpb`. A push to any other branch
+# builds fine and is then rejected by the deploy job in about two seconds,
+# with no logs to explain why - so the other branches were only ever
+# generating red runs. Land work on the branch below to publish it, or widen
+# the environment's policy in Settings -> Environments -> github-pages.
 on:
   push:
     branches:
-      - claude/solar-system-explorer-1ylnq2
       - claude/3d-solar-system-edu-rxmhpb
-      - claude/solar-system-upgrade-4d9hwd
-      - claude/solar-system-ui-visuals-7kbu69
-      - claude/spacecraft-exploration-mode-o7c17x
-      - claude/nearby-star-systems-h0b72s
-      - main
   workflow_dispatch:
 
 permissions:
