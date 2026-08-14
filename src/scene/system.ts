@@ -18,6 +18,7 @@ import { ReferenceGrid } from './grid';
 import { Constellations } from './constellations';
 import type { GeneratedTextures } from './textures';
 import { Neighbourhood } from './neighbourhood';
+import { Wormhole } from './wormhole';
 import { StarSystemScene } from './starsystem';
 import { SOL_ID } from '../sim/interstellar';
 import { starSystem, systemOfPlanet, systemOfStar } from '../data/catalog/starsystems';
@@ -50,6 +51,9 @@ export class SolarSystem {
   readonly sky: Sky;
   /** The stellar neighbourhood, always present - it is the same universe. */
   readonly neighbourhood = new Neighbourhood();
+  /** The long-distance travel transition. An overlay on the one scene, so what
+   *  shows through its opening is the real destination. */
+  readonly wormhole = new Wormhole();
   /** Everything the Solar System owns, so it can step aside for another star. */
   private solGroup = new THREE.Group();
   private foreignSystems = new Map<string, StarSystemScene>();
@@ -78,6 +82,7 @@ export class SolarSystem {
     // universe, not to the Sun.
     this.scene.add(this.solGroup);
     this.scene.add(this.neighbourhood.group);
+    this.scene.add(this.wormhole.group);
 
     this.markers = new Markers();
     this.scene.add(this.markers.points);

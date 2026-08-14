@@ -1,6 +1,7 @@
 /** Central app state with a tiny event emitter - the single source of truth
  *  that both the 3D scene and the DOM UI observe. */
 import { daysSinceJ2000 } from '../data/bodies';
+import type { TravelEffects } from './travel';
 
 export type ScaleMode = 'explorer' | 'true';
 
@@ -76,6 +77,7 @@ type Events = {
   direction: 1 | -1; // time flowing forward or in rewind
   units: void; // unit mode changed - re-render formatted values
   tour: number | null; // step index or null = tour ended
+  travelEffects: TravelEffects;
 };
 
 type Handler<T> = (payload: T) => void;
@@ -93,6 +95,15 @@ export class AppState {
   showOrbits = true;
   showLabels = true;
   showHZ = false;
+  /**
+   * Quality of the long-distance travel transition. Someone who has asked the
+   * system for less motion is not asking for a wormhole, so that preference
+   * picks the default rather than being overridden by one.
+   */
+  travelEffects: TravelEffects =
+    typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'off'
+      : 'cinematic';
   layers: Layers = { ...DEFAULT_LAYERS };
   tourStep: number | null = null;
 
@@ -191,6 +202,12 @@ export class AppState {
     if (!Number.isFinite(msEpoch)) return;
     this.simDays = daysSinceJ2000(msEpoch);
     this.emit('timejump', undefined);
+  }
+
+  setTravelEffects(mode: TravelEffects): void {
+    if (this.travelEffects === mode) return;
+    this.travelEffects = mode;
+    this.emit('travelEffects', mode);
   }
 
   setTourStep(step: number | null): void {

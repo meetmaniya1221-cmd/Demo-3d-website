@@ -295,6 +295,12 @@ export class MilkyWay {
     this.material = display;
   }
 
+  /** The baked band, for anything that wants to sample the real sky rather
+   *  than invent one - the travel transition bends this. Null until `bake`. */
+  get cubemap(): THREE.CubeTexture | null {
+    return (this.target?.texture as THREE.CubeTexture) ?? null;
+  }
+
   update(_elapsed: number): void {
     // the sky does not animate: it is a fixed map of a real sky
   }
