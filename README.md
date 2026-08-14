@@ -158,7 +158,44 @@ away. Sub-pixel bodies never rasterise - a stable fixed-size marker takes
 over below a few projected pixels, which is also why comets don't flicker
 when you zoom out.
 
-**First-person spacecraft mode.** Board a research vessel with glass on every side. The cabin is a 360° observation deck: the pilot's head turns continuously through every bearing, so front, port, starboard, astern, overhead and the floor port are simply directions you happen to be facing, not a set of preset cameras. Turn right round and you watch where the ship has been - the real scene behind the hull, never a substitute backdrop.  and fly the
+**Earth and the Moon, close up.** These are the only two bodies you can
+approach to within a few hundred kilometres, so they are built as layer
+stacks rather than textured spheres. Earth is a lit ground surface carrying
+SRTM30/GEBCO relief, a MODIS cloud deck turning on its own period above it
+and casting shadows down onto the ground, and an atmosphere that is actually
+integrated rather than painted - a single-scattering march that produces the
+blue day limb, the planet's shadow on its own air, and a terminator that goes
+red because the blue is scattered out of sunlight crossing thirty air masses,
+not because something orange was drawn there. The night side dims as you
+close in and Black Marble's city lights come up through gaps in the weather.
+The Moon gets LRO's colour mosaic, crater relief from LOLA altimetry at its
+published half-metre encoding, real displaced terrain on the limb, and the
+backscattering photometric function that makes a full Moon read as a flat
+disc instead of a shaded ball. Its unlit side falls to earthshine. Every map
+is a NASA product, listed with its source in `SOURCES.md`; all of it streams
+by distance, so none of it is downloaded by a viewer who stays in the
+overview.
+
+**On a phone.** The mobile layout is not the desktop one scaled down. A
+viewport-and-pointer probe (`src/ui/device.ts`) publishes what kind of device
+is looking, and below a 500px short edge the app swaps shell: the twelve-chip
+top row - which on a phone became a horizontal scroller with no affordance,
+hiding seven features entirely - is replaced by a slim search bar, a
+thumb-reach tab bar, and a sheet that shows every feature as a labelled tile.
+The info panel becomes a real bottom sheet that rests at 42% so the world it
+describes stays visible, and is dragged, snapped and flicked away rather than
+closed with a hunt for an X. Every overlay inherits the same behaviour from
+one place. Taps get a threshold a finger can actually meet and a raycast that
+sweeps out to 26px, because a fingertip is not a mouse cursor. In the cockpit
+the permanent control deck collapses to a four-tab dock and panels stop
+stacking on each other in landscape, so the 360° view has a window to be seen
+through. Pinching the glass changes the field of view. Render budgets are chosen by device class:
+a phone starts well inside its pixel ratio rather than at 3x, runs bloom at
+half resolution, thins the decorative particle fields, never reaches for the
+8k Earth and Moon maps, and stops drawing the solar system entirely behind a
+full-screen sheet.
+
+**First-person spacecraft mode.** Board a research vessel with glass on every side. The cabin is a 360° observation deck: the pilot's head turns continuously through every bearing, so front, port, starboard, astern, overhead and the floor port are simply directions you happen to be facing, not a set of preset cameras. Turn right round and you watch where the ship has been - the real scene behind the hull, never a substitute backdrop.
 Solar System from inside its cockpit. This is not a free camera with a
 frame drawn over it: the world is pinned to true scale, so a scene unit is
 a fixed 1,495,978.707 km and a body's apparent size is nothing but its
@@ -233,12 +270,15 @@ genuinely sub-pixel from where the ship is, and a near plane that tracks
 the nearest surface so you can sit 130 km off the cloud tops.
 
 Performance strategy: shared geometries; textures stream lazily (flat
-colour → real map only when you approach or select a body); moon systems
-collapse entirely beyond visibility range; belts orbit in the vertex
-shader (zero CPU cost for ~7,000 particles); comet tails are two small
-GPU particle systems; adaptive pixel ratio backs off under load; the
-camera near-plane tracks zoom depth. Initial payload is one JS bundle +
-~4 MB of webp maps loaded on demand.
+colour → real map only when you approach or select a body); Earth and the
+Moon climb a four-rung resolution ladder by apparent size and release the
+rungs they are no longer using; moon systems collapse entirely beyond
+visibility range; belts orbit in the vertex shader (zero CPU cost for
+~7,000 particles); comet tails are two small GPU particle systems;
+adaptive pixel ratio backs off under load; the camera near-plane tracks
+zoom depth. Initial payload is one JS bundle + ~4 MB of webp maps loaded
+on demand; the 8k Earth and Moon maps are another ~20 MB that only a
+viewer who actually flies to them ever downloads.
 
 ## Scientific honesty
 

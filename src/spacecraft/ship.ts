@@ -427,7 +427,8 @@ export class Ship {
     this.event = reason;
   }
 
-  /** Drag input from the pointer, in radians. */
+  /** Drag input from the pointer, in radians. Yaw accumulates without limit;
+   *  only pitch is clamped, and only to keep the horizon the right way up. */
   look(dYaw: number, dPitch: number): void {
     this.gazeLock = false;
     this.headYawTarget += dYaw;

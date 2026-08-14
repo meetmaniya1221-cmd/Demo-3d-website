@@ -51,10 +51,10 @@ function adaptPlanet(def: BodyDef, parent: string | null): CatalogObject {
     texture:
       def.id === 'earth'
         ? {
-            file: 'earth.webp',
-            kind: 'procedural',
-            credit: 'AI-generated map (Higgsfield)',
-            note: 'Earth’s map here is an AI-generated rendering in the style of satellite imagery, not a NASA product.',
+            file: 'earth/day_8k.webp',
+            kind: 'photo',
+            credit: 'NASA Earth Observatory - Blue Marble Next Generation, Black Marble, MODIS, SRTM30/GEBCO',
+            note: 'Surface is Blue Marble Next Generation (December 2004, 2 km/pixel); the night side is Black Marble 2016 city lights, the cloud deck is a MODIS composite, and the relief is SRTM30/GEBCO topography. The clouds are a real July 2001 snapshot, not the weather on the simulated date.',
           }
         : isSun
           ? {

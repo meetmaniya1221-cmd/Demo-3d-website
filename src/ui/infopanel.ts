@@ -14,6 +14,7 @@ import {
   fmtMass,
   fmtTempC,
 } from './format';
+import { Sheet } from './sheet';
 
 export interface InfoPanelHost {
   /** Open the comparison overlay, optionally head-to-head with this body. */
@@ -73,6 +74,7 @@ export class InfoPanel {
   private currentId: string | null = null;
   private state: AppState;
   private host: InfoPanelHost;
+  private sheet!: Sheet;
 
   constructor(parent: HTMLElement, state: AppState, host: InfoPanelHost) {
     this.state = state;
@@ -97,6 +99,19 @@ export class InfoPanel {
     this.body = this.root.querySelector('.infopanel-body')!;
     this.root.querySelector('.close')!.addEventListener('click', () => state.select(null));
     parent.appendChild(this.root);
+
+    // On a phone this panel is a bottom sheet: it rests at a height that still
+    // shows the world it is describing, opens fully when dragged up, and is
+    // dismissed by flicking it down - the scene behind it is the point.
+    this.sheet = new Sheet(this.root, {
+      scroller: this.body,
+      snaps: [0.42, 1],
+      initial: 0.42,
+      dismissBelow: 0.24,
+      onDismiss: () => state.select(null),
+      handles: [this.root.querySelector('.infopanel-head') as HTMLElement],
+      onSnap: (f) => this.root.classList.toggle('sheet-tall', f > 0.7),
+    });
 
     state.on('select', (id) => (id ? this.show(id) : this.hide()));
   }
@@ -337,11 +352,15 @@ export class InfoPanel {
     this.body.scrollTop = 0;
     this.updateLive();
     this.root.classList.add('open');
+    document.body.classList.add('sheet-open');
+    this.sheet.present();
   }
 
   private hide(): void {
     this.currentId = null;
     this.root.classList.remove('open');
+    document.body.classList.remove('sheet-open');
+    this.sheet.reset();
   }
 
   /** Re-render the open panel (e.g. after a unit-mode change). */

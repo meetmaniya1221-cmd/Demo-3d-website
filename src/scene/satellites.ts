@@ -11,6 +11,7 @@ import type { CatalogObject } from '../data/types';
 import { moonDisplayDist, moonDisplayRadius, trueRadius } from '../sim/scale';
 import { minorTexture, irregularGeometry, type MinorPaintKind } from './minortex';
 import { Markers, projectedPx, markerFade } from './markers';
+import { MoonDetail } from './moon';
 
 const sphereGeo = new THREE.SphereGeometry(1, 48, 24);
 const satTextureLoader = new THREE.TextureLoader();
@@ -96,6 +97,9 @@ export class SatelliteSystem {
   private markers: Markers;
   private lastParentR = 1;
   private tmpV = new THREE.Vector3();
+  private tmpSun = new THREE.Vector3();
+  /** Earth's Moon alone gets the LRO/LOLA close-range treatment. */
+  private moonDetail?: MoonDetail;
 
   constructor(
     parentRadiusKm: number,
@@ -173,6 +177,12 @@ export class SatelliteSystem {
   private activate(sat: Sat): void {
     if (sat.activated) return;
     sat.activated = true;
+    if (sat.def.id === 'moon') {
+      // MoonDetail owns this surface from here: it streams the LROC colour
+      // mosaic and LOLA relief itself, by distance
+      this.moonDetail ??= new MoonDetail(sat.mesh, this.textureBase);
+      return;
+    }
     const mat = sat.mesh.material as THREE.MeshStandardMaterial;
     const file = sat.def.texture?.file;
     const applyPainted = () => {
@@ -306,7 +316,15 @@ export class SatelliteSystem {
 
       // marker crossfade: tiny moons render as stable fixed-size dots
       const world = s.mesh.getWorldPosition(this.tmpV);
-      const px = projectedPx(r, camPos.distanceTo(world), halfTanFov, viewH);
+      const camDist = camPos.distanceTo(world);
+      if (s.def.id === 'moon') {
+        this.activate(s);
+        // apparent size drives the detail, and the Sun sits at the origin so
+        // the direction to it is just the Moon's position, reversed
+        this.moonDetail?.setDistance(camDist / Math.max(r, 1e-6));
+        this.moonDetail?.update(this.tmpSun.copy(world).negate().normalize());
+      }
+      const px = projectedPx(r, camDist, halfTanFov, viewH);
       const mFade = markerFade(px);
       s.mesh.visible = mFade < 1;
       if (s.haze) s.haze.visible = s.mesh.visible;

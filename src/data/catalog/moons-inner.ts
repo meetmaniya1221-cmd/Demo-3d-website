@@ -48,9 +48,10 @@ export const INNER_MOONS: CatalogObject[] = [
       { label: 'NASA Moon Fact Sheet', url: 'https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html' },
     ],
     texture: {
-      file: 'moon.webp',
+      file: 'moon/color_8k.webp',
       kind: 'photo',
-      credit: 'NASA mission imagery via Solar System Scope (CC BY 4.0)',
+      credit: 'NASA SVS CGI Moon Kit - LROC WAC colour mosaic + LOLA altimetry',
+      note: 'Colour is the Hapke-normalised LROC Wide Angle Camera mosaic; the crater relief is LOLA laser altimetry at 64 pixels per degree, applied at its published half-metre scaling.',
     },
   },
   {

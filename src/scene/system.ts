@@ -64,7 +64,7 @@ export class SolarSystem {
     for (const def of PLANETS) {
       const ringTex =
         def.id === 'saturn' ? tex.saturnRing : def.id === 'uranus' ? tex.uranusRing : undefined;
-      const planet = new Planet(def, tex.bodies[def.id], ringTex);
+      const planet = new Planet(def, tex.bodies[def.id], ringTex, textureBase);
       this.planets.set(def.id, planet);
       this.scene.add(planet.group);
       this.pickables.push(planet.hit);
@@ -137,7 +137,7 @@ export class SolarSystem {
       const [x, y, z] = keplerPosition(def.orbit!, simDays);
       mapPositionAU(x, y, z, scaleT, this.tmp);
       planet.group.position.set(this.tmp.x, this.tmp.y, this.tmp.z);
-      planet.update(simDays, scaleT);
+      planet.update(simDays, scaleT, cameraPos);
     }
 
     this.smallBodies.update(simDays, scaleT, elapsed, cameraPos, halfTan, viewH);

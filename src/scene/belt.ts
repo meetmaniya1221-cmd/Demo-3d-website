@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from './noise';
 import { EXPLORER_A, EXPLORER_GAMMA, TRUE_UNITS_PER_AU } from '../sim/scale';
+import { renderBudget } from './budget';
 
 const BELT_VERT = /* glsl */ `
   attribute float aA;        // semi-major axis, AU
@@ -106,7 +107,7 @@ function inclDraw(rnd: () => number, sigmaDeg: number, maxDeg: number): number {
 }
 
 /** Main belt: 2.1-3.3 AU, mild eccentricities, Kirkwood gaps cleared. */
-export function buildMainBelt(count = 4200, seed = 555): BeltParticles {
+export function buildMainBelt(count = Math.round(4200 * renderBudget().particleScale), seed = 555): BeltParticles {
   const rnd = mulberry32(seed);
   const p = alloc(count);
   const GAPS = [2.502, 2.825, 2.958]; // 3:1, 5:2, 7:3 resonances with Jupiter
@@ -136,7 +137,7 @@ export function buildMainBelt(count = 4200, seed = 555): BeltParticles {
  * giving the real sharp-inner-edge / fading-outer-tail profile instead of
  * a uniform donut.
  */
-export function buildKuiperBelt(count = 9000, seed = 777): BeltParticles {
+export function buildKuiperBelt(count = Math.round(9000 * renderBudget().particleScale), seed = 777): BeltParticles {
   const rnd = mulberry32(seed);
   const p = alloc(count);
   for (let i = 0; i < count; i++) {

@@ -49,7 +49,53 @@ these and never presents artistic renderings as photographs.
 | `phobos.webp` | Mars Express SRC global mosaic 16 ppd | ESA/DLR/FU Berlin, NASA/USGS |
 | `deimos.webp` | Viking Orbiter cylindrical map | NASA/JPL/USGS |
 | `mercury.webp` `venus.webp` `mars.webp` `jupiter.webp` `saturn.webp` `uranus.webp` `neptune.webp` `sun.webp` `moon.webp` `saturn_ring.webp` | Solar System Scope texture pack (based on NASA mission imagery) | [Solar System Scope](https://www.solarsystemscope.com/textures/), CC BY 4.0 |
-| `earth.webp` | AI-generated map (Higgsfield) - **not** a NASA product, labelled as artistic in-app | Higgsfield AI |
+
+### Earth and the Moon, close range (`public/textures/earth/`, `public/textures/moon/`)
+
+These two are the only bodies a viewer can approach to within a few hundred
+kilometres, so they are not one map each but a layer stack at four
+resolutions, streamed by distance. Every layer is derived from a published
+NASA product by `scripts/buildearthmoon.mjs`, which records the source URL of
+each one and applies the elevation encodings **exactly as NASA documents
+them** - nothing here is upscaled from a smaller image, hand-painted, or
+invented. Earth's previous map was AI-generated; it has been removed.
+
+| File | Product | Resolution shipped | Credit |
+| --- | --- | --- | --- |
+| `earth/day_{1k,2k,4k,8k}.webp` | Blue Marble Next Generation, December 2004, topography + bathymetry ([73909](https://visibleearth.nasa.gov/images/73909/)) | from the 21600×10800 master (2 km/px) | NASA Earth Observatory (Reto Stockli, NASA GSFC) |
+| `earth/night_{1k,2k}.webp` | Black Marble 2016 night lights ([144898](https://visibleearth.nasa.gov/images/144898/)) | from the 3600×1800 master | NASA Earth Observatory (Joshua Stevens); Suomi NPP VIIRS day/night band |
+| `earth/clouds_{1k,2k,4k}.webp` | Blue Marble clouds, MODIS composite 2001-07-29 ([57747](https://visibleearth.nasa.gov/images/57747/)) | stitched from the two 21600×21600 hemispheres | NASA Earth Observatory / MODIS |
+| `earth/normal_{2k,4k}.webp` | Derived from BMNG land topography, SRTM30 + GEBCO_08 ([73934](https://visibleearth.nasa.gov/images/73934/)) | from the 21600×10800 master | NASA Earth Observatory |
+| `earth/orm_2k.webp` | Ocean/land roughness split, derived from the Blue Marble radiometry | 2048×1024 | derived, see below |
+| `moon/color_{1k,2k,4k,8k}.webp` | CGI Moon Kit colour map, Hapke-normalised LROC WAC mosaic ([SVS 4720](https://svs.gsfc.nasa.gov/4720)) | from the 8192×4096 master | NASA SVS (Ernie Wright); LRO/LROC |
+| `moon/normal_{2k,4k,8k}.webp` | Derived from LOLA LDEM at 64 px/deg ([SVS 4720](https://svs.gsfc.nasa.gov/4720)) | from the 23040×11520 master | NASA SVS / LRO LOLA |
+| `moon/height_2k.webp` | The same LDEM, quantised for displacement | 2048×1024 | NASA SVS / LRO LOLA |
+
+**Elevation encodings, quoted from the products' own pages.** The BMNG
+topography is 8-bit "scaled 0-6400 meters"; the LOLA LDEM `_uint` TIFFs are
+"unsigned 16-bit ... in half-meters, relative to a radius of 1727400 meters",
+against a 1737.4 km reference sphere. Both are applied verbatim when the
+normal maps are computed, with the east-west slope divided by cos(latitude)
+so relief is not smeared toward the poles. The Moon's shipped relief spans
+-8875 m to +10666 m, which is the real range of the data (the South
+Pole-Aitken floor and the Selenean summit).
+
+**Two derived layers, and what they assume.** The ocean roughness map is a
+blue-dominance test on the Blue Marble radiometry - water is the only large
+surface markedly bluer than it is red - so that the Sun glints off sea and
+not off land; it is not a published coastline product. The cloud composite's
+source hemispheres are a late-July mosaic, so the Antarctic is in polar night
+and MODIS has no visible-band retrieval there; those rows fade into NASA's
+own pre-assembled version of the same composite rather than being cut off at
+a hard line of latitude. The hemisphere ordering is not assumed either - the
+build correlates both possible orderings against that pre-assembled composite
+and fails if neither matches (it scores r=0.999 against r=-0.03).
+
+**What the clouds are and are not.** They are a real MODIS composite from
+29 July 2001 - genuine weather, but a fixed snapshot, not the weather on the
+simulated date. The app says so in Earth's info panel. Everything else about
+Earth and the Moon - where they are, how they are lit, the lunar phase - comes
+from the simulation, not from these images.
 
 Bodies without published global maps (the Uranian moons, Eris, Haumea,
 Makemake, Sedna, Quaoar, Gonggong, Orcus, Pallas, Hygiea, Psyche, Eros and

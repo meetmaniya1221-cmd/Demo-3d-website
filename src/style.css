@@ -1260,6 +1260,7 @@ input[type='range']::-moz-range-thumb {
     bottom: 64px;
     width: auto;
     max-height: 52vh;
+    max-height: 52dvh;
     transform: translateY(calc(100% + 84px));
     z-index: 45;
   }
@@ -1765,6 +1766,7 @@ input[type='range']::-moz-range-thumb {
 
 .search-results {
   max-height: 46vh;
+  max-height: 46dvh;
   overflow-y: auto;
   padding: 8px;
 }
@@ -2676,6 +2678,7 @@ body.journey-active .atlas {
 .layers-panel {
   width: 236px;
   max-height: min(62vh, 520px);
+  max-height: min(62dvh, 520px);
   overflow-y: auto;
   background: var(--panel);
   backdrop-filter: blur(14px);
@@ -2858,6 +2861,7 @@ body.journey-active .distance-readout {
   .layers-panel {
     width: 210px;
     max-height: 48vh;
+    max-height: 48dvh;
   }
 
   .distance-readout {
@@ -3766,6 +3770,7 @@ button.sim-date:hover {
 .locpicker-card {
   width: min(940px, 96vw);
   max-height: 92vh;
+  max-height: 92dvh;
   overflow: auto;
   padding: 16px;
   background: var(--panel-solid, #081120);
@@ -4074,6 +4079,7 @@ button.sim-date:hover {
   display: block;
   max-width: 100%;
   max-height: min(72vh, 900px);
+  max-height: min(72dvh, 900px);
   margin: 0 auto;
 }
 
@@ -4243,6 +4249,7 @@ button.sim-date:hover {
   flex-direction: column;
   gap: 4px;
   max-height: 40vh;
+  max-height: 40dvh;
   overflow-y: auto;
 }
 
@@ -4306,6 +4313,7 @@ button.sim-date:hover {
 .cut3d-stage {
   position: relative;
   min-height: min(60vh, 520px);
+  min-height: min(60dvh, 520px);
   border: 1px solid var(--line);
   background:
     radial-gradient(120% 90% at 50% 45%, rgba(102, 224, 255, 0.05), transparent 70%),
@@ -4468,6 +4476,7 @@ button.sim-date:hover {
 
   .cut3d-stage {
     min-height: 48vh;
+    min-height: 48dvh;
     order: -1;
   }
 
@@ -4512,6 +4521,8 @@ button.sim-date:hover {
 
 body.spacecraft-mode .brand,
 body.spacecraft-mode .top-actions,
+body.spacecraft-mode .mnav-top,
+body.spacecraft-mode .mnav-bottom,
 body.spacecraft-mode .timebar,
 body.spacecraft-mode .view-cluster,
 body.spacecraft-mode .distance-readout,
@@ -4746,6 +4757,7 @@ body.spacecraft-mode .rail {
   top: 88px;
   width: 286px;
   max-height: calc(100vh - 300px);
+  max-height: calc(100dvh - 300px);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -5279,6 +5291,7 @@ body.spacecraft-mode .rail {
   .sc-panel {
     width: 250px;
     max-height: calc(100vh - 340px);
+    max-height: calc(100dvh - 340px);
   }
   .sc-map canvas {
     width: 130px;
@@ -5288,7 +5301,7 @@ body.spacecraft-mode .rail {
 
 /* Phones: the window wins. Panels become a single bottom sheet the pilot
    cycles through, the deck collapses to scrollable rows, and the map goes. */
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 520px) {
   .sc-top {
     flex-wrap: wrap;
     gap: 6px;
@@ -5347,6 +5360,7 @@ body.spacecraft-mode .rail {
     top: auto;
     bottom: 150px;
     max-height: 38vh;
+    max-height: 38dvh;
     transform: none !important;
     padding: 11px;
   }
@@ -5400,6 +5414,7 @@ body.spacecraft-mode .rail {
     bottom: 150px;
     width: auto;
     max-height: 46vh;
+    max-height: 46dvh;
     overflow-y: auto;
   }
   .sc-reticle {
@@ -5411,6 +5426,7 @@ body.spacecraft-mode .rail {
 @media (max-height: 460px) {
   .sc-panel {
     max-height: 46vh;
+    max-height: 46dvh;
     bottom: 108px;
   }
   .sc-deck-group:nth-child(2) .sc-rate {
@@ -5441,12 +5457,14 @@ body.spacecraft-mode .rail {
   left: 14px;
   top: auto;
   bottom: 14px;
-  max-height: min(48vh, calc(100vh - 430px));
+  max-height: max(150px, min(48vh, calc(100vh - 430px)));
+  max-height: max(150px, min(48dvh, calc(100dvh - 430px)));
   display: none;
 }
 /* the navigation panel yields height while the orbit panel shares the column */
 .sc-hud.orbiting .sc-nav {
-  max-height: min(40vh, calc(100vh - 470px));
+  max-height: max(140px, min(40vh, calc(100vh - 470px)));
+  max-height: max(140px, min(40dvh, calc(100dvh - 470px)));
 }
 .sc-hud.orbiting .sc-list {
   max-height: 92px;
@@ -5527,7 +5545,8 @@ body.spacecraft-mode .rail {
 
 @media (max-width: 960px) {
   .sc-orbit {
-    max-height: min(46vh, calc(100vh - 440px));
+    max-height: max(150px, min(46vh, calc(100vh - 440px)));
+    max-height: max(150px, min(46dvh, calc(100dvh - 440px)));
   }
 }
 
@@ -5544,8 +5563,1295 @@ body.spacecraft-mode .rail {
     width: auto;
     bottom: 150px;
     max-height: 38vh;
+    max-height: 38dvh;
   }
   .sc-hud.orbiting .sc-nav {
     max-height: 38vh;
+    max-height: 38dvh;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   COMPACT SHELL - the touch-first layout
+   ══════════════════════════════════════════════════════════════════════════
+   Everything below is additive and gated on either [data-shell="compact"]
+   (set by ui/device.ts from the viewport) or (pointer: coarse) (set by the
+   browser from the input device). Desktop never matches either, so nothing
+   here can reach it. The two are deliberately separate questions: a narrow
+   desktop window wants the compact layout but not thumb-sized hit areas, and
+   a touchscreen laptop wants the reverse.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Apple HIG and Material both land on 44px as the smallest control a
+     fingertip hits reliably. */
+  --tap: 44px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --mnav-h: 0px;
+  --mtop-h: 0px;
+}
+
+[data-shell='compact'] {
+  --mnav-h: calc(56px + var(--safe-b));
+  --mtop-h: calc(46px + var(--safe-t));
+}
+
+/* Mobile browsers report 100vh as the height WITH the URL bar hidden, so a
+   bottom-anchored bar sized in vh spends its first seconds underneath the
+   browser chrome. dvh tracks the live height; --app-h is the JS fallback for
+   browsers without it. */
+html,
+body {
+  height: var(--app-h, 100%);
+  height: 100dvh;
+  /* no pull-to-refresh, no rubber-banding the whole page while orbiting */
+  overscroll-behavior: none;
+}
+
+[data-pointer='coarse'] body {
+  /* a stray double-tap should not zoom the page out from under the canvas */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-pointer='coarse'] .scene {
+  touch-action: none;
+}
+
+/* ───────────────────────────── compact: hide the desktop chrome ───────── */
+
+.mnav-top,
+.mnav-bottom {
+  display: none;
+}
+
+body.compact-shell .brand,
+body.compact-shell .top-actions,
+body.compact-shell .view-toggles {
+  display: none !important;
+}
+
+/* The view cluster (View / Reset view) floats bottom-right on desktop, where
+   it lands in empty space. On a phone it sits on top of the time bar, and
+   both of its actions already live in the More sheet. */
+body.compact-shell .view-cluster {
+  display: none !important;
+}
+
+/* The distance readout is a rotated vertical strip on the right edge - a
+   desktop flourish that reads as broken text on a narrow screen. Its numbers
+   move into the time bar's row instead. */
+body.compact-shell .distance-readout {
+  display: none !important;
+}
+
+/* `hidden` loses to a display rule, so a sheet that is supposed to be gone
+   stays in the layout swallowing taps along the bottom edge. */
+.mnav-sheet[hidden],
+.mnav-backdrop[hidden] {
+  display: none !important;
+}
+
+/* The rail is a vertical strip of view modes on desktop; on a phone it reads
+   as a floating stack in the middle of the scene, so it moves into the top
+   bar's shadow as a single scrolling row. */
+body.compact-shell .rail {
+  left: var(--safe-l);
+  right: var(--safe-r);
+  top: calc(var(--mtop-h) + 6px);
+  bottom: auto;
+  transform: none;
+  flex-direction: row;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 0;
+  clip-path: none;
+  border-left: 0;
+  border-right: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+body.compact-shell .rail::-webkit-scrollbar {
+  display: none;
+}
+
+/* ───────────────────────────────────────────── compact: top bar ───────── */
+
+.mnav-top.on {
+  display: flex;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  align-items: center;
+  gap: 8px;
+  height: var(--mtop-h);
+  padding: var(--safe-t) calc(10px + var(--safe-r)) 0 calc(10px + var(--safe-l));
+  background: linear-gradient(180deg, rgba(4, 6, 13, 0.94) 0%, rgba(4, 6, 13, 0.72) 62%, transparent 100%);
+  pointer-events: none;
+}
+
+.mnav-top.on > * {
+  pointer-events: auto;
+}
+
+.mnav-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(11, 17, 32, 0.82);
+  backdrop-filter: blur(10px);
+  color: var(--text-faint);
+  font-family: var(--sans);
+  font-size: 13px;
+  text-align: left;
+}
+
+.mnav-search svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--accent);
+}
+
+.mnav-search span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mnav-scale {
+  flex: none;
+  height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(11, 17, 32, 0.82);
+  backdrop-filter: blur(10px);
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.mnav-scale.true-scale {
+  color: var(--accent);
+  border-color: rgba(127, 212, 255, 0.42);
+  background: rgba(127, 212, 255, 0.12);
+}
+
+/* ────────────────────────────────────────── compact: bottom bar ───────── */
+
+.mnav-bottom.on {
+  display: flex;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  align-items: stretch;
+  height: var(--mnav-h);
+  padding: 0 calc(4px + var(--safe-r)) var(--safe-b) calc(4px + var(--safe-l));
+  border-top: 1px solid var(--line);
+  background: rgba(6, 10, 20, 0.93);
+  backdrop-filter: blur(16px);
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* A sheet owns the bottom of the screen while it is open, so the bar steps
+   aside rather than competing with it for the same 56 pixels. */
+body.sheet-open .mnav-bottom.on,
+body.mnav-open .mnav-bottom.on {
+  transform: translateY(100%);
+}
+
+.mnav-tab {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font-family: var(--sans);
+  transition: color 0.18s;
+}
+
+.mnav-tab svg {
+  width: 21px;
+  height: 21px;
+}
+
+.mnav-tab span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.mnav-tab:active {
+  color: var(--accent);
+}
+
+.mnav-tab[aria-expanded='true'] {
+  color: var(--accent);
+}
+
+/* ───────────────────────────────────────── compact: the More sheet ────── */
+
+.mnav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 78;
+  background: rgba(2, 4, 10, 0.55);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.mnav-backdrop.open {
+  opacity: 1;
+}
+
+.mnav-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 79;
+  max-height: 86dvh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--safe-b);
+  border-top: 1px solid var(--line-strong);
+  border-radius: 20px 20px 0 0;
+  background: rgba(8, 13, 25, 0.97);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.6);
+  transform: translateY(100%);
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.mnav-sheet.open {
+  transform: translateY(0);
+}
+
+.mnav-sheet-head {
+  display: flex;
+  align-items: center;
+  padding: 4px 16px 10px;
+}
+
+.mnav-sheet-title {
+  flex: 1;
+  font-family: 'Orbitron', var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.mnav-sheet-close {
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+}
+
+.mnav-sheet-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mnav-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 0 12px 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mnav-tile {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 1px 10px;
+  min-height: 62px;
+  padding: 11px 12px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(15, 22, 40, 0.7);
+  color: var(--text);
+  font-family: var(--sans);
+}
+
+.mnav-tile i {
+  grid-row: 1 / 3;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(127, 212, 255, 0.1);
+  color: var(--accent);
+}
+
+.mnav-tile i svg {
+  width: 19px;
+  height: 19px;
+}
+
+.mnav-tile b {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.mnav-tile em {
+  font-size: 10.5px;
+  font-style: normal;
+  line-height: 1.35;
+  color: var(--text-faint);
+}
+
+.mnav-tile:active {
+  border-color: var(--line-strong);
+  background: rgba(127, 212, 255, 0.1);
+}
+
+/* ──────────────────────────────────────────────── the sheet grip ──────── */
+
+.sheet-grip {
+  display: none;
+  flex: none;
+  width: 100%;
+  height: 22px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.sheet-grip::before {
+  content: '';
+  display: block;
+  width: 38px;
+  height: 4px;
+  margin: 9px auto 0;
+  border-radius: 999px;
+  background: rgba(158, 189, 255, 0.32);
+}
+
+.as-sheet > .sheet-grip {
+  display: block;
+}
+
+.sheet-dragging {
+  transition: none !important;
+}
+
+.sheet-settling {
+  transition: transform 0.26s cubic-bezier(0.32, 0.72, 0, 1) !important;
+}
+
+/* ─────────────────────────────────────── compact: the time bar ────────── */
+
+body.compact-shell .timebar {
+  left: calc(8px + var(--safe-l));
+  right: calc(8px + var(--safe-r));
+  bottom: calc(var(--mnav-h) + 8px);
+  transform: none;
+  /* five children, five tracks - a four-track grid silently wrapped the
+     Today button onto a second row and doubled the bar's height */
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 14px;
+  clip-path: none;
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s;
+}
+
+body.compact-shell .timebar .play {
+  width: var(--tap);
+  height: var(--tap);
+  min-width: var(--tap);
+  min-height: var(--tap);
+  flex: none;
+}
+
+body.compact-shell.sheet-open .timebar,
+body.compact-shell.mnav-open .timebar {
+  transform: translateY(calc(var(--mnav-h) + 100%));
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.compact-shell .timebar .speed-group {
+  min-width: 0;
+}
+
+body.compact-shell .timebar .speed-label {
+  display: none;
+}
+
+body.compact-shell .timebar .sim-date {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+body.compact-shell .timebar .now-btn {
+  font-size: 10px;
+  padding: 6px 9px;
+}
+
+/* ─────────────────────────── compact: info panel becomes a sheet ──────── */
+
+body.compact-shell .infopanel {
+  /* the desktop panel parks off the right edge when closed; as a bottom sheet
+     it has to park below, or it widens the document and creates a horizontal
+     scroll the user can find by accident */
+  transform: translateY(100%);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: auto;
+  max-width: none;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--safe-b);
+  border: 0;
+  border-top: 1px solid var(--line-strong);
+  border-radius: 20px 20px 0 0;
+  clip-path: none;
+  box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.62);
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+body.compact-shell .infopanel.open {
+  transform: translateY(0);
+}
+
+body.compact-shell .infopanel .infopanel-scroll,
+body.compact-shell .infopanel > .infopanel-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ─────────────────────────────── compact: overlays become sheets ──────── */
+
+body.compact-shell .overlay {
+  align-items: flex-end;
+  padding: 0;
+}
+
+body.compact-shell .overlay-card {
+  width: 100%;
+  max-width: none;
+  height: auto;
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding-bottom: var(--safe-b);
+  border: 0;
+  border-top: 1px solid var(--line-strong);
+  border-radius: 20px 20px 0 0;
+  clip-path: none;
+  transform: translateY(100%);
+  transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+body.compact-shell .overlay.open .overlay-card {
+  transform: translateY(0);
+}
+
+body.compact-shell .overlay-head {
+  flex: none;
+  gap: 8px;
+  padding: 2px 14px 10px;
+}
+
+body.compact-shell .overlay-title {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+}
+
+body.compact-shell .overlay-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 0 14px 18px;
+}
+
+/* Tab strips inside overlays are the commonest overflow: five filter chips do
+   not fit across 344px. Let them scroll, and say so with a fade at the edge
+   rather than leaving the user to discover it. */
+body.compact-shell .overlay-head-slot,
+body.compact-shell .overlay-tabs,
+body.compact-shell .tabs,
+body.compact-shell .seg {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 18px), transparent 100%);
+}
+
+body.compact-shell .overlay-head-slot::-webkit-scrollbar,
+body.compact-shell .overlay-tabs::-webkit-scrollbar,
+body.compact-shell .tabs::-webkit-scrollbar,
+body.compact-shell .seg::-webkit-scrollbar {
+  display: none;
+}
+
+/* Only the leaf controls refuse to shrink. Applying `flex: none` to every
+   child of the slot also hit the tab strip nested inside it, which then sized
+   to its content - 485px of tabs in a 375px phone - and pushed three filters
+   off the edge with no way to reach them. */
+body.compact-shell .overlay-tabs > *,
+body.compact-shell .tabs > *,
+body.compact-shell .seg > *,
+body.compact-shell .overlay-head-slot > button {
+  flex: none;
+  scroll-snap-align: start;
+}
+
+body.compact-shell .overlay-head-slot > .overlay-tabs,
+body.compact-shell .overlay-head-slot > .tabs,
+body.compact-shell .overlay-head-slot > .seg {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* ───────────────────────────────────── touch: hit areas and type ──────── */
+
+@media (pointer: coarse) {
+  /* One systemic rule instead of editing three hundred selectors: any control
+     that would land under a fingertip gets padded out to the minimum by its
+     own box, not by growing the text. */
+  button,
+  [role='button'],
+  select,
+  summary,
+  a.chip {
+    min-height: var(--tap);
+  }
+
+  .chip,
+  .now-btn,
+  .icon-btn,
+  .seg button,
+  .tabs button,
+  .overlay-tabs button,
+  .overlay-head button,
+  .sc-chip,
+  .sc-step,
+  .sc-cmd {
+    min-height: var(--tap);
+    min-width: var(--tap);
+  }
+
+  /* Anchors styled as controls are targets too. This is the single largest
+     group in the audit - the mission and fact-sheet links account for 300 of
+     the findings on their own - and `button` selectors never reached them. */
+  a[href].chip,
+  a[href].sc-chip,
+  .mission-link,
+  .sources-block a[href],
+  .fine-print a[href] {
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Rows of results are read top-to-bottom and tapped, so they take the full
+     minimum outright rather than an invisible expander - these are the real
+     class names the app emits (`search-item`, not `search-result`). */
+  .search-item,
+  .atlas-row,
+  .chip-row .chip.mini {
+    min-height: var(--tap);
+  }
+
+  /* A range input with a 12px thumb is unusable with a finger. */
+  input[type='range'] {
+    height: var(--tap);
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+
+  input[type='range']::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* iOS zooms the page in when a font-size below 16px is focused. */
+  input[type='text'],
+  input[type='search'],
+  input[type='number'],
+  input[type='date'],
+  textarea,
+  select {
+    font-size: 16px;
+  }
+
+  /* Hover styling on a touch device sticks after the finger lifts, leaving a
+     control looking permanently active. */
+  .chip:hover,
+  .rail button:hover,
+  .mnav-tile:hover {
+    background: var(--panel);
+  }
+}
+
+/* Type that is fine at a desk is not fine at arm's length on a phone. These
+   raise the floor without touching the desktop scale. */
+body.compact-shell {
+  --step-tiny: 11px;
+  --step-small: 12px;
+}
+
+body.compact-shell .k,
+body.compact-shell .u-label,
+body.compact-shell .infopanel-kind,
+body.compact-shell .edelay-note,
+body.compact-shell .overlay-note,
+body.compact-shell .fine-print,
+body.compact-shell .texture-badge,
+body.compact-shell .status-chip,
+body.compact-shell .knowledge-tag,
+body.compact-shell .atlas-section,
+body.compact-shell .type,
+body.compact-shell .skynote,
+body.compact-shell .sc-stat i,
+body.compact-shell .sc-deck-label,
+body.compact-shell .sc-bracket-label {
+  font-size: var(--step-tiny);
+}
+
+body.compact-shell .chip,
+body.compact-shell .now-btn,
+body.compact-shell .sim-date,
+body.compact-shell .scale-switch button {
+  font-size: var(--step-small);
+}
+
+/* ───────────────────────────────────────────── compact landscape ──────── */
+
+/* A phone on its side has ~360px of height for everything. Chrome that is
+   comfortable in portrait has to give most of it back. */
+@media (max-height: 480px) {
+  [data-shell='compact'] {
+    --mnav-h: calc(48px + var(--safe-b));
+    --mtop-h: calc(42px + var(--safe-t));
+  }
+
+  body.compact-shell .mnav-tab span {
+    display: none;
+  }
+
+  body.compact-shell .mnav-tab svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  body.compact-shell .infopanel,
+  body.compact-shell .overlay-card {
+    max-height: 96dvh;
+  }
+
+  body.compact-shell .mnav-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  body.compact-shell .mnav-tile {
+    min-height: 52px;
+  }
+
+  body.compact-shell .mnav-tile em {
+    display: none;
+  }
+
+  body.compact-shell .timebar {
+    bottom: calc(var(--mnav-h) + 5px);
+    padding: 4px 8px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SPACECRAFT MODE ON A PHONE
+   ══════════════════════════════════════════════════════════════════════════
+   The cockpit is the one screen where chrome is most tempting and least
+   affordable: every pixel of panel is a pixel of window the pilot cannot see
+   out of. Measured on a 375x667 phone, the three deck groups stacked to 314px
+   and overlapped the navigation panel by 172px; on a 852x393 landscape phone
+   the deck, the navigation panel and the location panel were drawn on top of
+   one another. So on compact layouts the deck collapses to a dock.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.sc-dock {
+  display: none;
+}
+
+body.compact-shell .sc-deck {
+  left: calc(6px + var(--safe-l));
+  right: calc(6px + var(--safe-r));
+  bottom: calc(6px + var(--safe-b));
+  transform: none;
+  max-width: none;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+body.compact-shell .sc-dock {
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+}
+
+.sc-dock-tab {
+  flex: 1;
+  min-height: var(--tap);
+  border: 1px solid var(--sc-line);
+  border-radius: 10px;
+  background: rgba(12, 20, 36, 0.6);
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sc-dock-tab.active {
+  color: var(--bg);
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* one group at a time, and none until the pilot asks */
+body.compact-shell .sc-deck .sc-deck-group {
+  display: none;
+  padding: 0 8px 10px;
+}
+
+body.compact-shell .sc-deck[data-dock='engine'] [data-group='engine'],
+body.compact-shell .sc-deck[data-dock='time'] [data-group='time'],
+body.compact-shell .sc-deck[data-dock='view'] [data-group='view'] {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The throttle row is seven chips wide and will never fit across a phone;
+   scrolling it beats truncating it, and the fade says so. */
+body.compact-shell .sc-deck-row {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 20px), transparent 100%);
+}
+
+body.compact-shell .sc-deck-row::-webkit-scrollbar {
+  display: none;
+}
+
+body.compact-shell .sc-deck-row > * {
+  flex: none;
+}
+
+/* ───────────────────────────────── compact: the top telemetry strip ───── */
+
+/* The strip wrapped its labels on top of its values, printing "PHYSICAMEVELAM"
+   where two stats overlapped. Fixed column widths and a single scrolling row
+   keep each stat whole. */
+body.compact-shell .sc-top {
+  gap: 6px;
+  padding: calc(4px + var(--safe-t)) calc(8px + var(--safe-r)) 6px calc(8px + var(--safe-l));
+  flex-wrap: wrap;
+}
+
+body.compact-shell .sc-strip {
+  flex: 1 0 100%;
+  order: 5;
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+body.compact-shell .sc-strip .sc-stat {
+  flex: none;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* Five stats come to 896px of content in a 359px bar. Rather than a silent
+   scroller, keep the three that change while flying - speed, time
+   compression, apparent rate - and let the location panel carry the date and
+   the flight mode, which it already shows in full. */
+body.compact-shell .sc-strip .sc-stat:nth-child(-n + 3) {
+  display: flex;
+}
+
+body.compact-shell .sc-strip .sc-stat:nth-child(n + 4) {
+  display: none;
+}
+
+
+
+body.compact-shell .sc-stat b {
+  font-size: 12px;
+}
+
+/* The ship chips (nav overlay, gaze lock, help, panels) move into the dock on
+   compact layouts, so the top bar is one slim row instead of three. */
+body.compact-shell .sc-top {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+
+body.compact-shell .sc-strip {
+  flex: 1 1 auto;
+  order: 0;
+  gap: 12px;
+}
+
+body.compact-shell .sc-exit {
+  order: 3;
+  flex: none;
+}
+
+body.compact-shell .sc-deck-group[data-group='ship'] {
+  gap: 8px;
+}
+
+body.compact-shell .sc-deck-group[data-group='ship'] .sc-top-right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+body.compact-shell .sc-deck-group[data-group='ship'] .sc-fov {
+  display: flex;
+}
+
+/* ─────────────────────────────── compact: the instrument panels ───────── */
+
+body.compact-shell .sc-nav,
+body.compact-shell .sc-loc,
+body.compact-shell .sc-orbit {
+  left: calc(6px + var(--safe-l));
+  right: calc(6px + var(--safe-r));
+  width: auto;
+  max-width: none;
+  /* clear of the dock, and never taller than the room left over */
+  bottom: calc(64px + var(--safe-b));
+  top: auto;
+  max-height: min(46dvh, calc(100dvh - 210px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* a hidden panel must leave the layout, not just fade - an invisible panel
+   still swallows every tap that lands on it */
+body.compact-shell .sc-hud.nav-hidden .sc-nav,
+body.compact-shell .sc-hud.loc-hidden .sc-loc,
+body.compact-shell .sc-hud.orbit-hidden .sc-orbit {
+  display: none;
+}
+
+body.compact-shell .sc-map {
+  display: none;
+}
+
+body.compact-shell .sc-hud.nav-hidden .sc-orbit {
+  display: none;
+}
+
+/* ─────────────────────────────────────── compact landscape cockpit ────── */
+
+@media (max-height: 520px) {
+  /* Height is the scarce dimension here: 393px total. The deck moves to the
+     right edge as a rail so the window keeps its full height, and the panels
+     become a left-hand column rather than a bottom sheet. */
+  body.compact-shell .sc-deck {
+    left: auto;
+    right: calc(6px + var(--safe-r));
+    bottom: calc(6px + var(--safe-b));
+    top: auto;
+    width: min(300px, 46vw);
+  }
+
+  body.compact-shell .sc-deck .sc-deck-group {
+    max-height: 40dvh;
+    overflow-y: auto;
+  }
+
+  body.compact-shell .sc-nav,
+  body.compact-shell .sc-loc,
+  body.compact-shell .sc-orbit {
+    right: auto;
+    left: calc(6px + var(--safe-l));
+    width: min(300px, 44vw);
+    bottom: calc(6px + var(--safe-b));
+    max-height: calc(100dvh - 62px);
+  }
+
+  body.compact-shell .sc-top {
+    flex-wrap: nowrap;
+    padding-top: calc(2px + var(--safe-t));
+  }
+
+  body.compact-shell .sc-strip {
+    flex: 1 1 auto;
+    order: 0;
+    gap: 10px;
+  }
+
+  body.compact-shell .sc-dock-tab {
+    min-height: 34px;
+    font-size: 10px;
+  }
+}
+
+/* The top bar has 375px to hold an identity block, three live instruments and
+   an exit. The badge's two-line name and the exit's full label were together
+   taking 201 of them, squeezing the instruments into 176 and clipping "TIME
+   COMPRESSION" mid-word. Both give up their text; neither gives up its
+   accessible name. */
+body.compact-shell .sc-badge {
+  flex: none;
+  padding-right: 8px;
+  font-size: 10px;
+}
+
+body.compact-shell .sc-badge b {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+body.compact-shell .sc-exit {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  min-width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+}
+
+body.compact-shell .sc-exit span {
+  display: none;
+}
+
+.sc-exit-icon {
+  display: none;
+  width: 19px;
+  height: 19px;
+}
+
+body.compact-shell .sc-exit-icon {
+  display: block;
+}
+
+/* portrait phones: the identity block earns its space least */
+@media (max-width: 430px) {
+  body.compact-shell .sc-badge {
+    display: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TOUCH: labels, gestures and the things that only bite on a phone
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@media (pointer: coarse) {
+  /* Body labels are 11px of text with 2px of padding - far too small to hit,
+     and the obvious fix makes things worse: a label padded out to 44px sits
+     directly over the planet it names and swallows every drag meant to orbit
+     the camera, because the canvas never sees the pointerdown at all.
+     So on touch they stop taking input entirely and become what they read as -
+     captions. Selection goes through the canvas, where the tap handler sweeps
+     a ring out to 26px and finds the body under the finger regardless. */
+  .body-label {
+    pointer-events: none;
+  }
+}
+
+/* ─────────────────────────────────────────────── error and loading ────── */
+
+.gl-error {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 28px calc(24px + var(--safe-r)) calc(28px + var(--safe-b)) calc(24px + var(--safe-l));
+  text-align: center;
+  background: rgba(4, 6, 13, 0.96);
+  backdrop-filter: blur(6px);
+}
+
+.gl-error.show {
+  display: flex;
+}
+
+.gl-error h2 {
+  font-family: 'Orbitron', var(--sans);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.gl-error p {
+  max-width: 34em;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.gl-error button {
+  min-height: var(--tap);
+  padding: 0 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Standalone links that end a card - "Official mission page", the fact-sheet
+   references - are targets in their own right, not words inside a sentence,
+   so they take the same minimum as a button. Links genuinely inside prose keep
+   the text flow; WCAG exempts those for exactly that reason. */
+@media (pointer: coarse) {
+  .mission-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SAFE AREAS
+   ══════════════════════════════════════════════════════════════════════════
+   index.html opts into `viewport-fit=cover`, which extends the page under the
+   notch and the home indicator. That is only an improvement if every
+   full-bleed surface then pads itself back out - otherwise content draws under
+   the cutout and, in landscape, roughly 47px of each edge becomes unreachable.
+   Opting in without handling the insets is strictly worse than not opting in.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@supports (padding: env(safe-area-inset-left)) {
+  .overlay,
+  .locpicker,
+  .dso-lightbox,
+  .search-overlay,
+  #landing {
+    padding-top: max(var(--pad, 22px), var(--safe-t));
+    padding-right: max(var(--pad, 22px), var(--safe-r));
+    padding-bottom: max(var(--pad, 22px), var(--safe-b));
+    padding-left: max(var(--pad, 22px), var(--safe-l));
+  }
+
+  /* Anything pinned to an edge takes the inset on that edge alone. */
+  .toast,
+  .tour-card,
+  .journey-hud {
+    margin-bottom: var(--safe-b);
+  }
+
+  .datepicker {
+    margin-right: var(--safe-r);
+  }
+
+  body.compact-shell .sc-top {
+    padding-top: max(4px, var(--safe-t));
+  }
+}
+
+/* Sky notes are ~9px of dim grey painted straight onto the star field, which
+   composites to about 2:1 against the background - well under the 4.5:1 that
+   AA asks for, and unreadable in daylight on a phone. A plate behind the text
+   fixes the contrast without brightening the label into the scene. */
+body.compact-shell .skynote {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(4, 7, 15, 0.62);
+  color: rgba(214, 228, 248, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+/* ── compact overlay header: two rows ───────────────────────────────────────
+   Title, filter strip and close in one row leaves the strip 106px on a 375px
+   phone - five filters in a scroller barely wider than one of them. Giving the
+   strip its own row costs 30px of height and makes the filters legible. */
+body.compact-shell .overlay-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'title close'
+    'slot slot';
+  align-items: center;
+  gap: 8px 10px;
+}
+
+body.compact-shell .overlay-title {
+  grid-area: title;
+}
+
+body.compact-shell .overlay-head > .close {
+  grid-area: close;
+}
+
+body.compact-shell .overlay-head-slot {
+  grid-area: slot;
+  width: 100%;
+}
+
+/* an overlay that leaves a strip of sky visible reads as a sheet you can
+   dismiss, rather than a page you are stuck on */
+body.compact-shell .overlay-card {
+  max-height: 88vh;
+  max-height: 88dvh;
+}
+
+/* ── the last of the sub-11px type ──────────────────────────────────────── */
+body.compact-shell .timebar .now-btn,
+body.compact-shell .sc-dock-tab,
+body.compact-shell .search-hint,
+body.compact-shell .mission-meta,
+body.compact-shell .body-label,
+body.compact-shell .body-label.minor,
+body.compact-shell .search-item .go,
+body.compact-shell kbd {
+  font-size: 11px;
+}
+
+body.compact-shell .mnav-search {
+  height: var(--tap);
+}
+
+body.compact-shell .mnav-scale {
+  height: var(--tap);
+}
+
+/* ── controls that are hidden by transform must also leave the a11y tree ──
+   A bar translated off the bottom of the screen is still focusable and still
+   announced; a keyboard or screen-reader user lands on four buttons that are
+   not on screen. */
+body.sheet-open .mnav-bottom.on,
+body.mnav-open .mnav-bottom.on,
+body.compact-shell.sheet-open .timebar,
+body.compact-shell.mnav-open .timebar {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ── the last few thumb targets ─────────────────────────────────────────── */
+@media (pointer: coarse) {
+  /* The atlas caret that expands a moon system is 18px in one dimension. */
+  .atlas-caret {
+    min-width: var(--tap);
+    min-height: var(--tap);
+  }
+
+  /* A 21px-tall search field is a miss even before the keyboard opens. */
+  .search-input-row input {
+    min-height: var(--tap);
+  }
+}
+
+/* Landscape has 393px of height, but a 34px tab is still a 34px tab. The dock
+   keeps the full minimum and takes the height from the group above it. */
+@media (max-height: 520px) {
+  /* Four tabs across a 300px rail leaves 75px each, and "Windows" does not
+     fit - the last tab was clipped by the deck's own rounded overflow. Two
+     rows of two is the same height budget and twice the width. */
+  body.compact-shell .sc-dock {
+    flex-wrap: wrap;
+  }
+
+  body.compact-shell .sc-dock-tab {
+    flex: 1 1 44%;
+    min-height: var(--tap);
+    font-size: 11px;
+  }
+
+  body.compact-shell .sc-deck .sc-deck-group {
+    max-height: 30dvh;
+  }
+}
+
+/* Data cells pair a value with a comparison in brackets - "9.0 m/s² (0.92×⊕)".
+   The bracketed half was 9px, below the floor the rest of the panel keeps. */
+body.compact-shell .data-cell small,
+body.compact-shell .v small,
+body.compact-shell .atlas-section small {
+  font-size: 11px;
+}
+
+/* Tab-bar labels are the one place a 10px label is the convention rather than
+   an oversight - iOS and Material both set them at 10-11px under a 24px icon,
+   and the icon carries the meaning. Bring them to the floor anyway; there is
+   room. */
+body.compact-shell .mnav-tab span {
+  font-size: 11px;
+}
+
+/* the last two sub-floor strings */
+body.compact-shell .mission-head small,
+body.compact-shell .sc-badge b {
+  font-size: 11px;
 }

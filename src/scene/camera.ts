@@ -1,6 +1,7 @@
 /** Camera rig: OrbitControls + cinematic fly-to flights + body following. */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { isTouch, onDeviceChange } from '../ui/device';
 
 export interface BodyFocus {
   position: THREE.Vector3;
@@ -54,10 +55,37 @@ export class CameraRig {
     this.controls.maxDistance = 12000;
     this.controls.autoRotate = !REDUCED_MOTION;
     this.controls.autoRotateSpeed = 0.12;
+    this.applyInputFeel();
+    onDeviceChange(() => this.applyInputFeel());
 
     dom.addEventListener('pointerdown', () => {
       this.controls.autoRotate = false;
     });
+  }
+
+  /**
+   * Tune the controls to the input device.
+   *
+   * A mouse moves the cursor a long way for a small hand movement; a finger
+   * drags the pixel it is touching. Reusing the mouse's rotate speed on touch
+   * makes the system feel like it is on ice, and the mouse wheel's zoom step
+   * has no equivalent in a pinch, where the gesture already carries the
+   * magnitude. Heavier damping also hides the lower sample rate of touch
+   * events on mid-range phones.
+   */
+  private applyInputFeel(): void {
+    const touch = isTouch();
+    this.controls.rotateSpeed = touch ? 0.38 : 0.55;
+    // a pinch already carries its own magnitude: the distance ratio between
+    // the fingers IS the zoom, so amplifying it makes the camera outrun the
+    // gesture (a 3.3x pinch was moving the camera 6x)
+    this.controls.zoomSpeed = touch ? 1.0 : 0.9;
+    this.controls.panSpeed = touch ? 0.85 : 0.6;
+    this.controls.dampingFactor = touch ? 0.11 : 0.06;
+    // one finger orbits, two pinch-zoom and pan - the natural mapping, and
+    // not what OrbitControls picks by default for the second finger
+    this.controls.touches.ONE = THREE.TOUCH.ROTATE;
+    this.controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
   }
 
   /** Distance the flight is aiming for, given the focus size right now. */

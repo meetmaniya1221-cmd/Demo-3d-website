@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from './noise';
 import { galacticStarDensity, MilkyWay, sceneToGalacticMatrix } from './galaxy';
+import { renderBudget } from './budget';
 
 const SKY_RADIUS = 6000;
 
@@ -64,7 +65,11 @@ export class Sky {
     // once: the matrix is orthonormal, so its transpose is its inverse.
     const galToScene = sceneToGalacticMatrix().transpose();
     const dir = new THREE.Vector3();
-    const count = 26000;
+    // These are the faint background stars that give the galactic band its
+    // texture, not the real catalogue - which is drawn separately and is never
+    // thinned. They are the cheapest points on the screen to give up, and 26k
+    // additive sprites is a lot to ask of a phone.
+    const count = Math.round(26000 * renderBudget().particleScale);
     const pos = new Float32Array(count * 3);
     const size = new Float32Array(count);
     const color = new Float32Array(count * 3);
