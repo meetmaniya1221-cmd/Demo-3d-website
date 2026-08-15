@@ -8,6 +8,7 @@ on:
       - claude/solar-system-upgrade-4d9hwd
       - claude/solar-system-ui-visuals-7kbu69
       - claude/spacecraft-exploration-mode-o7c17x
+      - claude/milky-way-sagittarius-a-wrk9bl
       - main
   workflow_dispatch:
 

@@ -30,6 +30,7 @@ import { Atlas } from './ui/atlas';
 import { Journey } from './ui/journey';
 import { Tour, type TourHost } from './ui/tour';
 import { SpacecraftMode } from './spacecraft/mode';
+import { GalaxyMode } from './galaxy/mode';
 import { PLANETS } from './data/bodies';
 import { catalogObject } from './data/catalog';
 import { fmtSimDate } from './ui/format';
@@ -65,6 +66,7 @@ export class App implements TourHost {
   private journey: Journey;
   private tour: Tour;
   private spacecraft: SpacecraftMode;
+  private galaxy: GalaxyMode;
   private toastEl: HTMLElement;
   private liveRegion!: HTMLElement;
   private toastTimer = 0;
@@ -164,6 +166,7 @@ export class App implements TourHost {
       onMeteors: () => this.meteors.open(),
       onObservatory: () => this.observatory.open(),
       onSpacecraft: () => this.enterSpacecraft(),
+      onGalaxy: () => this.enterGalaxy(),
     });
     this.infoPanel = new InfoPanel(root, this.state, {
       onCompare: (id) => (id ? this.compare.openWith(id) : this.compare.open()),
@@ -177,6 +180,16 @@ export class App implements TourHost {
     this.spacecraft = new SpacecraftMode(root, {
       state: this.state,
       system: this.system,
+      renderer: this.renderer,
+      camera: this.rig.camera,
+      canvas: this.renderer.domElement,
+      releaseCamera: () => this.rig.release(),
+      resumeCamera: (target) => this.rig.resume(target),
+      focusOverview: () => this.focusOverview(),
+      announce: (text) => this.announce(text),
+    });
+    this.galaxy = new GalaxyMode(root, {
+      state: this.state,
       renderer: this.renderer,
       camera: this.rig.camera,
       canvas: this.renderer.domElement,
@@ -365,6 +378,22 @@ export class App implements TourHost {
     }
   }
 
+  /** Leave the Solar System: galaxy-scale navigation toward Sagittarius A*. */
+  enterGalaxy(): void {
+    if (this.galaxy.active) return;
+    if (this.spacecraft.active) this.spacecraft.exit();
+    if (this.tour.active) this.tour.dismiss();
+    if (this.journey.active) this.journey.end();
+    this.atlas.close();
+    if (this.search.isOpen) this.search.close();
+    for (const o of [this.compare, this.gravity, this.structure, this.earthMoon, this.observatory, this.missions, this.meteors, this.cutaway]) {
+      if (o.isOpen) o.close();
+    }
+    if (this.layersPanel.isOpen) this.layersPanel.setOpen(false);
+    if (this.state.selectedId) this.state.select(null);
+    this.galaxy.enter();
+  }
+
   /** Enter first-person spacecraft mode, closing anything modal first. */
   enterSpacecraft(): void {
     if (this.spacecraft.active) return;
@@ -415,7 +444,11 @@ export class App implements TourHost {
   }
 
   private onKey(e: KeyboardEvent): void {
-    // spacecraft mode owns the keyboard while it is flying
+    // whichever flight mode is active owns the keyboard
+    if (this.galaxy.active) {
+      this.galaxy.handleKey(e);
+      return;
+    }
     if (this.spacecraft.active) {
       this.spacecraft.handleKey(e);
       return;
@@ -475,6 +508,18 @@ export class App implements TourHost {
     const rawDt = this.clock.getDelta();
     const dt = Math.min(rawDt, 0.1);
     this.elapsed += dt;
+
+    // galaxy mode renders its own universe; the solar system sleeps
+    if (this.galaxy.active) {
+      this.galaxy.update(rawDt);
+      if (this.galaxy.active) {
+        this.galaxy.render();
+        this.trackFrameCost(rawDt);
+        return;
+      }
+      // the mode exited this very frame - fall through to the normal path
+    }
+
     const flying = this.spacecraft.active;
     if (flying) {
       // the vessel drives the clock: simulated time advances at the ship's own
@@ -605,6 +650,7 @@ export class App implements TourHost {
     this.system.constellations.setPixelRatio(value);
     this.system.setPixelRatio(value);
     this.spacecraft.setPixelRatio(value);
+    this.galaxy.setPixelRatio(value);
   }
 
   private resize(): void {
@@ -615,6 +661,7 @@ export class App implements TourHost {
     this.composer.setSize(w, h);
     this.rig.resize(w, h);
     this.spacecraft.resize(w, h);
+    this.galaxy.resize(w, h);
     this.updateViewOffset();
   }
 
@@ -677,6 +724,10 @@ export class App implements TourHost {
       exitSpacecraft: () => this.spacecraft.exit(),
       spacecraftActive: () => this.spacecraft.active,
       spacecraft: this.spacecraft.debug,
+      enterGalaxy: () => this.enterGalaxy(),
+      exitGalaxy: () => this.galaxy.exit(),
+      galaxyActive: () => this.galaxy.active,
+      galaxy: this.galaxy.debug,
     };
   }
 }

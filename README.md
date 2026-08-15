@@ -4,6 +4,18 @@ An educational, cinematic 3D Solar System that runs entirely in the browser.
 Fly between planets, moons, comets and dwarf worlds - real NASA maps, real
 orbits, and the true, humbling scale of it all.
 
+Then leave it all behind: **Galaxy mode** turns the backdrop into territory.
+A procedural but scientifically anchored Milky Way - central bulge, 5-kpc
+bar, the two major and two minor spiral arms, the Orion Spur with the Sun in
+its real place 26,996 ly from the centre - navigable at one light-year per
+scene unit with double-precision, camera-relative rendering. Fly to the
+galactic centre and meet **Sagittarius A\***: an S-star cluster on published
+orbital elements, GR-correct gravitational lensing with a marched photon
+shadow, Chandra/JWST-inspired flares, real √(1−R_s/r) time dilation on the
+ship's clocks, a survey scanner with a persistent discovery log, and an
+interactive galaxy map. Every number's provenance is in SOURCES.md; every
+approximation is labelled in-app.
+
 ![stack](https://img.shields.io/badge/stack-Vite%20%2B%20TypeScript%20%2B%20Three.js-blue)
 
 ## Running it
@@ -17,6 +29,7 @@ npm run preview  # serve the production build
 npm run test:orbit      # two-body maths checks (no browser needed)
 npm run test:flight     # headless flight check of spacecraft mode
 npm run test:orbitflight # headless orbital-manoeuvring check
+npm run test:galaxy     # headless Milky Way / Sagittarius A* journey check
                         # the last two need `npm run preview` running on :4173
 ```
 

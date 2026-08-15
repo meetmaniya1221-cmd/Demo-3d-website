@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test:flight": "node scripts/flighttest.mjs",
+    "test:galaxy": "node scripts/galaxytest.mjs",
     "test:orbit": "node --experimental-strip-types scripts/orbittest.mts",
     "test:orbitflight": "node scripts/orbitflight.mjs"
   },
