@@ -65,8 +65,13 @@ const THROAT_FRAG = /* glsl */ `
   uniform vec3 uAxis;        // world-space direction of travel
   uniform vec3 uSide;        // an axis-perpendicular reference, for azimuth
   uniform vec3 uUp;
-  uniform vec3 uCamPos;
-  uniform mat4 uInvViewProj;
+  // The camera's orientation and lens, rather than its position and an
+  // inverse view-projection. See the note in the fragment body.
+  uniform vec3 uCamRight;
+  uniform vec3 uCamUp;
+  uniform vec3 uCamFwd;
+  uniform float uTanHalfFov;
+  uniform float uAspect;
   uniform samplerCube uSky;
   uniform float uHasSky;
   uniform float uTime;
@@ -89,9 +94,30 @@ const THROAT_FRAG = /* glsl */ `
   }
 
   void main() {
-    // world-space view ray for this pixel
-    vec4 far = uInvViewProj * vec4(vNdc, 1.0, 1.0);
-    vec3 d = normalize(far.xyz / far.w - uCamPos);
+    // World-space view ray for this pixel, built from the camera's basis and
+    // its lens.
+    //
+    // This used to unproject to the far plane and subtract the camera
+    // position. That is the textbook reconstruction and it is fine in a scene
+    // that stays near the origin - but this one does not. During an
+    // interstellar cruise the ship passes fourteen million units out while the
+    // far plane is twenty thousand, so both terms of that subtraction are
+    // around 1e7, where a 32-bit float's neighbours are a whole unit apart.
+    // The direction therefore came out quantised, and the shader amplifies
+    // exactly that quantity: depth goes as 1/theta, whose slope near the
+    // throat is -400, and fbm scales its input by 2.11^3 on the way in. A ray
+    // error of 2.5e-4 arrived at the noise as a jump of more than one cell, so
+    // neighbouring pixels sampled different simplex tetrahedra and the lattice
+    // itself was drawn - the flat violet facets in the report.
+    //
+    // A ray needs the camera's orientation, not its whereabouts. Every term
+    // below is of order one, so the result carries full precision wherever in
+    // the galaxy the ship happens to be.
+    vec3 d = normalize(
+      uCamRight * (vNdc.x * uAspect * uTanHalfFov) +
+      uCamUp * (vNdc.y * uTanHalfFov) +
+      uCamFwd
+    );
 
     float ct = clamp(dot(d, uAxis), -1.0, 1.0);
     float theta = acos(ct);                       // angle off the travel axis
@@ -380,7 +406,6 @@ export class Wormhole {
   private axisView = new THREE.Vector3();
   private sideView = new THREE.Vector3();
   private upView = new THREE.Vector3();
-  private invViewProj = new THREE.Matrix4();
 
   constructor() {
     const geo = new THREE.BufferGeometry();
@@ -397,8 +422,11 @@ export class Wormhole {
         uAxis: { value: this.axis },
         uSide: { value: this.side },
         uUp: { value: this.up },
-        uCamPos: { value: new THREE.Vector3() },
-        uInvViewProj: { value: new THREE.Matrix4() },
+        uCamRight: { value: new THREE.Vector3(1, 0, 0) },
+        uCamUp: { value: new THREE.Vector3(0, 1, 0) },
+        uCamFwd: { value: new THREE.Vector3(0, 0, -1) },
+        uTanHalfFov: { value: 0.5 },
+        uAspect: { value: 1 },
         uSky: { value: null },
         uHasSky: { value: 0 },
         uTime: { value: 0 },
@@ -471,6 +499,13 @@ export class Wormhole {
     this.t = 0;
     this.swapped = false;
     this.held = 0;
+    // Restart the animation clock with each run. It feeds the noise field
+    // directly, and simplex noise loses resolution as its input grows: left to
+    // accumulate across a long session it would eventually flatten the
+    // filaments into cells for the same reason a quantised ray direction did.
+    // A run lasts seconds, so a few hundred is the most this ever reaches, and
+    // the discontinuity lands where the effect is still at zero intensity.
+    this.elapsed = 0;
     this.mesh.visible = true;
   }
 
@@ -533,12 +568,17 @@ export class Wormhole {
     u.uTime.value = this.elapsed;
     u.uIntensity.value = intensity;
     u.uAperture.value = aperture;
-    (u.uCamPos.value as THREE.Vector3).copy(camera.position);
     camera.updateMatrixWorld();
-    this.invViewProj
-      .multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
-      .invert();
-    (u.uInvViewProj.value as THREE.Matrix4).copy(this.invViewProj);
+    // The camera's world basis, straight off its matrix: columns 0 and 1 are
+    // right and up, and column 2 points backwards, which is why the forward
+    // vector is negated. Unit vectors, so nothing here carries the ship's
+    // distance from the origin into the shader.
+    const m = camera.matrixWorld.elements;
+    (u.uCamRight.value as THREE.Vector3).set(m[0], m[1], m[2]).normalize();
+    (u.uCamUp.value as THREE.Vector3).set(m[4], m[5], m[6]).normalize();
+    (u.uCamFwd.value as THREE.Vector3).set(-m[8], -m[9], -m[10]).normalize();
+    u.uTanHalfFov.value = Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5);
+    u.uAspect.value = camera.aspect;
 
     // The streak field is placed in view space, so its size is set by the
     // frustum rather than by the world: a fixed multiple of the near plane is

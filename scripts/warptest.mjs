@@ -363,7 +363,91 @@ note('Solar System → TRAPPIST-1 (explorer)', {
   ...arrivedFrame,
 });
 
-// ============================================= 9. the overlay always cleans up
+// ====================== 9. the throat at interstellar range, where the maths
+//                            has to hold up
+//
+// An in-system hop keeps the camera a hundred units from the origin. A cruise
+// between stars carries it past ten million, with a far plane of twenty
+// thousand - and every earlier check in this file passed happily while the
+// throat was, at that range, a field of flat violet triangles. The shader was
+// rebuilding its view ray by unprojecting to the far plane and subtracting the
+// camera position, which at 1e7 is a subtraction of two nearly equal enormous
+// numbers; the quantised result went through a 1/theta term and into simplex
+// noise, and drew the noise lattice instead of the filaments.
+//
+// So this measures smoothness rather than presence. Flat plate is the
+// signature: a pixel bit-identical to the one eight along, which a gradient
+// never is and a facet always is. Measured off-centre and above the panels so
+// the HUD is not what is being scored.
+const facets = (name) => {
+  const p = PNG.sync.read(readFileSync(`${OUT}/${name}.png`));
+  const { width, height, data } = p;
+  const x0 = Math.round(width * 0.28);
+  const x1 = Math.round(width * 0.95);
+  const y0 = Math.round(height * 0.18);
+  const y1 = Math.round(height * 0.45);
+  let flat = 0;
+  let n = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1 - 8; x++) {
+      const a = (y * width + x) * 4;
+      const b = (y * width + x + 8) * 4;
+      n++;
+      if (data[a] === data[b] && data[a + 1] === data[b + 1] && data[a + 2] === data[b + 2]) flat++;
+    }
+  }
+  return n ? flat / n : 1;
+};
+
+await api('exitSpacecraft');
+await settle(1500);
+await api('enterSpacecraft');
+await page
+  .waitForFunction(() => window.__orrery.spacecraft.phase() === 'flying', null, { timeout: 40_000 })
+  .catch(() => {});
+await settle(2500);
+await sc('setStarTarget', 'alpha-centauri');
+await sc('launchInterstellar');
+
+let worstFacet = 0;
+let peakCam = 0;
+let frames = 0;
+for (let i = 0; i < 40; i++) {
+  const w = await warp();
+  if (w.active) {
+    const camLen = await page.evaluate(() => window.__orrery.camera.position.length());
+    peakCam = Math.max(peakCam, camLen);
+    // only score the throat, where the effect actually covers the frame
+    if (w.phase === 'throat') {
+      const name = `interstellar-${String(frames).padStart(2, '0')}`;
+      await shot(name);
+      worstFacet = Math.max(worstFacet, facets(name));
+      frames++;
+    }
+  } else if (frames > 0) break;
+  await settle(600);
+}
+if (frames === 0) fail('the interstellar cruise never reached the throat, so nothing was measured');
+if (peakCam < 1e6) fail(`the cruise stayed at |cam|=${peakCam.toExponential(2)}; this check needs interstellar range`);
+// The facets ran at 31-38% of the frame; a clean throat sits near 2%, which is
+// where the frames before the effect ramps up also sit.
+if (worstFacet > 0.12) {
+  fail(
+    `the throat is faceted at interstellar range: ${(worstFacet * 100).toFixed(1)}% of the ` +
+      'sampled area is flat plate (a smooth throat is about 2%)',
+  );
+}
+note('interstellar throat', {
+  frames,
+  peakCameraDistance: peakCam.toExponential(2),
+  worstFlatFraction: `${(worstFacet * 100).toFixed(1)}%`,
+});
+await sc('abortInterstellar').catch(() => {});
+await settle(1200);
+await api('exitSpacecraft');
+await settle(1500);
+
+// ============================================= 10. the overlay always cleans up
 const stuck = await warp();
 if (stuck.active) fail('the transition is still running after everything finished');
 const noteVisible = await page.evaluate(
