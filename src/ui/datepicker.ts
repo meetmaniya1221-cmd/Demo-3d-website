@@ -1,9 +1,9 @@
 /**
  * Time-machine date picker: a HUD-styled calendar that replaces the native
  * browser date input, so the time machine speaks the same visual language as
- * the rest of the interface. Same contract as before: pick a day between
- * 1900 and 2100 and the simulation jumps there (12:00 UTC, like the old
- * input did).
+ * the rest of the interface. Pick a day between 1900 and 2100 - and a time
+ * of day, because for a planetarium "which night, at what hour" is the whole
+ * question - and the simulation jumps there (UTC).
  */
 import type { AppState } from '../sim/state';
 import { simDateMs } from './format';
@@ -22,6 +22,8 @@ export class DatePicker {
   private grid: HTMLElement;
   private title: HTMLElement;
   private yearInput: HTMLInputElement;
+  private hourInput!: HTMLInputElement;
+  private minInput!: HTMLInputElement;
   private state: AppState;
   private anchor: HTMLElement;
   private viewYear = 2026;
@@ -57,6 +59,13 @@ export class DatePicker {
       </div>
       <div class="datepicker-dow" aria-hidden="true">${DOW.map((d) => `<span>${d}</span>`).join('')}</div>
       <div class="datepicker-grid" role="group" aria-label="Days of the month"></div>
+      <div class="datepicker-time">
+        <span class="dp-time-label">TIME</span>
+        <input class="dp-hour" type="number" min="0" max="23" aria-label="Hour (UTC)" />
+        <span class="dp-time-sep">:</span>
+        <input class="dp-min" type="number" min="0" max="59" step="5" aria-label="Minute (UTC)" />
+        <span class="dp-time-utc">UTC</span>
+      </div>
       <div class="datepicker-foot">
         <span class="datepicker-range">1900 – 2100</span>
         <button class="dp-today" data-sfx="select">Today</button>
@@ -65,6 +74,19 @@ export class DatePicker {
     this.grid = this.root.querySelector('.datepicker-grid')!;
     this.title = this.root.querySelector('.dp-month')!;
     this.yearInput = this.root.querySelector('.dp-year')!;
+    this.hourInput = this.root.querySelector('.dp-hour')!;
+    this.minInput = this.root.querySelector('.dp-min')!;
+    // typing a new time applies immediately to the current sim date, so the
+    // planetarium can be dialled to "tonight at 22:00" without re-picking
+    // the day
+    const applyTime = () => {
+      const d = new Date(simDateMs(this.state.simDays));
+      this.state.setSimDate(
+        Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), this.hourVal(), this.minVal()),
+      );
+    };
+    this.hourInput.addEventListener('change', applyTime);
+    this.minInput.addEventListener('change', applyTime);
 
     this.root.querySelector('.dp-prev-m')!.addEventListener('click', () => this.shiftMonth(-1));
     this.root.querySelector('.dp-next-m')!.addEventListener('click', () => this.shiftMonth(1));
@@ -94,7 +116,10 @@ export class DatePicker {
     const dismissOnOutside = (e: Event) => {
       if (!this.openFlag) return;
       if (e.target instanceof Node && !this.root.contains(e.target) && !this.anchor.contains(e.target)) {
-        this.close(true);
+        // a dismissal caused by pressing some other button already gets that
+        // button's own tone from the app-level delegate - one sound per act
+        const viaButton = e.target instanceof Element && !!e.target.closest('button');
+        this.close(!viaButton);
       }
     };
     document.addEventListener('pointerdown', dismissOnOutside);
@@ -119,6 +144,8 @@ export class DatePicker {
     y = Math.min(MAX_YEAR, Math.max(MIN_YEAR, y));
     this.viewYear = y;
     this.viewMonth = d.getUTCMonth();
+    this.hourInput.value = String(d.getUTCHours()).padStart(2, '0');
+    this.minInput.value = String(d.getUTCMinutes()).padStart(2, '0');
     this.openFlag = true;
     this.root.hidden = false;
     // next frame so the opacity transition runs; guard against a close that
@@ -141,6 +168,14 @@ export class DatePicker {
     this.hideTimer = window.setTimeout(() => {
       this.root.hidden = true;
     }, 180);
+  }
+
+  private hourVal(): number {
+    return Math.min(23, Math.max(0, Number(this.hourInput.value) || 0));
+  }
+
+  private minVal(): number {
+    return Math.min(59, Math.max(0, Number(this.minInput.value) || 0));
   }
 
   private shiftMonth(delta: number): void {
@@ -190,8 +225,9 @@ export class DatePicker {
     this.grid.querySelectorAll<HTMLButtonElement>('.dp-day').forEach((b) => {
       b.addEventListener('click', () => {
         const day = Number(b.dataset.day);
-        // 12:00 UTC, matching the old native input's behaviour
-        this.state.setSimDate(Date.UTC(this.viewYear, this.viewMonth, day, 12));
+        this.state.setSimDate(
+          Date.UTC(this.viewYear, this.viewMonth, day, this.hourVal(), this.minVal()),
+        );
         this.close(false);
       });
     });

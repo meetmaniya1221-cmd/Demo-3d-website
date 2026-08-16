@@ -324,7 +324,7 @@ export const COMETS: CatalogObject[] = [
     },
     orbit: elementsFromPerihelion({
       a: 186,
-      e: 0.99512,
+      e: 0.995085, // chosen so a(1-e) = the published q = 0.914 AU
       i: 89.43,
       node: 282.47,
       argPeri: 130.59,

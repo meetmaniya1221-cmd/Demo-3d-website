@@ -66,11 +66,14 @@ const DEG = Math.PI / 180;
  * Sky frame: z along the line of sight from Earth, x/y in the sky plane.
  */
 function keplerSkyAU(def: SStarDef, tYr: number, out: THREE.Vector3): THREE.Vector3 {
-  const M = ((tYr - def.tPeri) / def.periodYr) * 2 * Math.PI;
-  // Newton solve for the eccentric anomaly; e up to 0.985 still converges
-  // fast enough with a cosine-damped start
-  let E = M % (2 * Math.PI);
-  for (let i = 0; i < 12; i++) {
+  let M = ((tYr - def.tPeri) / def.periodYr) * 2 * Math.PI;
+  M = ((M % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  if (M > Math.PI) M -= 2 * Math.PI; // (-π, π] keeps the seed on the right branch
+  // Newton solve for the eccentric anomaly. Raw Newton from E=M oscillates at
+  // S4714's e=0.985 near pericentre; the standard high-e seed (start at ±π)
+  // is what actually keeps it convergent (same scheme as data/bodies.ts).
+  let E = def.e < 0.8 ? M : Math.PI * Math.sign(M || 1);
+  for (let i = 0; i < 18; i++) {
     const d = (E - def.e * Math.sin(E) - M) / (1 - def.e * Math.cos(E));
     E -= d;
     if (Math.abs(d) < 1e-9) break;

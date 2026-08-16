@@ -1,7 +1,7 @@
 /** Assembles the whole solar system and advances it each frame. */
 import * as THREE from 'three';
 import { PLANETS, keplerPosition, type BodyDef } from '../data/bodies';
-import { mapPositionAU } from '../sim/scale';
+import { mapDistanceAU, mapPositionAU } from '../sim/scale';
 import { MOONS_BY_PARENT, SMALL_BODIES, catalogObject } from '../data/catalog';
 import type { CatalogObject } from '../data/types';
 import { DEFAULT_LAYERS, type Layers } from '../sim/state';
@@ -13,7 +13,7 @@ import { OortCloud } from './oort';
 import { OrbitLine, HabitableZone } from './orbits';
 import { SatelliteSystem } from './satellites';
 import { SmallBodies } from './smallbodies';
-import { Markers } from './markers';
+import { Markers, markerFade, projectedPx } from './markers';
 import { ReferenceGrid } from './grid';
 import { Constellations } from './constellations';
 import type { GeneratedTextures } from './textures';
@@ -40,6 +40,11 @@ export class SolarSystem {
   private layers: Layers = { ...DEFAULT_LAYERS };
   private tmp = { x: 0, y: 0, z: 0 };
   private tmpV = new THREE.Vector3();
+  private planetMarkerIdx = new Map<string, number>();
+  private sunMarkerIdx = -1;
+  /** Spacecraft mode draws sub-pixel planets itself (photometric points), so
+   *  it turns the main view's marker/disc handoff off while it flies. */
+  planetMarkersEnabled = true;
 
   constructor(tex: GeneratedTextures, textureBase: string) {
     this.scene.background = new THREE.Color(0x020308);
@@ -60,6 +65,7 @@ export class SolarSystem {
     this.sun = new Sun();
     this.scene.add(this.sun.group);
     this.pickables.push(this.sun.mesh);
+    this.sunMarkerIdx = this.markers.register('sun', 0xffd27d);
 
     for (const def of PLANETS) {
       const ringTex =
@@ -72,6 +78,10 @@ export class SolarSystem {
       const orbit = new OrbitLine(def.orbit!, def.color);
       this.orbitLines.set(def.id, orbit);
       this.scene.add(orbit.line);
+
+      // fixed-pixel marker for when the planet itself is sub-pixel (true-scale
+      // overview): rasterising a sub-pixel mesh flickers and pumps the bloom
+      this.planetMarkerIdx.set(def.id, this.markers.register(def.id, def.color));
 
       const moons = MOONS_BY_PARENT.get(def.id);
       if (moons?.length) {
@@ -129,7 +139,9 @@ export class SolarSystem {
     const cameraPos = camera.position;
     const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     const viewH = window.innerHeight;
-    // pin the sky to the camera so the stars stay at optical infinity
+    // pin the sky to the camera so the stars stay at optical infinity (the
+    // app re-pins after the camera rig moves - see pinSky - so the sky never
+    // lags a fast camera by a frame)
     this.sky.group.position.copy(cameraPos);
 
     for (const planet of this.planets.values()) {
@@ -138,6 +150,27 @@ export class SolarSystem {
       mapPositionAU(x, y, z, scaleT, this.tmp);
       planet.group.position.set(this.tmp.x, this.tmp.y, this.tmp.z);
       planet.update(simDays, scaleT);
+
+      // sub-pixel handoff: below a few projected pixels the mesh gives way to
+      // a stable fixed-size marker (mirrors the small-body treatment)
+      const idx = this.planetMarkerIdx.get(def.id) ?? -1;
+      if (this.planetMarkersEnabled) {
+        const dist = cameraPos.distanceTo(planet.group.position);
+        const px = projectedPx(planet.radius, dist, halfTan, viewH);
+        const fade = this.layers.planets ? markerFade(px) : 0;
+        this.markers.set(idx, this.tmp.x, this.tmp.y, this.tmp.z, fade, planet.radius * 3);
+        planet.setDiscVisible(fade < 0.999);
+      } else {
+        this.markers.set(idx, this.tmp.x, this.tmp.y, this.tmp.z, 0, 0);
+      }
+    }
+
+    // the Sun gets the same guarantee for deep true-scale zoom-outs
+    if (this.planetMarkersEnabled) {
+      const sunPx = projectedPx(this.sun.radius, cameraPos.length(), halfTan, viewH);
+      this.markers.set(this.sunMarkerIdx, 0, 0, 0, markerFade(sunPx), this.sun.radius * 3);
+    } else {
+      this.markers.set(this.sunMarkerIdx, 0, 0, 0, 0, 0);
     }
 
     this.smallBodies.update(simDays, scaleT, elapsed, cameraPos, halfTan, viewH);
@@ -161,8 +194,17 @@ export class SolarSystem {
     this.grid.updateFocus(cameraPos);
     this.mainBelt.update(simDays, scaleT);
     this.kuiperBelt.update(simDays, scaleT);
+    // LOD: the Kuiper swarm reads as a distant context ring - fade it out
+    // while the camera works the inner system so it never hangs over a
+    // planet close-up (the Oort cloud already gates itself the same way)
+    const kIn = mapDistanceAU(6, scaleT);
+    const kOut = mapDistanceAU(18, scaleT);
+    const kFade =
+      this.selectedRegion === 'kuiper-belt'
+        ? 1
+        : THREE.MathUtils.clamp((cameraPos.length() - kIn) / (kOut - kIn), 0, 1);
+    this.kuiperBelt.setViewFade(kFade * kFade);
     this.oortCloud.update(scaleT, cameraPos.length());
-    this.sky.update(elapsed);
 
     if (Math.abs(scaleT - this.lastOrbitScaleT) > 0.0005) {
       this.lastOrbitScaleT = scaleT;
@@ -172,6 +214,13 @@ export class SolarSystem {
       this.hz.update(scaleT);
     }
     this.hz.updateViewFade(cameraPos);
+  }
+
+  /** Re-pin the sky sphere to the camera after the rig has moved it this
+   *  frame. Without this the stars ride last frame's camera position and
+   *  visibly swim during fast flights. */
+  pinSky(camera: THREE.PerspectiveCamera): void {
+    this.sky.group.position.copy(camera.position);
   }
 
   /** Apply the layer visibility state to every scene subsystem. */
@@ -212,8 +261,8 @@ export class SolarSystem {
   }
 
   private applyRegionVisibility(): void {
-    this.mainBelt.points.visible = this.layers.beltDust || this.selectedRegion === 'main-belt';
-    this.kuiperBelt.points.visible = this.layers.kuiperBelt || this.selectedRegion === 'kuiper-belt';
+    this.mainBelt.setEnabled(this.layers.beltDust || this.selectedRegion === 'main-belt');
+    this.kuiperBelt.setEnabled(this.layers.kuiperBelt || this.selectedRegion === 'kuiper-belt');
     this.oortCloud.setEnabled(this.layers.oortCloud || this.selectedRegion === 'oort-cloud');
   }
 
@@ -268,7 +317,7 @@ export class SolarSystem {
   }
 
   /** Should this body's label be considered right now? */
-  labelVisible(id: string, camPos: THREE.Vector3, selectedId: string | null): boolean {
+  labelVisible(id: string, camPos: THREE.Vector3, selectedId: string | null, scaleT = 0): boolean {
     const def = catalogObject(id);
     if (!def) return false;
     if (id === selectedId) return true;
@@ -284,7 +333,10 @@ export class SolarSystem {
     if (def.type === 'comet' && !this.layers.comets) return false;
     if (def.type === 'comet' && this.smallBodies.cometActivity(id) > 0.08) return true;
     const pos = this.bodyPosition(id, this.tmpV);
-    return camPos.distanceTo(pos) < 60;
+    // "nearby" must be measured in AU, not raw scene units - a fixed unit
+    // threshold shrinks to a fraction of itself at true scale, which is
+    // exactly the mode where labels are the only way to find these bodies
+    return camPos.distanceTo(pos) < mapDistanceAU(4.5, scaleT);
   }
 
   /** Heliocentric distance in AU for the info panel, when known. */

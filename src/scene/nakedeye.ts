@@ -24,7 +24,7 @@
  */
 import * as THREE from 'three';
 import { PLANETS, SUN } from '../data/bodies';
-import { catalogObject } from '../data/catalog';
+import { MOONS, SMALL_BODIES, catalogObject } from '../data/catalog';
 import { UNITS_PER_AU, bodyPositionTrue, bodyRadiusTrue } from '../spacecraft/ephemeris';
 
 /** Just inside scene/sky.ts's shell so these sit among the stars. */
@@ -113,6 +113,21 @@ export class NakedEyeBodies {
         albedo: p.facts.albedo ?? 0.3,
         // pull toward white: a naked-eye planet is a point of light, not a disc
         color: new THREE.Color(p.color).lerp(new THREE.Color(0xffffff), 0.45),
+        isSun: false,
+      });
+    }
+    // Moons and heliocentric small bodies get the same photometric treatment:
+    // without a point stand-in, a targeted moon simply vanishes beyond a few
+    // million km and the navigation bracket points at empty sky. The same
+    // magnitude model applies - most are telescopic and stay invisible until
+    // the ship is genuinely close, which is the honest behaviour.
+    for (const def of [...MOONS, ...SMALL_BODIES]) {
+      if (def.type === 'region' || !def.physical.diameterKm) continue;
+      this.bodies.push({
+        id: def.id,
+        radiusKm: def.physical.diameterKm / 2,
+        albedo: def.physical.albedo ?? 0.2,
+        color: new THREE.Color(def.color).lerp(new THREE.Color(0xffffff), 0.45),
         isSun: false,
       });
     }

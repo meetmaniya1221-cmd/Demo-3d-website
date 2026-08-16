@@ -45,9 +45,9 @@ real orbits, the asteroid belt,
 Kuiper belt and Oort cloud - each with structured scientific data, mission
 history, sources and honest uncertainty notes.
 
-**Real NASA surfaces.** 22 mission-imagery global mosaics (USGS
-Astrogeology / New Horizons / Cassini / Galileo / Dawn / Hayabusa2 -
-see [SOURCES.md](SOURCES.md)). Where no map exists the app paints a
+**Real NASA surfaces.** 23 mission-imagery global mosaics (USGS
+Astrogeology / New Horizons / Cassini / Galileo / Dawn / Hayabusa2, and
+NASA's Blue Marble for Earth at 4K - see [SOURCES.md](SOURCES.md)). Where no map exists the app paints a
 seeded procedural surface and labels it *Artistic rendering* - it never
 passes art off as photography.
 
@@ -171,8 +171,9 @@ away. Sub-pixel bodies never rasterise - a stable fixed-size marker takes
 over below a few projected pixels, which is also why comets don't flicker
 when you zoom out.
 
-**First-person spacecraft mode.** Board a research vessel with glass on every side. The cabin is a 360° observation deck: the pilot's head turns continuously through every bearing, so front, port, starboard, astern, overhead and the floor port are simply directions you happen to be facing, not a set of preset cameras. Turn right round and you watch where the ship has been - the real scene behind the hull, never a substitute backdrop.  and fly the
-Solar System from inside its cockpit. This is not a free camera with a
+**First-person spacecraft mode.** Board a research vessel with glass on every side. The cabin is a 360° observation deck: the pilot's head turns continuously through every bearing, so front, port, starboard, astern, overhead and the floor port are simply directions you happen to be facing, not a set of preset cameras. Turn right round and you watch where the ship has been - the real scene
+behind the hull, never a substitute backdrop - and fly the Solar System
+from inside its cockpit. This is not a free camera with a
 frame drawn over it: the world is pinned to true scale, so a scene unit is
 a fixed 1,495,978.707 km and a body's apparent size is nothing but its
 real radius over its real distance. Earth swells to 16° across at a

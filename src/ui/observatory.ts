@@ -346,6 +346,12 @@ export class Observatory extends Overlay {
     // with backdrop-filter is a containing block for fixed children, so a
     // nested full-screen layer would be trapped inside the card
     this.picker = new LocationPicker(parent);
+    // the near-star chart draws once per selection, not per frame - without
+    // this it kept a stale size after a window resize (the night sky redraws
+    // itself via its size-aware draw key)
+    window.addEventListener('resize', () => {
+      if (this.isOpen && this.tab === 'stars') this.drawStarMap();
+    });
   }
 
   /** Deep link from search: jump straight to a star or deep-sky object. */
@@ -615,7 +621,7 @@ export class Observatory extends Overlay {
     const d = this.state.simDays;
     // skip the repaint entirely while nothing has moved (paused sim, no
     // look-around, same place) - the loop then costs ~nothing per frame
-    const drawKey = `${d.toFixed(7)}|${this.yawDeg.toFixed(2)}|${this.pitchDeg.toFixed(2)}|${this.fovDeg}|${this.latDeg}|${this.lonDeg}|${cssW}|${this.picked?.name ?? ''}`;
+    const drawKey = `${d.toFixed(7)}|${this.yawDeg.toFixed(2)}|${this.pitchDeg.toFixed(2)}|${this.fovDeg}|${this.latDeg}|${this.lonDeg}|${cssW}x${cssH}|${this.picked?.name ?? ''}`;
     if (drawKey === this.lastDrawKey) return;
     this.lastDrawKey = drawKey;
 
@@ -1238,6 +1244,33 @@ export class Observatory extends Overlay {
         <span class="k">System</span><span>${s.system}</span>
       </div>
       <p>${s.note}</p>
+      ${
+        s.planets?.length
+          ? `<div class="obs-planets">
+        <div class="obs-planets-head">Known planets <i>NASA Exoplanet Archive</i></div>
+        ${s.planets
+          .map(
+            (p) => `<div class="obs-planet-row${p.status === 'candidate' ? ' candidate' : ''}">
+          <span class="obs-planet-name">${p.name}</span>
+          <span class="obs-planet-facts">${[
+            p.status === 'candidate' ? 'candidate' : 'confirmed',
+            p.massEarth !== undefined
+              ? `≥ ${p.massEarth < 10 ? p.massEarth.toFixed(2) : Math.round(p.massEarth)} M⊕`
+              : null,
+            p.periodDays !== undefined
+              ? `P ${p.periodDays < 100 ? p.periodDays.toFixed(1) : Math.round(p.periodDays).toLocaleString('en-US')} d`
+              : null,
+            `${p.method}, ${p.discovered}`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}</span>
+          ${p.note ? `<span class="obs-planet-note">${p.note}</span>` : ''}
+        </div>`,
+          )
+          .join('')}
+      </div>`
+          : ''
+      }
       <p class="fine-print">Light you see tonight left it ${lightYears < 100 ? lightYears.toFixed(1) : Math.round(lightYears).toLocaleString()} years ago. At Voyager speed the trip would take ~${voyagerYears.toLocaleString()} years.</p>
       <p class="fine-print">Star rendered from its measured temperature and class - a physical representation, not a photograph (stars other than the Sun are points of light to any camera).</p>
     `;

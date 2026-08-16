@@ -33,7 +33,7 @@
  */
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import { SGRA_RS_LY } from './units';
+import { SGRA_CAPTURE_RS, SGRA_ISCO_RS, SGRA_RS_LY } from './units';
 
 const LENS_FRAG = /* glsl */ `
   precision highp float;
@@ -47,6 +47,7 @@ const LENS_FRAG = /* glsl */ `
   uniform float uGlow;       // quiescent emission level
   uniform float uFlare;      // flare multiplier from the generator (~1..42)
   uniform float uStrength;   // pass fade 0..1
+  uniform vec3 uDiskN;       // accretion-flow axis, view space (world-fixed)
 
   // ---- helpers ----------------------------------------------------------
 
@@ -97,14 +98,13 @@ const LENS_FRAG = /* glsl */ `
     float theta = acos(cosA);
 
     float thetaE = sqrt(2.0 * uRs / D);          // Einstein angle
-    float thetaC = 2.598 * uRs / D;              // apparent capture radius
+    float thetaC = ${SGRA_CAPTURE_RS.toFixed(4)} * uRs / D; // apparent capture radius
 
     // ---- background deflection (point lens) -----------------------------
     vec2 bhUv = dirToUv(toBh);
     vec2 offs = vUv - bhUv;
     // aspect-corrected angular offset so the ring stays a circle
     vec2 ang = offs * vec2(uAspect, 1.0);
-    float aLen = max(length(ang), 1e-6);
     float bend = 1.0 - (thetaE * thetaE) / (theta * theta + 1e-12);
     vec2 srcUv = bhUv + (ang * bend) / vec2(uAspect, 1.0);
     srcUv = clamp(srcUv, vec2(0.001), vec2(0.999));
@@ -128,16 +128,18 @@ const LENS_FRAG = /* glsl */ `
       float h2 = dot(cross(rel0, v), cross(rel0, v));
       float rs = uRs;
 
-      // disk basis: the flow's angular momentum axis. Slightly tipped from
-      // the galactic pole - we in fact view Sgr A* close to pole-on (EHT).
-      vec3 nDisk = normalize(vec3(0.22, 0.94, 0.26));
-      vec3 e1 = normalize(cross(nDisk, vec3(0.0, 0.0, 1.0)));
+      // disk basis: the flow's angular momentum axis. WORLD-fixed and passed
+      // in per frame - computing it in view space froze the disk to the
+      // screen, so yawing around the hole dragged the flow with the camera.
+      vec3 nDisk = normalize(uDiskN);
+      vec3 ref = abs(nDisk.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+      vec3 e1 = normalize(cross(nDisk, ref));
       vec3 e2 = cross(nDisk, e1);
 
       vec3 emission = vec3(0.0);
       float captured = 0.0;
       float prevSide = dot(rel0, nDisk);
-      float rIn = 3.0 * rs;    // ISCO
+      float rIn = ${SGRA_ISCO_RS.toFixed(1)} * rs; // ISCO
       float rOut = 14.0 * rs;
 
       for (int i = 0; i < 52; i++) {
@@ -177,8 +179,10 @@ const LENS_FRAG = /* glsl */ `
             float boost = dopp * dopp * dopp;
             // gravitational redshift dims the inner edge
             float gred = sqrt(max(0.0, 1.0 - rs / rHit));
-            float radial = pow(3.0 / rRs, 2.1);
+            float radial = pow(${SGRA_ISCO_RS.toFixed(1)} / rRs, 2.1);
             float e = radial * streak * boost * gred;
+            // the comparison doubles as a NaN guard: a NaN e fails it and
+            // never reaches the accumulator (one NaN poisons every bloom mip)
             if (e >= 0.0) {
               vec3 c = gasColor(rRs);
               // Doppler colour skew: approaching side slightly hotter/bluer
@@ -186,13 +190,14 @@ const LENS_FRAG = /* glsl */ `
               emission += c * e;
             }
           }
-          prevSide = side;
-        } else {
-          prevSide = side;
         }
+        prevSide = side;
       }
 
-      // photon ring: rays that lingered near the photon sphere pile up
+      // Photon ring: drawn analytically at the capture angle. The 52-step
+      // march resolves the shadow but is too coarse to build the ring from
+      // ray pile-up alone, so this term stands in for it - an approximation,
+      // not an emergent result (the shadow above IS emergent).
       float ring = exp(-pow((theta - thetaC) / (thetaC * 0.16 + 1e-9), 2.0));
       emission += vec3(1.3, 1.0, 0.75) * ring * 0.55;
 
@@ -206,6 +211,9 @@ const LENS_FRAG = /* glsl */ `
     gl_FragColor = vec4(clamp(col, 0.0, 48.0), 1.0);
   }
 `;
+
+/** Accretion-flow angular-momentum axis in galaxy-scene world coordinates. */
+const DISK_AXIS_WORLD = new THREE.Vector3(-0.88, 0.44, 0.18).normalize();
 
 const LENS_VERT = /* glsl */ `
   varying vec2 vUv;
@@ -232,6 +240,7 @@ export class LensingPass extends Pass {
       uGlow: { value: 0.55 },
       uFlare: { value: 1 },
       uStrength: { value: 0 },
+      uDiskN: { value: new THREE.Vector3(0, 1, 0) },
     };
     this.material = new THREE.ShaderMaterial({
       vertexShader: LENS_VERT,
@@ -255,6 +264,12 @@ export class LensingPass extends Pass {
   ): void {
     const v = this.uniforms.uBhView.value as THREE.Vector3;
     v.copy(bhWorld).applyMatrix4(camera.matrixWorldInverse);
+    // EHT constrains Sgr A*'s flow axis to within ~30-50 degrees of our line
+    // of sight: mostly toward the Sun (scene -x), tipped toward galactic
+    // north. Fixed in the WORLD, converted to view space here each frame.
+    (this.uniforms.uDiskN.value as THREE.Vector3)
+      .copy(DISK_AXIS_WORLD)
+      .transformDirection(camera.matrixWorldInverse);
     this.uniforms.uTanHalf.value = Math.tan((camera.fov * Math.PI) / 360);
     this.uniforms.uAspect.value = camera.aspect;
     this.uniforms.uTime.value = time;

@@ -99,6 +99,7 @@ export class LayersPanel {
     const mkUnit = (mode: UnitMode, label: string) => {
       const b = document.createElement('button');
       b.className = 'chip unit-chip';
+      b.dataset.sfx = 'none'; // plays its own tick below - keep the delegated one out
       b.textContent = label;
       b.setAttribute('aria-pressed', String(getUnitMode() === mode));
       b.classList.toggle('active', getUnitMode() === mode);

@@ -128,7 +128,9 @@ export class DiscoveryLog {
                 ? 'Star-forming region'
                 : lm.kind === 'galaxy'
                   ? 'Satellite galaxy'
-                  : 'Region',
+                  : lm.kind === 'star'
+                    ? 'Catalogued star'
+                    : 'Region',
         pos: { x: lm.pos.x, y: lm.pos.y, z: lm.pos.z },
         simDays,
         real: lm.real,
@@ -151,6 +153,10 @@ export class DiscoveryLog {
 }
 
 // ------------------------------------------------------------------ panel --
+
+function esc(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 const KIND_ICONS: Record<string, string> = {
   star: '✦',
@@ -223,10 +229,12 @@ export class DiscoveryPanel {
       .map((e) => {
         pos.set(e.pos.x, e.pos.y, e.pos.z);
         const d = pos.distanceTo(ship);
+        // names/classes round-trip through localStorage - escape on the way
+        // into markup, never trust the store
         return `<div class="gx-log-row">
           <span class="gx-log-icon">${KIND_ICONS[e.kind] ?? '·'}</span>
-          <span class="gx-log-name">${e.name}${e.real ? '' : ' <i>(survey)</i>'}</span>
-          <span class="gx-log-cls">${e.cls}</span>
+          <span class="gx-log-name">${esc(e.name)}${e.real ? '' : ' <i>(survey)</i>'}</span>
+          <span class="gx-log-cls">${esc(e.cls)}</span>
           <span class="gx-log-dist">${fmtLy(d)}</span>
         </div>`;
       })

@@ -201,6 +201,9 @@ export const KUIPER_BELT_STYLE: BeltStyle = {
 export class Belt {
   readonly points: THREE.Points;
   private mat: THREE.ShaderMaterial;
+  private baseOpacity: number;
+  private viewFade = 1;
+  private enabled = true;
 
   constructor(particles: BeltParticles, style: BeltStyle) {
     const n = particles.a.length;
@@ -231,6 +234,7 @@ export class Belt {
       transparent: true,
       depthWrite: false,
     });
+    this.baseOpacity = style.opacity;
     this.points = new THREE.Points(geo, this.mat);
     this.points.frustumCulled = false;
   }
@@ -238,6 +242,23 @@ export class Belt {
   update(simDays: number, scaleT: number): void {
     this.mat.uniforms.uDays.value = simDays;
     this.mat.uniforms.uScaleT.value = scaleT;
+  }
+
+  /** Layer toggle (kept separate from the distance fade so they compose). */
+  setEnabled(on: boolean): void {
+    this.enabled = on;
+    this.applyVisibility();
+  }
+
+  /** Distance-based LOD fade, 0..1. At 0 the draw is skipped entirely. */
+  setViewFade(f: number): void {
+    this.viewFade = f;
+    this.mat.uniforms.uOpacity.value = this.baseOpacity * f;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    this.points.visible = this.enabled && this.viewFade > 0.01;
   }
 
   setPixelRatio(pr: number): void {

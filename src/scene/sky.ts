@@ -15,16 +15,15 @@ import { galacticStarDensity, MilkyWay, sceneToGalacticMatrix } from './galaxy';
 
 const SKY_RADIUS = 6000;
 
+// No twinkle: scintillation is an atmospheric effect and there is no
+// atmosphere out here - the catalogued stars are steady, so these must be too.
 const STAR_VERT = /* glsl */ `
   attribute float aSize;
   attribute vec3 aColor;
   varying vec3 vColor;
-  varying float vTwinkle;
-  uniform float uTime;
   uniform float uPr;
   void main() {
     vColor = aColor;
-    vTwinkle = 0.82 + 0.18 * sin(uTime * 0.9 + position.x * 0.02 + position.y * 0.013);
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_PointSize = aSize * uPr;
     gl_Position = projectionMatrix * mv;
@@ -34,12 +33,11 @@ const STAR_VERT = /* glsl */ `
 const STAR_FRAG = /* glsl */ `
   precision highp float;
   varying vec3 vColor;
-  varying float vTwinkle;
   void main() {
     vec2 p = gl_PointCoord - 0.5;
     float d = length(p) * 2.0;
     float a = smoothstep(1.0, 0.25, d);
-    gl_FragColor = vec4(clamp(vColor * vTwinkle, 0.0, 1.5), a);
+    gl_FragColor = vec4(clamp(vColor, 0.0, 1.5), a);
   }
 `;
 
@@ -95,11 +93,13 @@ export class Sky {
       pos[i * 3 + 2] = dir.z;
 
       // A steep magnitude distribution: a great many faint stars, a handful of
-      // bright ones. Uniform sizes are what make a star field read as noise.
-      const mag = Math.pow(rnd(), 3.4);
-      size[i] = 0.7 + mag * 3.0;
+      // brighter ones. The filler is capped well below the real catalogued
+      // stars drawn over it - reality has ~20 stars above mag 1.5, so no
+      // invented star may compete with the named first-magnitude ones.
+      const mag = Math.pow(rnd(), 5.0);
+      size[i] = 0.7 + mag * 2.2;
       const tint = STAR_COLORS[Math.floor(Math.pow(rnd(), 1.4) * STAR_COLORS.length)];
-      const bright = 0.34 + mag * 0.66;
+      const bright = 0.3 + mag * 0.52;
       color[i * 3] = tint[0] * bright;
       color[i * 3 + 1] = tint[1] * bright;
       color[i * 3 + 2] = tint[2] * bright;
@@ -113,7 +113,7 @@ export class Sky {
     this.starMat = new THREE.ShaderMaterial({
       vertexShader: STAR_VERT,
       fragmentShader: STAR_FRAG,
-      uniforms: { uTime: { value: 0 }, uPr: { value: Math.min(2, window.devicePixelRatio || 1) } },
+      uniforms: { uPr: { value: Math.min(2, window.devicePixelRatio || 1) } },
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
@@ -128,11 +128,6 @@ export class Sky {
     this.milkyWay = new MilkyWay({ radius: SKY_RADIUS * 0.98, segments: 48 });
     this.milkyWay.mesh.renderOrder = -11;
     this.group.add(this.milkyWay.mesh);
-  }
-
-  update(elapsed: number): void {
-    this.starMat.uniforms.uTime.value = elapsed;
-    this.milkyWay.update(elapsed);
   }
 
   /** Bake the galactic band once the renderer exists. */

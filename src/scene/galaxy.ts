@@ -42,6 +42,23 @@ const EQ_TO_GAL = [
   [-0.8676661490, -0.1980763734, 0.4559837762],
 ];
 
+/** J2000 equatorial RA/Dec (degrees) → galactic longitude/latitude (degrees). */
+export function equatorialToGalacticLB(raDeg: number, decDeg: number): { lDeg: number; bDeg: number } {
+  const ra = (raDeg * Math.PI) / 180;
+  const dec = (decDeg * Math.PI) / 180;
+  const x = Math.cos(dec) * Math.cos(ra);
+  const y = Math.cos(dec) * Math.sin(ra);
+  const z = Math.sin(dec);
+  const g = EQ_TO_GAL;
+  const gx = g[0][0] * x + g[0][1] * y + g[0][2] * z;
+  const gy = g[1][0] * x + g[1][1] * y + g[1][2] * z;
+  const gz = g[2][0] * x + g[2][1] * y + g[2][2] * z;
+  return {
+    lDeg: ((Math.atan2(gy, gx) * 180) / Math.PI + 360) % 360,
+    bDeg: (Math.asin(Math.max(-1, Math.min(1, gz))) * 180) / Math.PI,
+  };
+}
+
 /**
  * Scene direction → galactic direction, as a single matrix.
  *
@@ -91,7 +108,6 @@ const GALAXY_FRAG = /* glsl */ `
   precision highp float;
   varying vec3 vDir;
   uniform mat3 uGal;
-  uniform float uTime;
   uniform float uIntensity;
   ${SNOISE_GLSL}
 
@@ -248,13 +264,14 @@ export class MilkyWay {
       fragmentShader: GALAXY_FRAG,
       uniforms: {
         uGal: { value: sceneToGalacticMatrix() },
-        uTime: { value: 0 },
         uIntensity: { value: this.intensity },
       },
       side: THREE.BackSide,
       transparent: true,
       depthWrite: false,
-      depthTest: false,
+      // depthTest stays ON: the sphere sits behind everything in scene units,
+      // and the test is what stops the additive band bleeding over planets
+      // (renderOrder alone cannot - opaque meshes always draw first).
       blending: THREE.AdditiveBlending,
     });
     this.mesh = new THREE.Mesh(
@@ -302,16 +319,12 @@ export class MilkyWay {
       side: THREE.BackSide,
       transparent: true,
       depthWrite: false,
-      depthTest: false,
+      // depthTest stays ON - see the note on the pre-bake material
       blending: THREE.AdditiveBlending,
     });
     this.mesh.material = display;
     this.material.dispose();
     this.material = display;
-  }
-
-  update(elapsed: number): void {
-    if (this.material.uniforms.uTime) this.material.uniforms.uTime.value = elapsed;
   }
 
   dispose(): void {

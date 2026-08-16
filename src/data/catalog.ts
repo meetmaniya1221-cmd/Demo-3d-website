@@ -52,9 +52,9 @@ function adaptPlanet(def: BodyDef, parent: string | null): CatalogObject {
       def.id === 'earth'
         ? {
             file: 'earth.webp',
-            kind: 'procedural',
-            credit: 'AI-generated map (Higgsfield)',
-            note: 'Earth’s map here is an AI-generated rendering in the style of satellite imagery, not a NASA product.',
+            kind: 'photo',
+            credit: 'NASA Blue Marble: Next Generation (July), NASA Earth Observatory',
+            note: 'True-colour MODIS composite with topography and bathymetry - a real NASA satellite product.',
           }
         : isSun
           ? {

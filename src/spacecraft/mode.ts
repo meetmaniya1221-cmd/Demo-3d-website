@@ -23,7 +23,8 @@ import type { SolarSystem } from '../scene/system';
 import { NakedEyeBodies } from '../scene/nakedeye';
 import { catalogObject } from '../data/catalog';
 import { Cockpit } from './cockpit';
-import { Ship, THROTTLE_STEPS, type AttitudeHold } from './ship';
+import { WarpStreaks } from '../galaxy/chunks';
+import { Ship, LIGHT_SPEED_KMS, THROTTLE_STEPS, THRUST_STEPS_MS2, type AttitudeHold } from './ship';
 import { TrajectoryPreview } from './trajectory';
 import {
   KM_PER_UNIT,
@@ -48,6 +49,8 @@ export interface SpacecraftDeps {
   /** Hand the camera over / take it back from the orbit rig. */
   releaseCamera: () => void;
   resumeCamera: (target: THREE.Vector3) => void;
+  /** Current orbit-rig target, captured on entry so exit can restore it. */
+  cameraTarget?: () => THREE.Vector3;
   /** Fly back to the system overview instead of the saved camera. */
   focusOverview: () => void;
   announce: (text: string) => void;
@@ -68,20 +71,20 @@ const REDUCED_MOTION =
  */
 const LOOK_PRESETS: Record<string, [number, number]> = {
   '1': [0, 0],      // ahead
-  '2': [90, 0],     // starboard
-  '3': [-90, 0],    // port
+  '2': [90, 0],     // port (+yaw turns the head to port)
+  '3': [-90, 0],    // starboard
   '4': [0, 80],     // overhead
   '5': [0, -78],    // floor port
   '6': [180, 0],    // astern
 };
 
-/** Manoeuvre-axis holds on the number keys above the window presets. */
+/** Manoeuvre-axis holds, clear of the six window keys ('c' cycles them all,
+ *  which is also the only route to the normal/anti-normal pair). */
 const HOLD_KEYS: Record<string, AttitudeHold> = {
-  '6': 'prograde',
-  '7': 'retrograde',
-  '8': 'radial-out',
-  '9': 'radial-in',
-  '0': 'normal',
+  '7': 'prograde',
+  '8': 'retrograde',
+  '9': 'radial-out',
+  '0': 'radial-in',
 };
 
 type Phase = 'off' | 'entering' | 'flying' | 'exiting';
@@ -91,6 +94,7 @@ export class SpacecraftMode {
   private deps: SpacecraftDeps;
   private cockpit = new Cockpit();
   private nakedEye = new NakedEyeBodies();
+  private streaks = new WarpStreaks();
   private trajectory = new TrajectoryPreview();
   private ui: SpacecraftUI;
   private veil: HTMLElement;
@@ -153,6 +157,9 @@ export class SpacecraftMode {
     this.deps = deps;
     this.veil = document.createElement('div');
     this.veil.className = 'sc-veil';
+    // opacity is driven per frame during the transitions - the stylesheet's
+    // own transition would lag every write
+    this.veil.style.transition = 'none';
     root.appendChild(this.veil);
 
     this.ui = new SpacecraftUI(root, {
@@ -213,7 +220,7 @@ export class SpacecraftMode {
     this.saved = {
       pos: camera.position.clone(),
       quat: camera.quaternion.clone(),
-      target: new THREE.Vector3(),
+      target: this.deps.cameraTarget?.() ?? new THREE.Vector3(),
       fov: camera.fov,
       near: camera.near,
       far: camera.far,
@@ -237,6 +244,7 @@ export class SpacecraftMode {
     // reference grid, no constellation figures unless the pilot asks for them
     this.applyLayers({ grid: false, planetOrbits: false, constellations: false });
     system.scene.add(this.nakedEye.points);
+    system.scene.add(this.streaks.points);
     system.scene.add(this.trajectory.group);
     this.nakedEye.setEnabled(true);
 
@@ -245,7 +253,13 @@ export class SpacecraftMode {
       this.ship.targetId = 'earth';
     } else {
       // returning pilot: same place, same target, engines idle so re-entering
-      // never launches you off at whatever throttle you left set
+      // never launches you off at whatever throttle you left set. A transit or
+      // fly-by left mid-run is stood down too - idling zeroed its cruise
+      // speed, and a zombie autopilot would crawl forever at 1 km/s.
+      if (this.ship.mode === 'transit' || this.ship.mode === 'flyby') {
+        this.ship.abort('Autopilot stood down while the ship was unmanned.');
+        this.ship.event = null;
+      }
       this.ship.idle();
     }
     this.ensureTargetVisible(this.ship.targetId);
@@ -288,6 +302,8 @@ export class SpacecraftMode {
     // put the world back exactly as it was
     this.nakedEye.setEnabled(false);
     system.scene.remove(this.nakedEye.points);
+    this.streaks.update(0, 0);
+    system.scene.remove(this.streaks.points);
     this.trajectory.setVisible(false);
     system.scene.remove(this.trajectory.group);
     system.sun.setDiscVisible(true);
@@ -519,7 +535,9 @@ export class SpacecraftMode {
     const { camera, state } = this.deps;
 
     if (this.phase === 'entering') {
-      this.t = Math.min(1, (performance.now() - this.transitionStart) / (ENTRY_SECONDS * 1000));
+      this.t = REDUCED_MOTION
+        ? 1
+        : Math.min(1, (performance.now() - this.transitionStart) / (ENTRY_SECONDS * 1000));
       const k = easeInOut(this.t);
       this.scaleT = THREE.MathUtils.lerp(this.entryFrom.scaleT, 1, Math.min(1, k * 1.35));
       // fly the last of the way in, then hand over to the cockpit behind the veil
@@ -538,7 +556,9 @@ export class SpacecraftMode {
         this.ui.announce('Systems online. Windows clear.');
       }
     } else if (this.phase === 'exiting') {
-      this.t = Math.min(1, (performance.now() - this.transitionStart) / (EXIT_SECONDS * 1000));
+      this.t = REDUCED_MOTION
+        ? 1
+        : Math.min(1, (performance.now() - this.transitionStart) / (EXIT_SECONDS * 1000));
       this.veil.style.opacity = String(Math.min(1, this.t * 2.2));
       if (this.t >= 1) {
         this.finishExit();
@@ -560,6 +580,10 @@ export class SpacecraftMode {
       }
     }
 
+    // refresh the neighbour list from the NEW ship position before the near
+    // plane is sized from it - at high compression a frame-stale list can be
+    // millions of kilometres out on an approach
+    this.neighbours = nearestBodies(this.ship.pos, state.simDays, 8);
     this.updateFrustum();
     camera.updateMatrixWorld(true);
     camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
@@ -595,8 +619,6 @@ export class SpacecraftMode {
     const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     const viewH = window.innerHeight;
 
-    this.neighbours = nearestBodies(this.ship.pos, state.simDays, 8);
-
     // ---- naked-eye handover -------------------------------------------------
     this.nakedEye.update(this.ship.pos, state.simDays, halfTan, viewH);
     system.sun.setDiscVisible(this.nakedEye.pixelsOf('sun') > DISC_PIXELS);
@@ -631,6 +653,15 @@ export class SpacecraftMode {
       this.trajectory.setVisible(false);
     }
 
+    // ---- cinematic cruise streaks -------------------------------------------
+    // Star-flow past the windows once the APPARENT rate goes properly
+    // superluminal (physical velocity x time compression). An impressionist
+    // stand-in, not a physics claim - the same device galaxy mode uses.
+    const apparentC = (this.ship.speedKms * (this.ship.paused ? 0 : this.ship.effectiveTimeScale)) / LIGHT_SPEED_KMS;
+    this.streaks.points.position.copy(this.ship.pos);
+    this.streaks.points.quaternion.copy(this.deps.camera.quaternion);
+    this.streaks.update(dt, Math.min(60, apparentC * 0.55));
+
     // ---- Sun near field ------------------------------------------------------
     const sunDist = this.ship.pos.length();
     const sunRadii = system.sun.setObserver(sunDist, true);
@@ -645,8 +676,16 @@ export class SpacecraftMode {
       .applyQuaternion(this.tmpQ.copy(this.ship.quat).invert());
     const sunAU = sunDist / UNITS_PER_AU;
     const sunLight = 0.06 + 0.94 * THREE.MathUtils.clamp(Math.pow(1 / Math.max(sunAU, 0.05), 1.4), 0, 1);
+    // the console bar: thrust fraction in orbit (the ladder means m/s² there),
+    // log-scaled commanded velocity everywhere else so the physical band is
+    // not crushed to zero by the accelerated notches
+    const consoleThrottle =
+      this.ship.mode === 'orbit'
+        ? this.ship.thrustMs2 / THRUST_STEPS_MS2[THRUST_STEPS_MS2.length - 1]
+        : Math.log10(1 + Math.max(0, this.ship.cmdKms)) /
+          Math.log10(1 + THROTTLE_STEPS[THROTTLE_STEPS.length - 1]);
     this.cockpit.update(dt, this.headQ, this.tmpB, sunLight, {
-      throttle: this.ship.cmdKms / THROTTLE_STEPS[THROTTLE_STEPS.length - 1],
+      throttle: consoleThrottle,
       time: Math.log10(Math.max(1, this.ship.effectiveTimeScale)) / 6,
       target: this.ship.targetId ? (catalogObject(this.ship.targetId)?.name ?? '') : 'No target',
       dist: this.ship.targetId ? shortDist(this.ship.targetDistance(state.simDays)) : '',
@@ -741,6 +780,7 @@ export class SpacecraftMode {
 
   setPixelRatio(pr: number): void {
     this.nakedEye.setPixelRatio(pr);
+    this.streaks.setPixelRatio(pr);
   }
 
   /** Test hook. */
@@ -860,6 +900,7 @@ export class SpacecraftMode {
     this.detachInput();
     this.cockpit.dispose();
     this.nakedEye.dispose();
+    this.streaks.dispose();
     this.trajectory.dispose();
     this.ui.dispose();
     this.veil.remove();

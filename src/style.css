@@ -356,6 +356,13 @@ button {
   transition: color 0.2s, border-color 0.2s, background 0.2s;
   white-space: nowrap;
 }
+/* icon-only chips (mute): centre the glyph, keep the hit area square-ish */
+.chip.chip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+}
 
 .chip:hover {
   color: var(--text);
@@ -3087,6 +3094,41 @@ button.sim-date:hover {
   box-shadow: 0 0 10px rgba(102, 224, 255, 0.25) inset;
 }
 
+.datepicker-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+.dp-time-label,
+.dp-time-utc {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+}
+.dp-time-sep {
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+.datepicker-time input {
+  width: 44px;
+  padding: 4px 6px;
+  text-align: center;
+  background: rgba(9, 14, 26, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.datepicker-time input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .datepicker-foot {
   display: flex;
   align-items: center;
@@ -3611,6 +3653,60 @@ button.sim-date:hover {
 
 .obs-star-portrait {
   flex: none;
+}
+
+.obs-planets {
+  margin: 10px 0 2px;
+  border: 1px solid var(--line);
+  background: rgba(9, 14, 26, 0.45);
+  padding: 8px 10px;
+}
+.obs-planets-head {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.obs-planets-head i {
+  color: var(--text-dim);
+  font-style: normal;
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+.obs-planet-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 4px 0;
+  border-top: 1px dashed rgba(102, 148, 191, 0.18);
+}
+.obs-planet-row:first-of-type {
+  border-top: 0;
+}
+.obs-planet-name {
+  font-weight: 700;
+  font-size: 12px;
+  color: #a8d8c8;
+}
+.obs-planet-row.candidate .obs-planet-name {
+  color: var(--text-dim);
+}
+.obs-planet-facts {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  align-self: center;
+}
+.obs-planet-note {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.45;
 }
 
 .obs-star-grid {
@@ -5066,6 +5162,20 @@ body.spacecraft-mode .rail {
   border-color: var(--accent);
   font-weight: 700;
 }
+/* the accelerated-exploration band: visually a different regime */
+.sc-step.warp {
+  color: #d9b6ff;
+  border-color: rgba(190, 140, 255, 0.35);
+}
+.sc-step.warp:hover {
+  color: #ecd9ff;
+  border-color: rgba(200, 160, 255, 0.6);
+}
+.sc-step.warp.active {
+  color: #16041f;
+  background: #c99af5;
+  border-color: #c99af5;
+}
 .sc-cmd {
   padding: 5px 11px;
   border-radius: 5px;
@@ -6028,5 +6138,55 @@ body.galaxy-mode .skynote {
   }
   .gx-actions .gx-btn kbd {
     display: none;
+  }
+}
+
+/* ============================================================ mobile polish
+   Safe-area awareness for notched devices (viewport-fit=cover is set), real
+   touch-target sizes on coarse pointers, and dynamic-viewport units so the
+   bottom sheets clear mobile browser toolbars. */
+@supports (padding: env(safe-area-inset-top)) {
+  @media (max-width: 960px) {
+    .top-actions {
+      padding-left: max(10px, env(safe-area-inset-left));
+      padding-right: max(10px, env(safe-area-inset-right));
+      padding-top: max(0px, env(safe-area-inset-top));
+    }
+    .brand {
+      margin-top: env(safe-area-inset-top);
+    }
+    .timebar {
+      margin-bottom: env(safe-area-inset-bottom);
+    }
+    .infopanel.open {
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+  }
+}
+
+@supports (height: 100dvh) {
+  @media (max-width: 720px) {
+    .infopanel {
+      max-height: 52dvh;
+    }
+  }
+}
+
+@media (pointer: coarse) {
+  .chip {
+    min-height: 40px;
+  }
+  .sc-step,
+  .sc-cmd {
+    min-height: 38px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .dp-day {
+    min-height: 38px;
+  }
+  .timebar .play.rewind {
+    min-width: 40px;
+    min-height: 40px;
   }
 }

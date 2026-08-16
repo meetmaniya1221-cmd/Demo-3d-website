@@ -183,8 +183,17 @@ export class App implements TourHost {
       renderer: this.renderer,
       camera: this.rig.camera,
       canvas: this.renderer.domElement,
-      releaseCamera: () => this.rig.release(),
-      resumeCamera: (target) => this.rig.resume(target),
+      releaseCamera: () => {
+        this.rig.release();
+        // the cockpit renders sub-pixel bodies photometrically; the main
+        // view's fixed-pixel markers would double them up
+        this.system.planetMarkersEnabled = false;
+      },
+      resumeCamera: (target) => {
+        this.rig.resume(target);
+        this.system.planetMarkersEnabled = true;
+      },
+      cameraTarget: () => this.rig.controls.target.clone(),
       focusOverview: () => this.focusOverview(),
       announce: (text) => this.announce(text),
     });
@@ -384,6 +393,7 @@ export class App implements TourHost {
     if (this.spacecraft.active) this.spacecraft.exit();
     if (this.tour.active) this.tour.dismiss();
     if (this.journey.active) this.journey.end();
+    this.hideToast();
     this.atlas.close();
     if (this.search.isOpen) this.search.close();
     for (const o of [this.compare, this.gravity, this.structure, this.earthMoon, this.observatory, this.missions, this.meteors, this.cutaway]) {
@@ -400,6 +410,7 @@ export class App implements TourHost {
     const wasSequenced = this.tour.active || this.journey.active;
     if (this.tour.active) this.tour.dismiss();
     if (this.journey.active) this.journey.end();
+    this.hideToast();
     this.atlas.close();
     if (this.search.isOpen) this.search.close();
     for (const o of [this.compare, this.gravity, this.structure, this.earthMoon, this.observatory, this.missions, this.meteors, this.cutaway]) {
@@ -555,7 +566,9 @@ export class App implements TourHost {
 
     this.system.update(this.state.simDays, this.state.scaleT, this.elapsed, this.rig.camera);
     if (flying) {
-      this.spacecraft.postUpdate(dt);
+      // same clamp as spacecraft.update so HUD timers age at the same rate
+      // as the physics on a struggling machine
+      this.spacecraft.postUpdate(Math.min(rawDt, 0.5));
       this.composer.render();
       this.spacecraft.renderOverlay();
       this.trackFrameCost(rawDt);
@@ -568,6 +581,9 @@ export class App implements TourHost {
     } else {
       this.rig.update(Math.min(rawDt, 0.5));
     }
+    // the camera has now moved for this frame - re-pin the sky so the stars
+    // and the Milky Way stay at optical infinity instead of lagging a frame
+    this.system.pinSky(this.rig.camera);
     const panelInset = this.state.selectedId && window.innerWidth > 720 ? 372 : 0;
     this.labels.update(this.system, this.rig.camera, this.state, panelInset);
     this.skyNotes.update(this.system, this.rig.camera, this.state);
@@ -689,6 +705,13 @@ export class App implements TourHost {
     this.toastEl.innerHTML = `<b>${title}</b>${text}`;
     this.toastEl.classList.add('show');
     this.toastTimer = this.elapsed + 6;
+  }
+
+  /** Mode switches must not carry a stale toast into the next view (the
+   *  expiry check only runs on the solar-system frame path). */
+  private hideToast(): void {
+    this.toastEl.classList.remove('show');
+    this.toastTimer = 0;
   }
 
   /** Landing-screen entry: sweep from the far establishing shot to overview. */

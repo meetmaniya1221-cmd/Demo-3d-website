@@ -62,10 +62,26 @@ export class SkyNotes {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
 
+    // when a selected body fills the frame, sky-sphere names and grid marks
+    // would float over its face (the 3D lines behind it are depth-tested out,
+    // but these are DOM elements) - suppress them all for the close-up
+    let dominated = false;
+    if (state.selectedId) {
+      const def = system.bodyDef(state.selectedId);
+      if (def && def.type !== 'region') {
+        system.bodyPosition(state.selectedId, this.v);
+        const d = camera.position.distanceTo(this.v);
+        const r = system.bodyRadius(state.selectedId, state.scaleT);
+        const halfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        dominated = d > 1e-9 && (r / (d * halfTan)) * (h / 2) > h * 0.35;
+      }
+    }
+
     // constellation names ride the sky at optical infinity. 88 of them would
     // pile up, so a placed name blocks its neighbours - prominent figures
     // were sorted first, so they win the space.
-    const showConst = state.layers.constellations && system.constellations.linesVisible;
+    const showConst =
+      !dominated && state.layers.constellations && system.constellations.linesVisible;
     const placed: Array<[number, number]> = [];
     for (const note of this.constNotes) {
       if (!showConst) {
@@ -84,7 +100,7 @@ export class SkyNotes {
     }
 
     // deep-sky markers ride the same sky sphere behind their own layer
-    const showDso = state.layers.deepSky;
+    const showDso = !dominated && state.layers.deepSky;
     for (const note of this.dsoNotes) {
       if (!showDso) {
         note.el.style.display = 'none';
@@ -96,7 +112,7 @@ export class SkyNotes {
 
     // grid annotations: AU ladder up the 0° axis + cardinal degree marks
     let used = 0;
-    if (state.layers.grid) {
+    if (state.layers.grid && !dominated) {
       const states = system.grid.labelStates();
       // explorer compression crowds the outer rings - declutter the ladder
       // by dropping labels that would land within a line-height of the last

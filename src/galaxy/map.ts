@@ -14,7 +14,7 @@ import { Vec3d, fmtLy } from './units';
 
 export interface MapCallbacks {
   onEngageRoute: (target: Vec3d, label: string) => void;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 const BACKDROP_N = 240;
@@ -165,6 +165,7 @@ export class GalaxyMap {
     this.renderSearch();
     const loop = () => {
       if (!this.open) return;
+      this.resize(); // no-op unless the layout box changed (search results strip)
       this.draw();
       this.raf = requestAnimationFrame(loop);
     };
@@ -176,14 +177,26 @@ export class GalaxyMap {
     this.open = false;
     this.root.classList.remove('open');
     cancelAnimationFrame(this.raf);
-    this.cb.onClose();
+    this.cb.onClose?.();
   }
 
+  /** Match the canvas backing store to its own layout box. Called on open and
+   *  re-checked every frame, because the search-results strip changes the
+   *  canvas's height and a stale store both stretches the chart and makes
+   *  clicks land in the wrong place. Guarded for the display:none state,
+   *  where the rect collapses to zero (a negative height assigned to
+   *  canvas.height is invalid). */
   resize(): void {
-    const rect = this.root.getBoundingClientRect();
+    if (!this.open) return;
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    this.canvas.width = Math.round(rect.width * dpr);
-    this.canvas.height = Math.round((rect.height - 96) * dpr);
+    const w = Math.round(rect.width * dpr);
+    const h = Math.round(rect.height * dpr);
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+    }
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 

@@ -73,7 +73,7 @@ export const SATURN_MOONS: CatalogObject[] = [
       density: 1.61,
       tidallyLocked: true,
       tempMeanC: -201,
-      albedo: 0.99,
+      albedo: 1.375, // geometric (can exceed 1); Bond albedo ~0.81
     },
     satOrbit: { distanceKm: 238_040, periodDays: 1.3702 },
     positionAccuracy: 'approximate',
