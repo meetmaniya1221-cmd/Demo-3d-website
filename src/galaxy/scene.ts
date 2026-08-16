@@ -38,7 +38,7 @@ import {
   type Landmark,
 } from './model';
 import { ChunkField, WarpStreaks } from './chunks';
-import { SStarCluster, FlareGenerator } from './sgra';
+import { AccretionDisk, SStarCluster, FlareGenerator } from './sgra';
 import {
   BAR_ANGLE_DEG,
   DISK_SCALE_LENGTH_LY,
@@ -46,6 +46,99 @@ import {
   Vec3d,
   galToScene,
 } from './units';
+
+// -------------------------------------------------------------- survey sky --
+
+const SURVEY_VERT = /* glsl */ `
+  varying vec3 vDir;
+  void main() {
+    vDir = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const SURVEY_FRAG = /* glsl */ `
+  precision highp float;
+  varying vec3 vDir;
+  uniform sampler2D uMap;
+  uniform float uFade;
+  const float PI = 3.141592653589793;
+  void main() {
+    // galaxy-scene axes ARE the galactic frame: gal = (x, -z, y)
+    vec3 g = normalize(vec3(vDir.x, -vDir.z, vDir.y));
+    float b = asin(clamp(g.z, -1.0, 1.0));
+    float l = atan(g.y, g.x);
+    // NASA SVS maps: longitude to the LEFT, latitude downward (verified
+    // against the Magellanic Clouds - see scene/galaxy.ts)
+    vec2 uv = vec2(0.5 - l / (2.0 * PI), 0.5 + b / PI);
+    gl_FragColor = vec4(texture2D(uMap, uv).rgb * uFade, 1.0);
+  }
+`;
+
+/**
+ * The real sky, while the ship is where the sky was measured from.
+ *
+ * Within a few hundred light-years of Sol the view of the galaxy IS the
+ * NASA SVS "Deep Star Maps 2020" all-sky survey (Gaia DR2 / Hipparcos-2 /
+ * Tycho-2) - the Great Rift, the Scutum and Sagittarius star clouds and
+ * the bulge exactly where 1.7 billion measured stars put them. The map is
+ * only valid from the solar neighbourhood, so it fades over the first few
+ * thousand light-years of travel and the procedural model (whose job is to
+ * be consistent with it) takes over. This is the difference between "a
+ * galaxy texture" and "the sky, from here".
+ */
+class SurveySky {
+  readonly mesh: THREE.Mesh;
+  private material: THREE.ShaderMaterial;
+  private texture: THREE.Texture | null = null;
+
+  constructor() {
+    this.material = new THREE.ShaderMaterial({
+      vertexShader: SURVEY_VERT,
+      fragmentShader: SURVEY_FRAG,
+      uniforms: { uMap: { value: null }, uFade: { value: 0 } },
+      side: THREE.BackSide,
+      depthWrite: false,
+      depthTest: false,
+    });
+    // depth is neither written nor tested and the sphere is drawn first, so
+    // its radius only needs to be "around the camera" - NOT large. At large
+    // radii the projected depth sits within a float32 ulp of the far plane
+    // and triangles get pseudo-randomly clipped into shards. 20k ly keeps
+    // ~30 ulps of margin at any far plane this mode uses.
+    this.mesh = new THREE.Mesh(new THREE.SphereGeometry(20_000, 64, 40), this.material);
+    this.mesh.renderOrder = -30;
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+    new THREE.TextureLoader().load(
+      `${import.meta.env.BASE_URL}textures/sky/milkyway_2k.webp`,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.generateMipmaps = false;
+        tex.wrapS = THREE.RepeatWrapping;
+        this.texture = tex;
+        this.material.uniforms.uMap.value = tex;
+      },
+      undefined,
+      () => {
+        // the procedural model still carries the sky if the map never loads
+      },
+    );
+  }
+
+  setFade(f: number): void {
+    this.material.uniforms.uFade.value = f;
+    this.mesh.visible = f > 0.005 && this.texture !== null;
+  }
+
+  dispose(): void {
+    this.mesh.geometry.dispose();
+    this.material.dispose();
+    this.texture?.dispose();
+  }
+}
 
 // ------------------------------------------------------------ point shader --
 
@@ -326,6 +419,11 @@ export class GalaxyScene {
   private sgraGroup = new THREE.Group();
   private sgraGlow: THREE.Sprite;
   private sgraMat: THREE.SpriteMaterial;
+  private accretion = new AccretionDisk();
+  private survey = new SurveySky();
+  private starMats: THREE.ShaderMaterial[] = [];
+  private baseGains: number[] = [];
+  private time = 0;
   private solGroup = new THREE.Group();
   private solMat: THREE.SpriteMaterial;
   private warp = new WarpStreaks();
@@ -342,10 +440,13 @@ export class GalaxyScene {
 
     // ---- LOD mid: the point-cloud populations --------------------------
     const diskMat = cloudMaterial(1);
-    const youngMat = cloudMaterial(1.15);
+    const youngMat = cloudMaterial(1.1);
     const bulgeMat = cloudMaterial(1);
-    const haloMat = cloudMaterial(0.8);
+    const haloMat = cloudMaterial(0.6);
     this.materials.push(diskMat, youngMat, bulgeMat, haloMat);
+    // the survey-sky blend dims these while the real map carries the view
+    this.starMats = [diskMat, youngMat, bulgeMat, haloMat];
+    this.baseGains = this.starMats.map((m) => m.uniforms.uGain.value as number);
 
     this.cloudRoot.add(buildPoints(this.sampleDisk(rnd), diskMat, -14));
     this.cloudRoot.add(buildPoints(this.sampleYoungArms(rnd), youngMat, -11));
@@ -420,7 +521,9 @@ export class GalaxyScene {
     this.sgraGlow.renderOrder = -2;
     this.sgraGroup.add(this.sgraGlow);
     this.sgraGroup.add(this.sStars.group);
+    this.sgraGroup.add(this.accretion.group);
     this.scene.add(this.sgraGroup);
+    this.scene.add(this.survey.mesh);
 
     // ---- Sol marker ----------------------------------------------------
     const solTex = glowTexture(96, 'rgba(255,246,225,1)', 'rgba(255,220,150,0)');
@@ -602,13 +705,17 @@ export class GalaxyScene {
       centres.push([dir[0] * r, dir[1] * r, dir[2] * r * 0.9]);
     }
     for (const [cx, cy, cz] of centres) {
-      const members = 50 + Math.floor(rnd() * 70);
+      // kept diffuse on purpose: members packed into a couple of pixels
+      // stack additively into a beacon that trips bloom and turns into a
+      // glowing block - a soft knot reads as a cluster, a hot pixel reads
+      // as an artifact
+      const members = 40 + Math.floor(rnd() * 42);
       for (let i = 0; i < members; i++) {
-        // Plummer-ish profile, core ~15 ly, capped so the u→1 tail cannot
+        // Plummer-ish profile, core ~24 ly, capped so the u→1 tail cannot
         // fling members thousands of ly out of their own cluster
-        const rr = Math.min(90, 15 / Math.sqrt(Math.pow(Math.max(rnd(), 1e-4), -2 / 3) - 1 + 1e-6));
+        const rr = Math.min(110, 24 / Math.sqrt(Math.pow(Math.max(rnd(), 1e-4), -2 / 3) - 1 + 1e-6));
         const dir = isotropic(rnd);
-        const warm = 0.8 + rnd() * 0.18;
+        const warm = 0.66 + rnd() * 0.16;
         pushStar(
           b,
           cx + dir[0] * rr,
@@ -691,10 +798,14 @@ export class GalaxyScene {
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           float dist = max(length(mv.xyz), 1.0);
           float px = aSize * 900.0 / dist;
-          // inside a cloud a billboard stops making sense - fade it out;
-          // and from far away the analytic sheet carries the dust lanes,
-          // so distant sprites bow out instead of smearing brown streaks
-          vFade = (1.0 - smoothstep(120.0, 340.0, px)) * smoothstep(2.5, 7.0, px);
+          // inside a cloud a billboard stops making sense - fade it out.
+          // And beyond ~30 kly the camera is looking AT the galaxy, not
+          // through it: the analytic sheet's baked lanes carry the dust
+          // there, and thousands of stacked dark sprites would smear a
+          // brown wedge across the far view (fade by camera distance -
+          // pixel size never gets small enough, these sprites are huge)
+          vFade = (1.0 - smoothstep(120.0, 340.0, px))
+                * (1.0 - smoothstep(26000.0, 42000.0, dist));
           gl_PointSize = min(px, 340.0) * uPr;
           gl_Position = projectionMatrix * mv;
         }
@@ -804,7 +915,10 @@ export class GalaxyScene {
     const b: CloudBuild = { pos: [], size: [], color: [] };
     for (let i = 0; i < 90; i++) {
       const dir = isotropic(rnd);
-      const r = 320_000 + rnd() * 160_000;
+      // kept well inside the far plane: near the clip boundary, float32
+      // depth rounding swallows points at random (same cliff as the sky
+      // sphere) - and a backdrop's absolute distance is invisible anyway
+      const r = 130_000 + rnd() * 60_000;
       const warm = rnd();
       pushStar(
         b,
@@ -835,10 +949,23 @@ export class GalaxyScene {
     simDays: number,
     speedLyPerSec: number,
   ): void {
+    this.time += dt;
+
     // galaxy-wide clouds: one shared offset (float32 rounding here moves
     // the whole far field by ≤ ~0.004 ly - beneath notice)
     galToScene(-camPos.x, -camPos.y, -camPos.z, this.tmp);
     this.cloudRoot.position.set(this.tmp.x, this.tmp.y, this.tmp.z);
+
+    // ---- the real sky, while we are where it was measured --------------
+    // Near Sol the NASA SVS survey map IS the view; the procedural model
+    // dims underneath it and takes over as the viewpoint genuinely leaves
+    // the neighbourhood the survey was made from.
+    const solDist = camPos.distanceTo(SUN_POS);
+    const surveyWeight = 1 - THREE.MathUtils.smoothstep(solDist, 300, 3200);
+    this.survey.setFade(surveyWeight);
+    for (let i = 0; i < this.starMats.length; i++) {
+      this.starMats[i].uniforms.uGain.value = this.baseGains[i] * (1 - surveyWeight * 0.78);
+    }
 
     // the far-view sheet fades as the camera descends into the disk - the
     // point clouds ARE the galaxy from inside
@@ -846,15 +973,15 @@ export class GalaxyScene {
     const inPlane = 1 - THREE.MathUtils.smoothstep(Math.abs(camPos.z), 2600, 14_000);
     const inDisk = 1 - THREE.MathUtils.smoothstep(rho, 42_000, 78_000);
     const inside = Math.min(inPlane, inDisk);
-    this.sheetMat.uniforms.uFade.value = 1 - inside * 0.92;
+    this.sheetMat.uniforms.uFade.value = (1 - inside * 0.92) * (1 - surveyWeight * 0.9);
 
     // the analytic glows describe the bulge from OUTSIDE; once the camera
     // is inside them the point populations carry the light
     const centreDist = camPos.length();
     (this.coreGlow.material as THREE.SpriteMaterial).opacity =
-      0.5 * THREE.MathUtils.smoothstep(centreDist, 1_500, 6_000);
+      0.5 * THREE.MathUtils.smoothstep(centreDist, 1_500, 6_000) * (1 - surveyWeight * 0.9);
     (this.bulgeGlow.material as THREE.SpriteMaterial).opacity =
-      0.4 * THREE.MathUtils.smoothstep(centreDist, 5_000, 16_000);
+      0.4 * THREE.MathUtils.smoothstep(centreDist, 5_000, 16_000) * (1 - surveyWeight * 0.9);
 
     // Sgr A* group: exact camera-relative placement
     galToScene(-camPos.x, -camPos.y, -camPos.z, this.tmp);
@@ -868,16 +995,17 @@ export class GalaxyScene {
     const base = Math.max(sgraDist * 0.012, 0.02);
     const s = Math.min(base, 260);
     this.sgraGlow.scale.set(s, s, 1);
-    // hand the close-up over to the lensing pass: the sprite is a beacon,
-    // not the accretion flow, and must not wash out the shadow
+    // three representations, one object: far beacon glow → mid-range disk
+    // mesh with its shadow silhouette → close-range geodesic march. Each
+    // hands over as the next can put real pixels on screen.
     this.sgraMat.opacity =
       THREE.MathUtils.clamp(0.35 + Math.log10(flare.level + 1) * 0.5, 0, 1) *
-      THREE.MathUtils.smoothstep(sgraDist, 0.0015, 0.006);
+      THREE.MathUtils.smoothstep(sgraDist, 0.018, 0.05);
+    this.accretion.update(sgraDist, this.time, flare.level);
 
     // Sol marker
     galToScene(SUN_POS.x - camPos.x, SUN_POS.y - camPos.y, SUN_POS.z - camPos.z, this.tmp);
     this.solGroup.position.set(this.tmp.x, this.tmp.y, this.tmp.z);
-    const solDist = camPos.distanceTo(SUN_POS);
     const solScale = THREE.MathUtils.clamp(solDist * 0.02, 0.00002, 160);
     (this.solGroup.children[0] as THREE.Sprite).scale.set(solScale, solScale, 1);
 
@@ -912,6 +1040,8 @@ export class GalaxyScene {
     this.chunks.dispose();
     this.warp.dispose();
     this.sStars.dispose();
+    this.accretion.dispose();
+    this.survey.dispose();
     this.sheetMat.dispose();
     this.sgraMat.dispose();
     this.solMat.dispose();

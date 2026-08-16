@@ -47,6 +47,7 @@ const LENS_FRAG = /* glsl */ `
   uniform float uGlow;       // quiescent emission level
   uniform float uFlare;      // flare multiplier from the generator (~1..42)
   uniform float uStrength;   // pass fade 0..1
+  uniform vec3 uDiskView;    // accretion-flow axis, view space (world-fixed)
 
   // ---- helpers ----------------------------------------------------------
 
@@ -128,10 +129,12 @@ const LENS_FRAG = /* glsl */ `
       float h2 = dot(cross(rel0, v), cross(rel0, v));
       float rs = uRs;
 
-      // disk basis: the flow's angular momentum axis. Slightly tipped from
-      // the galactic pole - we in fact view Sgr A* close to pole-on (EHT).
-      vec3 nDisk = normalize(vec3(0.22, 0.94, 0.26));
-      vec3 e1 = normalize(cross(nDisk, vec3(0.0, 0.0, 1.0)));
+      // disk basis: the flow's angular momentum axis, fixed in WORLD space
+      // and supplied per frame - a view-space constant here would make the
+      // whole accretion structure rotate with the pilot's head
+      vec3 nDisk = normalize(uDiskView);
+      vec3 up = abs(nDisk.z) < 0.94 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+      vec3 e1 = normalize(cross(nDisk, up));
       vec3 e2 = cross(nDisk, e1);
 
       vec3 emission = vec3(0.0);
@@ -201,9 +204,13 @@ const LENS_FRAG = /* glsl */ `
       col += emission * level * uStrength * (1.0 - captured);
     }
 
-    // a single NaN pixel poisons every bloom mip into grey blocks - scrub
+    // a single NaN pixel poisons every bloom mip into grey blocks - scrub.
+    // The highlight clamp is exposure discipline as much as safety: an
+    // unclamped ring saturates to a featureless white annulus and its bloom
+    // floods the shadow grey - the disk's radial and Doppler gradients only
+    // read if the brightest pixel is kept within the tone mapper's reach
     if (!(col.r + col.g + col.b >= 0.0)) col = vec3(0.0);
-    gl_FragColor = vec4(clamp(col, 0.0, 48.0), 1.0);
+    gl_FragColor = vec4(clamp(col, 0.0, 6.5), 1.0);
   }
 `;
 
@@ -229,9 +236,10 @@ export class LensingPass extends Pass {
       uTanHalf: { value: Math.tan((26 * Math.PI) / 180) },
       uAspect: { value: 16 / 9 },
       uTime: { value: 0 },
-      uGlow: { value: 0.55 },
+      uGlow: { value: 1.0 },
       uFlare: { value: 1 },
       uStrength: { value: 0 },
+      uDiskView: { value: new THREE.Vector3(0, 1, 0) },
     };
     this.material = new THREE.ShaderMaterial({
       vertexShader: LENS_VERT,
@@ -248,6 +256,7 @@ export class LensingPass extends Pass {
    */
   syncFrame(
     bhWorld: THREE.Vector3,
+    diskNormalWorld: THREE.Vector3,
     camera: THREE.PerspectiveCamera,
     time: number,
     flareLevel: number,
@@ -255,6 +264,8 @@ export class LensingPass extends Pass {
   ): void {
     const v = this.uniforms.uBhView.value as THREE.Vector3;
     v.copy(bhWorld).applyMatrix4(camera.matrixWorldInverse);
+    const n = this.uniforms.uDiskView.value as THREE.Vector3;
+    n.copy(diskNormalWorld).transformDirection(camera.matrixWorldInverse);
     this.uniforms.uTanHalf.value = Math.tan((camera.fov * Math.PI) / 360);
     this.uniforms.uAspect.value = camera.aspect;
     this.uniforms.uTime.value = time;

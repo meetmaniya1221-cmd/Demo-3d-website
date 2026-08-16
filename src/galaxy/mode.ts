@@ -33,6 +33,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { AppState } from '../sim/state';
 import { GalaxyScene } from './scene';
+import { SGRA_DISK_NORMAL } from './sgra';
 import { GalaxyShip } from './ship';
 import { GalaxyHud, type HudMarker } from './hud';
 import { GalaxyMap } from './map';
@@ -177,17 +178,27 @@ export class GalaxyMode {
       this.lens = new LensingPass();
       this.composer.addPass(this.lens);
       this.composer.addPass(
-        new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.7, 0.75, 0.7),
+        new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.7, 0.78),
       );
       this.composer.addPass(new OutputPass());
     }
 
     if (this.ship.properTime === 0) {
-      // first boarding: park just off Sol, nose toward the galactic centre
+      // first boarding: park just off Sol, nose toward the galactic centre -
+      // then compose the shot rather than centring it: the centre sits
+      // off-axis and a gentle roll lays the band as a diagonal across the
+      // frame, the way a cinematographer would hold it
       this.ship.pos.copy(SUN_POS).add(new Vec3d(0, -0.5, 0.12));
       galToScene(0 - this.ship.pos.x, 0 - this.ship.pos.y, 0 - this.ship.pos.z, this.tmpS);
       this.tmpV.set(this.tmpS.x, this.tmpS.y, this.tmpS.z).normalize();
       this.ship.quat.setFromUnitVectors(new THREE.Vector3(0, 0, -1), this.tmpV);
+      const frame = new THREE.Quaternion();
+      frame.setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.22); // centre right of frame
+      this.ship.quat.multiply(frame);
+      frame.setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0.08); // slightly above the bow
+      this.ship.quat.multiply(frame);
+      frame.setFromAxisAngle(new THREE.Vector3(0, 0, 1), -0.38); // band as a diagonal
+      this.ship.quat.multiply(frame);
     }
 
     this.phase = 'entering';
@@ -576,7 +587,14 @@ export class GalaxyMode {
     galToScene(-this.ship.pos.x, -this.ship.pos.y, -this.ship.pos.z, this.tmpS);
     this.tmpV.set(this.tmpS.x, this.tmpS.y, this.tmpS.z);
     const lensStrength = THREE.MathUtils.clamp(1 - (sgraDist - 0.004) / 0.6, 0, 1);
-    this.lens?.syncFrame(this.tmpV, camera, this.elapsed, this.gscene.flareState.level, lensStrength);
+    this.lens?.syncFrame(
+      this.tmpV,
+      SGRA_DISK_NORMAL,
+      camera,
+      this.elapsed,
+      this.gscene.flareState.level,
+      lensStrength,
+    );
 
     // ---- HUD ---------------------------------------------------------
     this.buildMarkers(camera);
@@ -630,7 +648,9 @@ export class GalaxyMode {
         kind,
       });
     };
-    push(new Vec3d(0, 0, 0), 'SGR A*', 'sgra', 0.00002);
+    // once the hole fills the view it needs no locator - the marker only
+    // exists to find something small
+    push(new Vec3d(0, 0, 0), 'SGR A*', 'sgra', 0.00025);
     push(SUN_POS, 'SOL', 'sol', 0.02);
     const wp = this.map?.currentWaypoint;
     if (wp) push(wp, 'WAYPOINT', 'waypoint', 0.05);
@@ -689,6 +709,7 @@ export class GalaxyMode {
       scan: () => this.startScan(),
       openMap: () => this.map?.show(),
       flare: () => this.gscene?.flares.trigger(1.5),
+      scene: () => this.gscene?.scene,
     };
   }
 

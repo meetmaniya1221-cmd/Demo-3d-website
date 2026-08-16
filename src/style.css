@@ -7366,6 +7366,8 @@ body.galaxy-mode .timebar,
 body.galaxy-mode .rail,
 body.galaxy-mode .body-label,
 body.galaxy-mode .distance-readout,
+body.galaxy-mode .star-label,
+body.galaxy-mode .mobile-nav,
 body.galaxy-mode .skynote {
   display: none !important;
 }

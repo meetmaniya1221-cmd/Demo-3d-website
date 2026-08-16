@@ -48,9 +48,12 @@ const VERT = /* glsl */ `
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     float dist = max(length(mv.xyz), 1e-6);
     // apparent size falls off with distance; clamp both ends and push the
-    // lost brightness into colour so the falloff reads as dimming
+    // lost brightness into colour so the falloff reads as dimming. The max
+    // is deliberately modest: a sky where every near star balloons reads
+    // as noise, and hierarchy - a few readable stars over a deep field -
+    // is what makes it read as space
     float size = aSize * 46.0 / dist;
-    float clamped = clamp(size, 0.85, 7.0);
+    float clamped = clamp(size, 0.7, 5.2);
     float k = clamp(size / clamped, 0.0, 1.0);
     vColor = aColor * (0.22 + 0.78 * k * k) * uFade;
     gl_PointSize = clamped * uPr;
@@ -247,8 +250,10 @@ export class ChunkField {
       pos[i * 3] = scenePos.x;
       pos[i * 3 + 1] = scenePos.y;
       pos[i * 3 + 2] = scenePos.z;
+      // steep magnitude hierarchy: most stars stay faint points, a handful
+      // of giants get to be individually readable
       const lum = cls.lum * (0.55 + rnd() * 0.9);
-      size[i] = 0.65 + Math.pow(Math.min(lum, 500) / 500, 0.3) * 3.1;
+      size[i] = 0.55 + Math.pow(Math.min(lum, 500) / 500, 0.45) * 3.0;
       const jitter = 0.92 + rnd() * 0.16;
       color[i * 3] = cls.color[0] * jitter;
       color[i * 3 + 1] = cls.color[1] * jitter;
