@@ -141,7 +141,7 @@ export class LayersPanel {
     // says what it is rather than implying anything travelled faster.
     const travelGroup = document.createElement('div');
     travelGroup.className = 'layers-group';
-    travelGroup.innerHTML = '<div class="layers-group-title">Travel effects</div>';
+    travelGroup.innerHTML = '<div class="layers-group-title">Wormhole travel effect</div>';
     const travelRow = document.createElement('div');
     travelRow.className = 'units-row';
     travelRow.setAttribute('role', 'group');

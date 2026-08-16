@@ -468,8 +468,17 @@ export class Ship {
     if (dir.lengthSq() < 1e-12) return;
     const forward = dir.clone().normalize();
     const up = Math.abs(forward.y) > 0.98 ? UP_FALLBACK : WORLD_UP;
-    // three.js cameras and this hull both look down −z
-    this.tmpM.lookAt(new THREE.Vector3(0, 0, 0), forward.negate(), up);
+    // Matrix4.lookAt(eye, target, up) already builds an orientation whose −z
+    // points from eye toward target, which is the convention this hull and a
+    // three.js camera share. Negating `forward` as well - as this did - aims
+    // the nose at the mirror of where it was asked to look, so the ship flew
+    // backwards down every long hop and every interstellar cruise. It went
+    // unnoticed because the destination is a point of light either way, but
+    // the wormhole is not: its axis comes from the same vector, so the throat
+    // opened 180 degrees behind the cockpit and the whole sequence played
+    // off-screen. `lookAtPoint`, immediately above, is the same call done
+    // correctly and is what this now matches.
+    this.tmpM.lookAt(new THREE.Vector3(0, 0, 0), forward, up);
     this.quat.setFromRotationMatrix(this.tmpM);
     this.headYaw = 0;
     this.headPitch = 0;

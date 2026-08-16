@@ -132,7 +132,10 @@ async function observe(startFn, { maxMs = 45_000, shots = [], name = 'jump' } = 
       break;
     }
     if (Date.now() - t0 > maxMs) break;
-    await settle(250);
+    // Acts are seconds long, not tens of seconds - the formation runs about
+    // 1.4s of an 8.5s sequence. Sampling at a quarter-second missed it often
+    // enough to fail on timing rather than on the effect.
+    await settle(110);
   }
   return { sawActive, phases: [...phases], peakProgress };
 }
@@ -203,7 +206,7 @@ const longRun = await observe(
   { maxMs: 180_000, name: 'saturn', shots: [0.2, 0.45, 0.72, 0.95] },
 );
 if (!longRun.sawActive) fail('long hop (Earth → Saturn) did NOT play the transition');
-for (const p of ['align', 'stretch', 'throat', 'emerge']) {
+for (const p of ['departure', 'distortion', 'formation', 'transit']) {
   if (!longRun.phases.includes(p)) fail(`Earth → Saturn never reached the "${p}" phase`);
 }
 // the sequence covers the flight; the flight is what actually has to finish
@@ -418,7 +421,7 @@ for (let i = 0; i < 40; i++) {
     const camLen = await page.evaluate(() => window.__orrery.camera.position.length());
     peakCam = Math.max(peakCam, camLen);
     // only score the throat, where the effect actually covers the frame
-    if (w.phase === 'throat') {
+    if (w.phase === 'transit') {
       const name = `interstellar-${String(frames).padStart(2, '0')}`;
       await shot(name);
       worstFacet = Math.max(worstFacet, facets(name));
@@ -447,7 +450,133 @@ await settle(1200);
 await api('exitSpacecraft');
 await settle(1500);
 
-// ============================================= 10. the overlay always cleans up
+// ============================ 10. the six acts have to be six different things
+//
+// "Six acts" is a claim about what is on screen, and a phase label is not
+// evidence for it - the old sequence reported four phases while showing one
+// picture with the brightness turned up and down. So this flies a long hop,
+// captures a frame inside each act, and compares them.
+//
+// Two properties are asserted. Consecutive acts must differ: if the departure
+// and the formation are the same image, there is no sequence, whatever the
+// state machine says. And the transit must be the darkest of them with the
+// deepest hole in the middle, because that is the one act whose whole job is a
+// deep dark centre - it is also the check that would catch the throat
+// collapsing back to a ten-pixel dot, or the reveal blowing the frame to white.
+console.log('\n── the six acts');
+const ACT_ORDER = ['departure', 'distortion', 'formation', 'transit', 'reveal'];
+
+/** Mean luminance, and how dark the middle is relative to the surround. */
+function actStats(name) {
+  const png = PNG.sync.read(readFileSync(`${OUT}/${name}.png`));
+  const { width, height, data } = png;
+  const lum = (i) => 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+  let sum = 0;
+  let n = 0;
+  let core = 0;
+  let coreN = 0;
+  let ring = 0;
+  let ringN = 0;
+  const cx = width / 2;
+  const cy = height * 0.42;
+  const rad = height * 0.16;
+  for (let y = Math.round(height * 0.06); y < height * 0.62; y++) {
+    for (let x = Math.round(width * 0.22); x < width * 0.78; x++) {
+      const i = (y * width + x) * 4;
+      const l = lum(i);
+      sum += l;
+      n++;
+      const dr = Math.hypot(x - cx, y - cy);
+      if (dr < rad) {
+        core += l;
+        coreN++;
+      } else if (dr < rad * 2.1) {
+        ring += l;
+        ringN++;
+      }
+    }
+  }
+  return {
+    mean: +(sum / Math.max(n, 1)).toFixed(2),
+    core: +(core / Math.max(coreN, 1)).toFixed(2),
+    surround: +(ring / Math.max(ringN, 1)).toFixed(2),
+  };
+}
+
+// Section 9 leaves the ship out at another star with the cockpit closed, so
+// this puts itself back where it needs to be rather than inheriting whatever
+// the previous section happened to end on.
+if ((await api('activeSystem')) !== 'sol') {
+  await api('goToSystem', 'sol');
+  await page
+    .waitForFunction(() => !window.__orrery.voyageActive(), null, { timeout: 120_000 })
+    .catch(() => {});
+  await settle(2500);
+}
+if (!(await api('spacecraftActive'))) {
+  await api('enterSpacecraft');
+  await page
+    .waitForFunction(() => window.__orrery.spacecraft.phase() === 'flying', null, { timeout: 40_000 })
+    .catch(() => {});
+  await settle(2500);
+}
+await sc('teleportTo', 'earth', 2.4);
+await settle(900);
+const actShots = {};
+await (async () => {
+  await sc('target', 'saturn');
+  await sc('travel', 1);
+  const t0 = Date.now();
+  for (;;) {
+    const w = await warp();
+    if (w.active && ACT_ORDER.includes(w.phase) && !actShots[w.phase]) {
+      const name = `act-${w.phase}`;
+      await shot(name);
+      actShots[w.phase] = actStats(name);
+    } else if (!w.active && Object.keys(actShots).length) break;
+    if (Date.now() - t0 > 180_000) break;
+    await settle(110);
+  }
+})();
+await waitForMode(['follow', 'free']);
+await settle(1500);
+
+const seenActs = ACT_ORDER.filter((a) => actShots[a]);
+for (const a of ACT_ORDER) {
+  if (!actShots[a]) fail(`the "${a}" act never produced a frame`);
+}
+for (let i = 1; i < seenActs.length; i++) {
+  const a = actShots[seenActs[i - 1]];
+  const b = actShots[seenActs[i]];
+  const moved =
+    Math.abs(a.mean - b.mean) + Math.abs(a.core - b.core) + Math.abs(a.surround - b.surround);
+  if (moved < 4) {
+    fail(
+      `"${seenActs[i - 1]}" and "${seenActs[i]}" look the same (combined change ${moved.toFixed(1)}) ` +
+        '- the acts are labels, not stages',
+    );
+  }
+}
+const tr = actShots.transit;
+if (tr) {
+  if (tr.core > tr.surround * 0.75) {
+    fail(
+      `the transit has no dark centre: core ${tr.core} against surround ${tr.surround} ` +
+        '- the throat is supposed to be the deepest thing in frame',
+    );
+  }
+  const brightest = Math.max(...seenActs.map((a) => actShots[a].mean));
+  if (tr.mean > brightest * 0.92) {
+    fail(`the transit (mean ${tr.mean}) is not darker than the rest of the sequence`);
+  }
+}
+for (const a of seenActs) {
+  const st = actShots[a];
+  if (st.mean > 150) fail(`the "${a}" act blows the frame out (mean ${st.mean}) - no white flash`);
+}
+note('six acts', actShots);
+
+// ============================================= 11. the overlay always cleans up
 const stuck = await warp();
 if (stuck.active) fail('the transition is still running after everything finished');
 const noteVisible = await page.evaluate(

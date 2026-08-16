@@ -41,9 +41,12 @@ export const TRAVEL_EFFECT_LABEL: Record<TravelEffects, string> = {
 };
 
 export const TRAVEL_EFFECT_HINT: Record<TravelEffects, string> = {
-  cinematic: 'Full wormhole sequence: lensed sky, star streaks, open throat.',
-  reduced: 'Shorter, cheaper version - fewer noise octaves, no lensing pass.',
-  off: 'No transition effect; long jumps use the plain cruise.',
+  cinematic:
+    'The full six-stage crossing: the real Milky Way lensed around an open throat, layered walls, curved star trails.',
+  // Reduced keeps every stage and thins what is inside them, rather than
+  // playing a different, cheaper-looking effect on slower hardware.
+  reduced: 'Same sequence, lighter to draw: fewer wall layers, one lensed image, less noise detail.',
+  off: 'No transition; long jumps and interstellar cruises run as a plain flight.',
 };
 
 /** Classify a jump by the distance it covers, in AU. */
@@ -64,7 +67,14 @@ export function usesWormhole(distanceAU: number, effects: TravelEffects): boolea
   return effects !== 'off' && travelKind(distanceAU) === 'long';
 }
 
-/** Seconds the sequence runs for, by quality. */
+/**
+ * Seconds the sequence runs for, by quality.
+ *
+ * Six acts need room to be six acts. At the old 5.6 the departure and the
+ * distortion were over before they had registered and the thing read as a cut;
+ * the extra time goes almost entirely into the front half, where the sky is
+ * still recognisable and the bending is the whole point.
+ */
 export function wormholeDuration(effects: TravelEffects): number {
-  return effects === 'reduced' ? 3.4 : 5.6;
+  return effects === 'reduced' ? 5.0 : 8.5;
 }

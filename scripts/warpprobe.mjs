@@ -43,6 +43,18 @@ const probe = () =>
       camLen: c.position.length(),
       near: c.near,
       far: c.far,
+      dials: w.dials ?? null,
+      // where the throat's axis lands on screen, and how far off-centre the
+      // camera is looking from it - a tunnel aimed off-frame has no centre
+      offAxis: (() => {
+        const T = window.__orrery.THREE;
+        const cam = window.__orrery.camera;
+        const fwd = new T.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+        const ax = window.__orrery.wormholeAxis?.();
+        if (!ax) return null;
+        const a = new T.Vector3().fromArray(ax);
+        return +((Math.acos(Math.max(-1, Math.min(1, fwd.dot(a)))) * 180) / Math.PI).toFixed(1);
+      })(),
     };
   });
 
@@ -55,6 +67,15 @@ await page
   .waitForFunction(() => window.__orrery.spacecraft.phase() === 'flying', null, { timeout: 40_000 })
   .catch(() => {});
 await page.waitForTimeout(2500);
+if (args.includes('--bare')) {
+  // The throat converges on the middle of the frame, which is exactly where
+  // the engine and navigation panels sit. Judging the effect through them is
+  // judging the panels.
+  await page.addStyleTag({
+    content:
+      '.sc-nav,.sc-location,.sc-deck,.sc-top,.sc-orbit,.sc-help,.sc-navmap,.warp-note{opacity:0 !important}',
+  });
+}
 
 console.log(`\n  interstellar cruise to ${TO}\n`);
 console.log('   t   voyage  vphase      warp  wphase   p     |cam|        near        far        far/|cam|');
@@ -62,10 +83,22 @@ console.log('   t   voyage  vphase      warp  wphase   p     |cam|        near  
 // engage. goToSystem only sets the target while the cockpit is up - the cruise
 // itself is what carries the ship light-years, and light-years are where the
 // world coordinates get large.
-await page.evaluate((s) => {
-  window.__orrery.spacecraft.setStarTarget(s);
-  window.__orrery.spacecraft.launchInterstellar();
-}, TO);
+if (args.includes('--insystem')) {
+  // An in-system long hop runs to completion, so it is the only way to see the
+  // reveal and the arrival - an interstellar cruise holds the throat shut for
+  // as long as the real crossing takes.
+  await page.evaluate(() => window.__orrery.spacecraft.teleportTo('earth', 2.4));
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    window.__orrery.spacecraft.target('saturn');
+    window.__orrery.spacecraft.travel(1);
+  });
+} else {
+  await page.evaluate((s) => {
+    window.__orrery.spacecraft.setStarTarget(s);
+    window.__orrery.spacecraft.launchInterstellar();
+  }, TO);
+}
 
 let shot = 0;
 for (let i = 0; i < 150; i++) {
@@ -74,14 +107,16 @@ for (let i = 0; i < 150; i++) {
   console.log(
     `  ${String(i).padStart(3)}  ${String(s.voyage).padStart(6)}  ${String(s.phase).padEnd(10)}` +
       `  ${String(s.active).padStart(5)}  ${String(s.wphase).padEnd(8)} ${String(s.p?.toFixed?.(2) ?? '-').padStart(5)}` +
-      `  ${s.camLen.toExponential(3)}  ${s.near.toExponential(2)}  ${s.far.toExponential(3)}  ${ratio}`,
+      `  ${s.camLen.toExponential(3)}  offAxis=${String(s.offAxis).padStart(5)}deg` +
+      (s.dials ? `  ${JSON.stringify(s.dials)}` : ''),
   );
-  if (s.active && shot < 8) {
+  void ratio;
+  if (s.active && shot < 24) {
     await page.screenshot({ path: `${OUT}/warp-${String(shot).padStart(2, '0')}.png` });
     shot++;
   }
   if (!s.active && i > 6 && shot > 0) break;
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(args.includes('--insystem') ? 350 : 600);
 }
 console.log(`\n  ${shot} frames captured while the throat was up -> ${OUT}`);
 await browser.close();

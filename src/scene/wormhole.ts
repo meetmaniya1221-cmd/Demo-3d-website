@@ -27,14 +27,37 @@
  * is transparent inside the throat, so what shows through the opening is the
  * real scene - the destination system, already built and already rendering.
  * There is no second scene, no fake destination, and nothing to swap at the
- * end: the aperture simply opens until the overlay is gone.
+ * end: the aperture simply opens until the overlay is gone. That is also what
+ * hides the loading: the destination is built while the throat is shut, and
+ * the sequence waits there for as long as the build and the real flight need
+ * (see `hold`), so a system that takes a moment to appear never shows as a
+ * progress bar.
+ *
+ * Six acts
+ * --------
+ * departure, distortion, formation, transit, reveal, arrival. They are not
+ * separate effects cross-fading - the shader has one body, and each act is a
+ * stretch of the run where a different set of its dials is doing the work
+ * (see WormholePhase and the schedule in `update`). Aberration leads, then
+ * deflection, then the throat, then the far end; the overlaps between those
+ * curves are the transitions.
+ *
+ * Depth
+ * -----
+ * The wall is marched in slices rather than sampled once, each further down
+ * the tunnel, scrolling at its own rate and twisted a little further round the
+ * axis, composited front to back. That parallax is what gives the throat an
+ * inside. A single noise lookup, however detailed, is a painted cylinder and
+ * reads as one.
  *
  * Cost
  * ----
- * One full-screen pass with one cubemap fetch and a few noise octaves, plus
- * ~1,400 two-vertex line segments for the streaks. The pass runs only while a
- * transition is playing, and 'reduced' quality drops the lensing and most of
- * the noise for weaker hardware.
+ * One full-screen pass: two cubemap fetches (the two lensed images), and up to
+ * five noise-marched wall slices, plus ~900 four-segment polylines for the
+ * trails. The pass runs only while a transition is playing. 'reduced' keeps
+ * every stage of the sequence and thins what is inside it - two slices, one
+ * octave, one lensed image - so a slower machine gets the same effect with
+ * less detail rather than a different, cheaper one.
  */
 import * as THREE from 'three';
 import { SNOISE_GLSL } from './glslnoise';
@@ -76,9 +99,22 @@ const THROAT_FRAG = /* glsl */ `
   uniform float uHasSky;
   uniform float uTime;
   uniform float uIntensity;  // 0 = nothing, 1 = fully inside the throat
-  uniform float uAperture;   // 0 = closed, 1 = opened out to nothing
-  uniform float uLensing;    // 0 disables the deflection (reduced quality)
+  uniform float uAperture;   // 0 = covered, 1 = opened out to nothing
+  uniform float uMouth;      // angular radius of the throat, in radians
   uniform float uDetail;     // noise octaves, as a float for the loop bound
+  // ---- the act being played, as separate dials -------------------------
+  // Each stage of the sequence moves these rather than switching between
+  // shaders, so departure, distortion, formation, transit and reveal are one
+  // continuous piece of geometry being pushed, not five effects cross-fading.
+  uniform float uStretch;    // aberration: the sky crowding forward
+  uniform float uLens;       // deflection strength
+  uniform float uTunnel;     // how formed the throat is
+  uniform float uFlow;       // how fast the walls run past
+  uniform float uTwist;      // azimuthal shear per unit depth - curved trails
+  uniform float uReveal;     // the far end opening onto the destination
+  uniform float uExposure;   // cinematic exposure ramp
+  uniform float uLayers;     // wall slices, as a float for the loop bound
+  uniform float uSecondImage; // 1 to sample the far-side lensed image
   ${SNOISE_GLSL}
 
   float fbm(vec3 p, float oct) {
@@ -121,72 +157,172 @@ const THROAT_FRAG = /* glsl */ `
 
     float ct = clamp(dot(d, uAxis), -1.0, 1.0);
     float theta = acos(ct);                       // angle off the travel axis
+    vec3 perp = normalize(d - uAxis * ct + vec3(1e-6));
+    float az = atan(dot(d, uUp), dot(d, uSide));
 
-    // The opening, as an angular radius. It has to be judged against the half
-    // field of view (about 0.45 rad at the default 52 degrees), not against a
-    // hemisphere: an aperture of 3.3 rad clears the entire frame a third of the
-    // way through the sequence, which showed the raw scene instead of a reveal.
-    float R = uAperture * 1.25 + 0.010;
+    // Two radii, and keeping them apart is what lets the throat be a place
+    // rather than a hole.
+    //
+    // R is what the throat LOOKS like: where the ring sits, where the walls
+    // start, how big the dark centre is. It opens out during the formation and
+    // stays open through the transit, so the tunnel is a large mouth you are
+    // flying into.
+    //
+    // uAperture is what the overlay LETS THROUGH, and it stays shut until the
+    // reveal. Tying the two together - as this did - meant the mouth could not
+    // open without also uncovering the scene behind it, so the throat spent
+    // the whole sequence as a ten-pixel dot at the centre of frame and the
+    // tunnel had nothing to be the inside of.
+    //
+    // Both are judged against the half field of view, about 0.45 rad at the
+    // default 52 degrees, not against a hemisphere.
+    float R = uMouth;
+    float openR = uAperture * 1.25 + 0.010;
+
+    // ---- aberration: the sky piles up ahead --------------------------------
+    // Before anything bends, the view compresses toward the direction of
+    // travel. This is the departure: the real sky is still the real sky, it is
+    // simply being crowded forward, which is what makes the first seconds read
+    // as acceleration rather than as an effect switching on.
+    float ahead = exp(-theta * 1.35);
+    float sTheta = theta / (1.0 + uStretch * 2.3 * ahead);
 
     // ---- gravitational-lensing-like deflection -----------------------------
-    // Einstein's deflection angle falls off as 1/b, so a ray grazing the throat
-    // is bent far more than one passing wide. Sampling the real baked Milky Way
-    // along the bent ray is what produces the ring and the curved light; none of
-    // it is painted.
-    float k = 0.42 * uIntensity * uLensing;
-    float bent = theta + k / max(theta, 0.05);
-    vec3 perp = normalize(d - uAxis * ct + vec3(1e-6));
+    // Einstein's deflection angle falls off as the impact parameter, so a ray
+    // grazing the throat is bent far more than one passing wide.
+    // Bounded, because 1/b is not. Straight down the axis the impact
+    // parameter goes to zero and the raw deflection ran to thirteen radians,
+    // which wraps the cubemap several times and saturates the middle of frame
+    // to white - the one thing a throat must never be. Clamping the *bend*
+    // rather than clamping the result keeps the falloff intact everywhere it
+    // is visible and only tames the singularity at the centre.
+    float b = max(sTheta, 0.055);
+    float defl = min(uLens * 0.42 / b, 2.6);
+    float bent = sTheta + defl;
     vec3 lensed = normalize(uAxis * cos(bent) + perp * sin(bent));
 
     vec3 sky = uHasSky > 0.5
       ? textureCube(uSky, lensed).rgb
       : vec3(0.015, 0.020, 0.042);
 
-    // ---- energy running down the walls -------------------------------------
-    // Depth into the tunnel goes as 1/theta: the throat is infinitely far in
-    // this projection, so filaments crowd together toward the opening exactly
-    // the way perspective says they should.
-    float depth = 1.0 / max(theta, 0.05);
-    float az = atan(dot(d, uUp), dot(d, uSide));
-    float flow = depth * 1.35 - uTime * 2.1;
-    float fil = fbm(vec3(cos(az) * 1.9, sin(az) * 1.9, flow), uDetail) * 0.5 + 0.5;
-    fil = pow(clamp(fil, 0.0, 1.0), 2.4);
+    // The second image. A real lens produces two of everything - light that
+    // went round the near side and light that went round the far side - and
+    // that doubling is the difference between a sky that is bent and a sky
+    // that has merely been smeared. It arrives from the opposite azimuth, so
+    // the band appears to wrap the opening from both sides and close into a
+    // ring. Cinematic only: it costs a second cubemap fetch.
+    if (uSecondImage > 0.5 && uHasSky > 0.5) {
+      float bent2 = abs(sTheta - defl * 0.8);
+      vec3 lensed2 = normalize(uAxis * cos(bent2) - perp * sin(bent2));
+      sky += textureCube(uSky, lensed2).rgb * (0.9 * uLens);
+    }
 
-    // violet in the deep, blue-white toward the rim - a temperature ramp, not
-    // a rainbow. Kept narrow so it reads as energy and not as a cartoon.
-    vec3 deep = vec3(0.24, 0.16, 0.52);
-    vec3 hot  = vec3(0.72, 0.86, 1.00);
-    float toward = smoothstep(R * 3.2, R * 0.9, theta);
-    vec3 energy = mix(deep, hot, toward) * fil * (0.16 + 0.50 * uIntensity);
+    // ---- the tunnel wall, in layers ----------------------------------------
+    // Depth into the throat goes as 1/theta - the far end is infinitely far in
+    // this projection, so structure crowds together toward the opening exactly
+    // the way perspective says it should.
+    //
+    // The wall is marched rather than sampled once. Each slice sits further
+    // down the tunnel, scrolls at its own rate and is twisted a little further
+    // round the axis, and they are composited front to back so a near filament
+    // occludes a far one. That parallax between slices is what gives the throat
+    // an inside; a single noise lookup, however detailed, is a painted cylinder
+    // and reads as one however much you dress it.
+    float depth = 1.0 / max(theta, 0.042);
+    float wallT = uTime * (1.5 + uFlow * 3.4);
+    vec3 wall = vec3(0.0);
+    float occ = 0.0;
+    float wsum = 0.0;
+    for (int i = 0; i < 5; i++) {
+      if (float(i) >= uLayers) break;
+      float fi = float(i);
+      // deeper slices are further in and move more slowly - the parallax
+      float slice = depth * (1.0 + fi * 0.62);
+      // The radial term is deliberately slack and the azimuthal one wide: run
+      // the other way round and the slices line up into concentric onion
+      // rings, which is a ripple pattern rather than gas. The per-layer offset
+      // keeps them from agreeing with each other.
+      float aw = az + uTwist * slice * 0.35 + fi * 2.1;
+      float f = fbm(
+        vec3(cos(aw) * 2.6, sin(aw) * 2.6, slice * 0.5 - wallT * (1.0 - fi * 0.13) + fi * 7.0),
+        uDetail
+      ) * 0.5 + 0.5;
+      f = pow(clamp(f, 0.0, 1.0), 2.6 + fi * 0.3);
+      float vis = (1.0 - occ) * exp(-fi * 0.42);
+      wall += vec3(f * vis);
+      wsum += vis;
+      occ = min(occ + f * vis * 0.42, 0.92);
+    }
+    // normalised, so adding slices adds depth rather than brightness - five
+    // layers must not be five times as bright as one
+    wall /= max(wsum, 1e-3);
+    // Violet where the tube runs away from you, cooling to blue-white on the
+    // near wall beside the ship. The ramp was the other way round, which put
+    // every violet pixel outside the frame and left the visible throat a
+    // uniform grey-white - a temperature ramp needs its cold end where you can
+    // actually see it. Narrow either way: this is energy, not a rainbow.
+    wall *= mix(vec3(0.30, 0.18, 0.62), vec3(0.58, 0.76, 1.0),
+                smoothstep(R * 1.0, R * 2.5, theta));
+    wall *= (0.12 + 0.78 * uTunnel);
 
     // ---- the rim -----------------------------------------------------------
-    // A thin, bright edge where the deflection diverges. This is the Einstein
-    // ring; it is the brightest thing on screen and the only place bloom is
-    // really wanted.
-    float rim = exp(-pow((theta - R) / (R * 0.16 + 0.004), 2.0));
-    vec3 ringCol = vec3(0.78, 0.90, 1.0) * rim * (0.45 + 0.85 * uIntensity);
+    // A thin, bright edge where the deflection diverges: the Einstein ring. It
+    // is the brightest thing on screen and the only place bloom is wanted.
+    float rim = exp(-pow((theta - R) / (R * 0.075 + 0.003), 2.0));
+    // A second, fainter arc just outside it, which is what stops the ring
+    // reading as a drawn circle. It has to stay tight: at a third-radian mouth
+    // a wide one covers the entire frame and the whole picture goes white,
+    // which is the opposite of the deep sky this is supposed to sit in.
+    float halo = exp(-pow((theta - R * 1.22) / (R * 0.26 + 0.006), 2.0)) * 0.22;
+    vec3 ringCol = vec3(0.72, 0.85, 1.0) * (rim * 1.5 + halo) * (0.3 + 0.8 * uTunnel);
 
     // ---- the dark centre ---------------------------------------------------
     // Light that would have come from straight ahead has been swept aside into
     // the ring, so the middle is genuinely darker rather than painted black.
-    float throat = smoothstep(R * 1.35, R * 0.55, theta);
+    float throat = smoothstep(R * 1.4, R * 0.45, theta);
+    float skyDim = mix(0.26, 0.012, throat * uTunnel);
+    // Beyond the mouth the walls run away behind the ship and there is nothing
+    // out there but unlensed sky, so the far field falls off. Without this the
+    // frame edge stays as bright as the throat and the shot has no depth of
+    // field at all - everything at one exposure, which is what a flat effect
+    // looks like.
+    float outer = 1.0 - 0.45 * uTunnel * smoothstep(R * 1.5, R * 3.2, theta);
 
-    vec3 col = sky * (0.40 + 0.30 * (1.0 - throat)) + energy + ringCol;
-    col *= 0.30 + 0.62 * uIntensity;
+    // ---- the far end -------------------------------------------------------
+    // During the reveal a light grows at the end of the tunnel and the walls
+    // fall away behind it. The destination itself is the real scene showing
+    // through the opening - this is only the glow around it, so the system
+    // does not simply appear through a hole.
+    // A lip of light on the edge of the opening as it widens - not a glow
+    // filling the middle. Centred on the axis and wide, as this was, it simply
+    // washes the frame out, and a white flash is the one exit this effect must
+    // not have. The destination arrives by being uncovered, not by being lit.
+    float lip = exp(-pow((theta - openR) / (openR * 0.32 + 0.01), 2.0));
+    vec3 farEnd = vec3(0.55, 0.72, 1.0) * lip * uReveal * 0.5;
+
+    // The walls stop at the mouth. Inside it there is nothing to be lit, which
+    // is what makes the centre read as depth rather than as a dark disc
+    // painted over the middle.
+    vec3 col = (sky * skyDim + wall * (1.0 - throat * 0.96) * (1.0 - uReveal * 0.75)) * outer
+             + ringCol
+             + farEnd;
+    // cinematic exposure: the sequence darkens as it bores in and lifts again
+    // on the way out, so the reveal has somewhere to come up from
+    col *= uExposure;
 
     // ---- coverage ----------------------------------------------------------
     // Transparent inside the opening, so the real destination shows through it.
     // Everything else is covered while the effect is at strength.
-    float open = smoothstep(R * 0.86, R * 1.02, theta);
+    float open = smoothstep(openR * 0.86, openR * 1.02, theta);
     float alpha = clamp(open * uIntensity, 0.0, 1.0);
     // the ring itself stays visible over the opening for a moment, which is
     // what stops the reveal reading as a hole cut in a poster
-    alpha = max(alpha, min(rim * uIntensity * 0.85, 1.0));
+    alpha = max(alpha, min((rim + lip * uReveal * 0.5) * uIntensity * 0.85, 1.0));
 
     if (alpha < 0.003) discard;
     // capped below the bloom threshold's runaway range: the ring is meant to be
     // the brightest thing in frame, not the whole frame
-    gl_FragColor = vec4(min(col, vec3(1.45)), alpha);
+    gl_FragColor = vec4(min(col, vec3(1.6)), alpha);
   }
 `;
 
@@ -196,7 +332,7 @@ const STREAK_VERT = /* glsl */ `
   attribute float aPhase;   // 0..1 position along the run, before scrolling
   attribute float aRadius;
   attribute float aAngle;
-  attribute float aEnd;     // 0 = tail, 1 = head
+  attribute float aEnd;     // 0 at the tail, 1 at the head, in steps between
   attribute float aBright;
   varying float vFade;
   varying float vBright;
@@ -208,6 +344,8 @@ const STREAK_VERT = /* glsl */ `
   uniform float uTravel;
   uniform float uStreak;    // head-to-tail length, as a fraction of uDepth
   uniform float uSpread;    // radius of the field, as a fraction of uDepth
+  uniform float uCurve;     // how far a trail is sheared round the axis
+  uniform float uPinch;     // how strongly trails are drawn in toward the throat
 
   void main() {
     // Everything is built in view space and handed straight to the projection.
@@ -215,14 +353,35 @@ const STREAK_VERT = /* glsl */ `
     // world, which is the only way one effect can look right both inside a
     // planetary system and across a light-year - those two differ by a factor
     // of ten million in world units and by nothing at all on screen.
-    float z = fract(aPhase + uTravel) * 2.0 - 0.25;      // 0..1 run, biased ahead
-    float r = aRadius * uSpread;
-    vec3 pos = uAxisView * (z * uDepth + aEnd * uStreak * uDepth)
-             + uSideView * (cos(aAngle) * r * uDepth)
-             + uUpView * (sin(aAngle) * r * uDepth);
-    // fade in at the far end and out as a streak sweeps past the camera
-    vFade = smoothstep(-0.2, 0.05, z) * (1.0 - smoothstep(1.35, 1.75, z));
-    vBright = aBright;
+    float head = fract(aPhase + uTravel) * 2.0 - 0.25;   // 0..1 run, biased ahead
+    // Where this vertex sits along its own trail. A trail is several segments
+    // now rather than one, which is the whole point: a straight line cannot be
+    // bent, and a star being dragged past a gravity well does not travel in a
+    // straight line.
+    float along = aEnd * uStreak;
+    float z = head + along;
+
+    // The shear. Space is turning about the axis of travel, and it turns more
+    // the further down the throat you look, so a trail laid along z comes out
+    // as an arc rather than a spoke. Same uTwist idea the wall layers use, so
+    // the streaks and the walls curve together instead of disagreeing.
+    float ang = aAngle + uCurve * along * (0.6 + 1.4 * aRadius);
+    // and drawn inward as it goes, so the field funnels toward the opening
+    float r = aRadius * uSpread * (1.0 - uPinch * clamp(along / max(uStreak, 1e-4), 0.0, 1.0) * 0.35);
+
+    vec3 pos = uAxisView * (z * uDepth)
+             + uSideView * (cos(ang) * r * uDepth)
+             + uUpView * (sin(ang) * r * uDepth);
+    // Fade in at the far end and out as a streak sweeps past the camera, and
+    // keep clear of the throat: a trail drawn across the dark centre is a
+    // scratch on the lens, not a star going by.
+    vFade = smoothstep(-0.2, 0.05, z)
+          * (1.0 - smoothstep(1.35, 1.75, z))
+          * smoothstep(0.16, 0.44, aRadius);
+    // Tapered along its own length - bright at the head, thinning to nothing
+    // at the tail. Untapered these read as rigid sticks, which is the cheap
+    // particle-vortex look; tapered they read as motion.
+    vBright = aBright * (0.12 + 0.88 * aEnd * aEnd);
     gl_Position = projectionMatrix * vec4(pos, 1.0);
   }
 `;
@@ -234,13 +393,32 @@ const STREAK_FRAG = /* glsl */ `
   uniform float uIntensity;
   uniform vec3 uTint;
   void main() {
-    float a = vFade * uIntensity * vBright * 0.55;
+    float a = vFade * uIntensity * vBright * 0.22;
     if (a < 0.004) discard;
     gl_FragColor = vec4(uTint * (0.35 + 0.55 * vBright), a);
   }
 `;
 
-const STREAK_COUNT = { cinematic: 1400, reduced: 500, off: 0 };
+/** What the sequence tells the streak field to do this frame. */
+interface StreakStage {
+  intensity: number;
+  stretch: number;
+  flow: number;
+  curve: number;
+  pinch: number;
+}
+
+const IDLE_STREAKS: StreakStage = {
+  intensity: 0,
+  stretch: 0,
+  flow: 0,
+  curve: 0,
+  pinch: 0,
+};
+
+const STREAK_COUNT = { cinematic: 900, reduced: 320, off: 0 };
+/** Pieces per trail. Four is enough to read as an arc and not as a dogleg. */
+const SEGMENTS = 4;
 
 /**
  * Stars drawn as streaks along the line of travel.
@@ -269,6 +447,8 @@ class StarStreaks {
         uTravel: { value: 0 },
         uStreak: { value: 0.05 },
         uSpread: { value: 0.5 },
+        uCurve: { value: 0 },
+        uPinch: { value: 0 },
         uIntensity: { value: 0 },
         uTint: { value: new THREE.Color(0.66, 0.80, 1.0) },
       },
@@ -279,7 +459,13 @@ class StarStreaks {
     });
     this.lines = new THREE.LineSegments(this.geo, this.mat);
     this.lines.frustumCulled = false;
-    this.lines.renderOrder = 9998;
+    // Above the throat, not below it. These are lights the ship is flying
+    // through, in front of the tunnel mouth - and the throat's overlay is
+    // opaque across almost the whole frame while the aperture is shut, so
+    // underneath it they were drawn and then immediately painted over. They
+    // only ever showed during the departure, which is the one act that does
+    // not need them most.
+    this.lines.renderOrder = 10000;
     this.lines.visible = false;
     this.build(STREAK_COUNT.cinematic);
   }
@@ -288,16 +474,23 @@ class StarStreaks {
     if (this.built === count) return;
     this.built = count;
     const n = Math.max(count, 1);
-    const phase = new Float32Array(n * 2);
-    const radius = new Float32Array(n * 2);
-    const angle = new Float32Array(n * 2);
-    const end = new Float32Array(n * 2);
-    const bright = new Float32Array(n * 2);
+    // Each trail is a short polyline rather than one segment. LineSegments
+    // draws disconnected pairs, so a trail of SEGMENTS pieces needs its
+    // interior points twice - the cost of the extra vertices is what buys a
+    // trail that can bend, and a bent trail is the difference between falling
+    // toward something and flying past it.
+    const verts = n * SEGMENTS * 2;
+    const phase = new Float32Array(verts);
+    const radius = new Float32Array(verts);
+    const angle = new Float32Array(verts);
+    const end = new Float32Array(verts);
+    const bright = new Float32Array(verts);
     let seed = 20260814;
     const rnd = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 4294967296;
     };
+    let j = 0;
     for (let i = 0; i < n; i++) {
       const p = rnd();
       // sqrt keeps the field even in area rather than crowding the axis, and
@@ -305,16 +498,19 @@ class StarStreaks {
       const r = 0.12 + 0.88 * Math.sqrt(rnd());
       const a = rnd() * Math.PI * 2;
       const b = 0.25 + 0.75 * Math.pow(rnd(), 1.7);
-      for (let e = 0; e < 2; e++) {
-        const j = i * 2 + e;
-        phase[j] = p;
-        radius[j] = r;
-        angle[j] = a;
-        end[j] = e;
-        bright[j] = b;
+      for (let s = 0; s < SEGMENTS; s++) {
+        for (let e = 0; e < 2; e++) {
+          phase[j] = p;
+          radius[j] = r;
+          angle[j] = a;
+          // 0 at the tail through 1 at the head, shared endpoints duplicated
+          end[j] = (s + e) / SEGMENTS;
+          bright[j] = b;
+          j++;
+        }
       }
     }
-    this.geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 2 * 3), 3));
+    this.geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts * 3), 3));
     this.geo.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
     this.geo.setAttribute('aRadius', new THREE.BufferAttribute(radius, 1));
     this.geo.setAttribute('aAngle', new THREE.BufferAttribute(angle, 1));
@@ -333,20 +529,25 @@ class StarStreaks {
     sideView: THREE.Vector3,
     upView: THREE.Vector3,
     depth: number,
-    intensity: number,
+    stage: StreakStage,
   ): void {
     const u = this.mat.uniforms;
     // streaks accelerate with the effect, which is what sells the run-up
-    this.travel = (this.travel + dt * (0.16 + 0.75 * intensity)) % 1;
+    this.travel = (this.travel + dt * (0.16 + 0.9 * stage.flow)) % 1;
     u.uTravel.value = this.travel;
     (u.uAxisView.value as THREE.Vector3).copy(axisView);
     (u.uSideView.value as THREE.Vector3).copy(sideView);
     (u.uUpView.value as THREE.Vector3).copy(upView);
     u.uDepth.value = depth;
     u.uSpread.value = 0.62;
-    u.uStreak.value = 0.02 + 0.30 * intensity * intensity;
-    u.uIntensity.value = intensity;
-    this.lines.visible = intensity > 0.004;
+    // Length is the departure made visible: the trails draw out well before
+    // the throat exists, which is the cue that the ship is gathering way
+    // rather than that an effect has started.
+    u.uStreak.value = 0.03 + 0.42 * stage.stretch;
+    u.uCurve.value = stage.curve;
+    u.uPinch.value = stage.pinch;
+    u.uIntensity.value = stage.intensity;
+    this.lines.visible = stage.intensity > 0.004;
   }
 
   dispose(): void {
@@ -357,8 +558,47 @@ class StarStreaks {
 
 // ---------------------------------------------------------------- sequence --
 
-/** Where the sequence has got to, for the HUD and for callers that care. */
-export type WormholePhase = 'off' | 'align' | 'stretch' | 'throat' | 'emerge';
+/**
+ * Where the sequence has got to.
+ *
+ * Six acts, and they are acts rather than labels: each one owns a stretch of
+ * the run and moves a different set of the shader's dials, so what is on
+ * screen during 'formation' is doing something the frame during 'departure'
+ * was not. The boundaries below are the whole schedule.
+ *
+ *   departure   the place you are leaving is still there; the ship gathers way
+ *               and the sky begins to crowd forward
+ *   distortion  light starts to bend, trails curve, a dark point opens ahead
+ *   formation   the throat widens into a ring with an inside
+ *   transit     through it: walls running, deep black centre. Waits here for
+ *               the real flight and for the destination system to finish
+ *               building, which is what the hold point is for
+ *   reveal      a light grows at the far end and the walls fall away behind it
+ *   arrival     the overlay lets go and hands back the real sky
+ */
+export type WormholePhase =
+  | 'off'
+  | 'departure'
+  | 'distortion'
+  | 'formation'
+  | 'transit'
+  | 'reveal'
+  | 'arrival';
+
+/** Act boundaries, as fractions of the run. */
+const ACTS: [number, WormholePhase][] = [
+  [0.13, 'departure'],
+  [0.3, 'distortion'],
+  [0.46, 'formation'],
+  [0.72, 'transit'],
+  [0.9, 'reveal'],
+  [1.01, 'arrival'],
+];
+
+function actOf(p: number): WormholePhase {
+  for (const [end, name] of ACTS) if (p < end) return name;
+  return 'arrival';
+}
 
 export interface WormholeRun {
   /** Seconds the whole sequence lasts, if nothing holds it up. */
@@ -432,8 +672,17 @@ export class Wormhole {
         uTime: { value: 0 },
         uIntensity: { value: 0 },
         uAperture: { value: 0 },
-        uLensing: { value: 1 },
+        uMouth: { value: 0.02 },
         uDetail: { value: 3 },
+        uStretch: { value: 0 },
+        uLens: { value: 0 },
+        uTunnel: { value: 0 },
+        uFlow: { value: 0 },
+        uTwist: { value: 0 },
+        uReveal: { value: 0 },
+        uExposure: { value: 1 },
+        uLayers: { value: 4 },
+        uSecondImage: { value: 1 },
       },
       transparent: true,
       depthTest: false,
@@ -453,11 +702,23 @@ export class Wormhole {
     this.mat.uniforms.uHasSky.value = tex ? 1 : 0;
   }
 
+  /**
+   * Quality changes how much of the throat is resolved, not what it is.
+   *
+   * 'reduced' keeps the whole sequence - aberration, deflection, the ring, the
+   * reveal - and buys its frames back where the cost is: two wall slices
+   * instead of five, one noise octave instead of three, and a single lensed
+   * image instead of both. The shape of the effect survives; the detail in it
+   * thins. That is the setting a slower machine should get, rather than a
+   * different, cheaper-looking effect.
+   */
   setQuality(q: TravelEffects): void {
     this.quality = q;
     this.streaks.setQuality(q);
-    this.mat.uniforms.uLensing.value = q === 'cinematic' ? 1 : 0;
-    this.mat.uniforms.uDetail.value = q === 'cinematic' ? 3 : 1;
+    const cine = q === 'cinematic';
+    this.mat.uniforms.uDetail.value = cine ? 3 : 1;
+    this.mat.uniforms.uLayers.value = cine ? 5 : 2;
+    this.mat.uniforms.uSecondImage.value = cine ? 1 : 0;
   }
 
   get active(): boolean {
@@ -466,11 +727,7 @@ export class Wormhole {
 
   get phase(): WormholePhase {
     if (!this.run) return 'off';
-    const p = this.t / this.run.duration;
-    if (p < 0.16) return 'align';
-    if (p < 0.34) return 'stretch';
-    if (p < 0.72) return 'throat';
-    return 'emerge';
+    return actOf(this.t / this.run.duration);
   }
 
   /** 0..1 through the whole sequence. */
@@ -481,6 +738,26 @@ export class Wormhole {
   /** Seconds the throat has been waiting for something to finish. */
   get holdSeconds(): number {
     return this.held;
+  }
+
+  /** The travel axis, for diagnostics that need to know where the throat is
+   *  aimed relative to where the camera is looking. */
+  get axisArray(): [number, number, number] {
+    return [this.axis.x, this.axis.y, this.axis.z];
+  }
+
+  /** The dials as the shader currently sees them. Diagnostic only: it is the
+   *  difference between reading the sequence and guessing at it from pixels. */
+  get dials(): Record<string, number> {
+    const u = this.mat.uniforms;
+    const out: Record<string, number> = {};
+    for (const k of [
+      'uIntensity', 'uAperture', 'uMouth', 'uStretch', 'uLens',
+      'uTunnel', 'uFlow', 'uTwist', 'uReveal', 'uExposure', 'uLayers',
+    ]) {
+      out[k.slice(1).toLowerCase()] = +Number(u[k].value).toFixed(3);
+    }
+    return out;
   }
 
   /**
@@ -524,7 +801,7 @@ export class Wormhole {
     this.run = null;
     this.mesh.visible = false;
     this.mat.uniforms.uIntensity.value = 0;
-    this.streaks.update(0, this.axisView, this.sideView, this.upView, 1, 0);
+    this.streaks.update(0, this.axisView, this.sideView, this.upView, 1, IDLE_STREAKS);
   }
 
   /** Advance the sequence. */
@@ -544,22 +821,59 @@ export class Wormhole {
     }
     const p = Math.min(1, this.t / this.run.duration);
 
-    // Intensity ramps in over the stretch, holds through the throat, and lets
-    // go on the way out. Aperture stays shut until the swap, then opens past
-    // the edge of the frame so the last of the overlay leaves the screen.
-    const intensity =
-      p < 0.34
-        ? smoothstep(p, 0.06, 0.34)
-        : p < 0.78
-          ? 1
-          : 1 - smoothstep(p, 0.78, 1);
-    // shut until the hold point, then widening past the edge of the frame
-    const aperture = p < 0.62 ? 0.004 : smoothstep(p, 0.62, 1.0);
+    // ---- the schedule ------------------------------------------------------
+    // Every dial the shader reads is a curve over p, and the acts are just the
+    // stretches where a given curve is doing the work. Writing them out
+    // together rather than branching per act is what keeps the sequence
+    // continuous: nothing switches on, things come up and go down, and the
+    // overlaps between them are the transitions.
 
-    // The place changes on the frame where the throat is shut and the overlay
-    // is at full strength - the one moment when moving the universe under the
-    // camera cannot be seen.
-    if (!this.swapped && p >= 0.42) {
+    // Coverage. Low through the departure so the place being left is still
+    // plainly there, full from the formation on, released at the end.
+    const intensity = p < 0.46 ? smoothstep(p, 0.04, 0.46) : p < 0.86 ? 1 : 1 - smoothstep(p, 0.86, 1);
+
+    // Aberration leads: the sky crowds forward before anything bends.
+    const stretch = smoothstep(p, 0.02, 0.34) * (1 - smoothstep(p, 0.86, 1));
+
+    // Deflection follows, and stays up until the walls fall away.
+    const lens = smoothstep(p, 0.10, 0.40) * (1 - smoothstep(p, 0.82, 0.98));
+
+    // The throat itself: forms, holds through the transit, collapses.
+    const tunnel = smoothstep(p, 0.17, 0.46) * (1 - smoothstep(p, 0.78, 0.95));
+
+    // How fast the walls run past. Slowest as it forms, quickest inside.
+    const flow = smoothstep(p, 0.3, 0.56) * (1 - smoothstep(p, 0.8, 1));
+
+    // Azimuthal shear, which is what curves the trails rather than letting
+    // them run straight down the axis.
+    const twist = 0.5 + 1.5 * smoothstep(p, 0.28, 0.6);
+
+    // The far end. Nothing until the transit is done, then it grows.
+    const reveal = smoothstep(p, 0.7, 0.94);
+
+    // Exposure. Bores in and darkens through the transit so the reveal has
+    // somewhere to come up from, and lifts at the end.
+    const exposure = 1.05 - 0.5 * smoothstep(p, 0.3, 0.62) + 0.3 * smoothstep(p, 0.72, 0.95);
+
+    // What the overlay lets through: shut until the reveal, then widening past
+    // the edge of the frame so the last of it leaves the screen.
+    const aperture = 0.004 + 1.0 * smoothstep(p, 0.7, 1.0);
+
+    // How big the throat looks. It opens during the formation to about two
+    // thirds of the half-field - a mouth that fills a good part of the frame,
+    // which is what gives the walls something to be the inside of - breathes
+    // slightly through the transit, and then flies open past the edge of the
+    // frame as the destination is revealed.
+    const mouth =
+      0.014 +
+      0.30 * smoothstep(p, 0.17, 0.5) +
+      0.02 * Math.sin(this.elapsed * 0.9) * tunnel +
+      1.1 * smoothstep(p, 0.72, 1.0);
+
+    // The place changes while the throat is shut and the overlay is at full
+    // strength - the one stretch where moving the universe under the camera
+    // cannot be seen. Held to the transit, comfortably before the reveal.
+    if (!this.swapped && p >= 0.5) {
       this.swapped = true;
       this.run.onSwap?.();
     }
@@ -568,6 +882,14 @@ export class Wormhole {
     u.uTime.value = this.elapsed;
     u.uIntensity.value = intensity;
     u.uAperture.value = aperture;
+    u.uMouth.value = mouth;
+    u.uStretch.value = stretch;
+    u.uLens.value = lens;
+    u.uTunnel.value = tunnel;
+    u.uFlow.value = flow;
+    u.uTwist.value = twist;
+    u.uReveal.value = reveal;
+    u.uExposure.value = exposure;
     camera.updateMatrixWorld();
     // The camera's world basis, straight off its matrix: columns 0 and 1 are
     // right and up, and column 2 points backwards, which is why the forward
@@ -587,7 +909,14 @@ export class Wormhole {
     this.sideView.copy(this.side).transformDirection(camera.matrixWorldInverse);
     this.upView.copy(this.up).transformDirection(camera.matrixWorldInverse);
     const depth = THREE.MathUtils.clamp(camera.near * 260, 1e-5, camera.far * 0.35);
-    this.streaks.update(dt, this.axisView, this.sideView, this.upView, depth, intensity);
+    this.streaks.update(dt, this.axisView, this.sideView, this.upView, depth, {
+      intensity,
+      // trails stretch early and are still drawn out through the transit
+      stretch: Math.max(stretch, tunnel * 0.8),
+      flow,
+      curve: twist * 0.55 * tunnel,
+      pinch: tunnel,
+    });
     this.mesh.visible = intensity > 0.004;
 
     if (p >= 1) {

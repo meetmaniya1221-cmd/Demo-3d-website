@@ -1194,8 +1194,10 @@ export class App implements TourHost {
         active: this.system.wormhole.active,
         phase: this.system.wormhole.phase,
         progress: this.system.wormhole.progress,
+        dials: this.system.wormhole.dials,
         quality: this.state.travelEffects,
       }),
+      wormholeAxis: () => this.system.wormhole.axisArray,
       setTravelEffects: (m: 'cinematic' | 'reduced' | 'off') => this.state.setTravelEffects(m),
       builtSystems: () => this.system.builtSystemIds,
     };

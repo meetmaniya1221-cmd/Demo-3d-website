@@ -462,10 +462,17 @@ export class SpacecraftMode {
     this.cruise.start(from, this.starTargetId);
     if (!this.cruise.active) return;
     const t = this.cruise.telemetry();
+
+    // Look where we are going. updateCruise faces the hull down the line every
+    // frame, but the gaze lock would otherwise keep the head turned back
+    // toward whatever the ship was station-keeping at - which, on departure,
+    // is exactly astern.
+    this.ship.gazeLock = false;
+    this.cruise.heading(this.tmpB);
+
     if (this.deps.state.travelEffects !== 'off') {
       // aimed down the real line between the two stars; the throat is shut
       // while the scene's origin changes hands at the midpoint
-      this.cruise.heading(this.tmpB);
       this.deps.system.wormhole.start(this.tmpB, {
         duration: 16,
         hold: () => this.cruise.active,
