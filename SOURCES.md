@@ -20,6 +20,41 @@ The in-app info panel repeats the relevant credit next to each object.
 | Missions | Official NASA / ESA / JAXA mission pages | Linked from every mission card |
 | Habitable zone bounds | Kasting 1993 / Kopparapu et al. 2013 | Conservative limits, 0.95–1.67 AU |
 
+## Galaxy mode: Milky Way & Sagittarius A* (`src/galaxy/`)
+
+The galaxy is procedural, but every structural parameter is anchored to a
+published measurement. Where the simulation must approximate (warp speeds,
+accelerated flare cadence, statistical star clouds standing in for hundreds
+of billions of stars), the in-app text says so explicitly.
+
+| Quantity in the app | Value used | Source |
+| --- | --- | --- |
+| Sun–galactic-centre distance R₀ | 8.277 kpc = 26,996 ly | [GRAVITY Collaboration 2022, A&A](https://www.aanda.org/articles/aa/full_html/2023/09/aa47416-23/aa47416-23.html) |
+| Sun's height above the midplane | 20.8 pc ≈ 68 ly | [Bennett & Bovy 2019 (Gaia DR2)](https://arxiv.org/abs/1810.03325) |
+| Sgr A* mass | 4.297 × 10⁶ M☉ | GRAVITY Collaboration 2022/2023 (Keck's independent 3.98 × 10⁶ noted as the cross-check) |
+| Schwarzschild radius | 1.27 × 10⁷ km = 0.085 AU | derived, R_s = 2GM/c² |
+| Shadow / photon-capture radius | √27⁄2 · R_s ≈ 2.6 R_s | [EHT Collaboration 2022, ApJL 930, L12](https://ui.adsabs.harvard.edu/abs/2022ApJ...930L..12E/abstract) (ring 51.8 ± 2.3 μas) |
+| Accretion behaviour | faint RIAF, ~10⁻⁸ M☉/yr, no bright thin disk | [EHT 2022 Paper V](https://eventhorizontelescope.org/publications/first-sagittarius-2022); Yuan, Quataert & Narayan 2003 |
+| Flare statistics (accelerated in-game) | ~1 X-ray flare/day up to ~400×; continuous IR flicker, 5–6 IR flares/day | [Chandra 3 Ms campaign / Yuan & Wang 2016](https://academic.oup.com/mnras/article/456/2/1438/1069513); JWST NIRCam, Yusef-Zadeh et al. 2025 ApJL |
+| S2 orbit (and 10 more S stars) | P = 16.05 yr, e = 0.88, pericenter ~120 AU at 7,650 km/s | [GRAVITY 2018, A&A 615, L15](https://www.aanda.org/articles/aa/full_html/2018/07/aa33718-18/aa33718-18.html); Gillessen et al. 2017 elements; S62/S4714 flagged contested (Peissker et al. 2020) |
+| Gravitational time dilation | √(1 − R_s/r), static observer | Schwarzschild metric (the HUD quotes it as such) |
+| Disk diameter / scale height | ~100,000 ly; thin disk ~300 pc | [NASA Imagine the Universe](https://imagine.gsfc.nasa.gov/science/objects/milkyway1.html); Bland-Hawthorn & Gerhard 2016, ARA&A |
+| Bar half-length and angle | ~5 kpc at ~28° to the Sun-centre line | [Wegg et al. 2015, MNRAS](https://academic.oup.com/mnras/article/450/4/4050/989881) |
+| Spiral arms | 2 major (Scutum–Centaurus, Perseus, rooted at the bar ends) + 2 minor gas arms + Orion/Local Spur containing the Sun | [NASA/JPL Spitzer/GLIMPSE annotated map](https://science.nasa.gov/resource/the-milky-way-galaxy/); Churchwell et al. 2009; Reid et al. 2019 maser parallaxes |
+| Stellar densities | 0.1 stars/pc³ locally → 10⁵–10⁶ stars/pc³ in the central parsec | [Mamajek stellar census](https://www.pas.rochester.edu/~emamajek/memo_star_dens.html); Schödel et al. 2014 (nuclear cluster, r_h = 4.2 pc) |
+| Galaxy-mode sky near Sol | The NASA SVS "Deep Star Maps 2020" survey map (see Surface maps below) is the actual view within ~300 ly of Sol, fading into the procedural model over the first few thousand ly of travel — the map is only valid from the neighbourhood it was measured in | [NASA SVS 4851](https://svs.gsfc.nasa.gov/4851/) |
+| Star class mix and colours | M 75.5%, K 12.5%, G 7%, F 3%, A 1.2%, B 0.5% (+O/B young population confined to arms) | Mamajek census; O-star rarity (~1 in 3 × 10⁶) is why they only appear via the arm population |
+| Star-forming landmarks | Orion, Carina, Lagoon, Eagle, Heart & Soul, Cygnus X, W49, W51 at published (l, b, d) | NASA/ESA region pages, Reid et al. parallaxes |
+| Globular clusters / satellites | 8 real clusters + LMC (163 kly), SMC (~200 kly), Sagittarius dwarf | Harris catalog 2010; Pietrzyński et al. 2019 (LMC to 1%) |
+| G2 gas-cloud encounter (event flavour text) | 2014 pericenter ~260 AU, survived | [ESO eso1512](https://www.eso.org/public/news/eso1512/) |
+
+Stated approximations: superluminal "warp" speeds are a labelled gameplay
+device; flare cadence is accelerated (a real observing day is compressed to
+minutes); the S-star cluster's absolute orientation drops the ~31° position
+angle between equatorial and galactic north; the lensing pass integrates the
+standard weak-field photon-bending approximation, not a full Kerr geodesic;
+procedural "survey" stars are statistical stand-ins, not Gaia sources.
+
 ## Surface maps (`public/textures/`)
 
 All USGS Astrogeology / NASA products are public domain. Downsampled to

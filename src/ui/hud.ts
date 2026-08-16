@@ -25,6 +25,7 @@ export interface HudCallbacks {
   onObservatory: () => void;
   onSpacecraft: () => void;
   onSystems: () => void;
+  onGalaxy: () => void;
 }
 
 export class Hud {
@@ -72,6 +73,10 @@ export class Hud {
     systemsBtn.classList.add('feature');
     systemsBtn.dataset.sfx = 'none';
     systemsBtn.title = 'Travel to the nearest star systems and their planets';
+    const galaxyBtn = this.chip('Galaxy', () => cb.onGalaxy());
+    galaxyBtn.classList.add('feature');
+    galaxyBtn.title =
+      'Leave the Solar System: navigate the Milky Way to Sagittarius A*, the central black hole';
     const skyBtn = this.chip('Sky', () => cb.onObservatory());
     skyBtn.title = 'Observatory: night sky, near stars, deep sky';
     const missionsBtn = this.chip('Missions', () => cb.onMissions());
@@ -113,6 +118,7 @@ export class Hud {
       searchBtn,
       craftBtn,
       systemsBtn,
+      galaxyBtn,
       atlasBtn,
       tourBtn,
       journeyBtn,
