@@ -39,8 +39,11 @@ export class SolarSystem {
   private selectedId: string | null = null;
   private layers: Layers = { ...DEFAULT_LAYERS };
   private tmp = { x: 0, y: 0, z: 0 };
+  private tmpK: [number, number, number] = [0, 0, 0];
   private tmpV = new THREE.Vector3();
   private planetMarkerIdx = new Map<string, number>();
+  /** moon id → its satellite system, so bodyPosition/bodyRadius are O(1). */
+  private satSystemOf = new Map<string, SatelliteSystem>();
   private sunMarkerIdx = -1;
   /** Spacecraft mode draws sub-pixel planets itself (photometric points), so
    *  it turns the main view's marker/disc handoff off while it flies. */
@@ -94,6 +97,7 @@ export class SolarSystem {
           this.markers,
         );
         this.satSystems.set(def.id, sats);
+        for (const m of moons) this.satSystemOf.set(m.id, sats);
         this.pickables.push(...sats.pickables);
       }
     }
@@ -116,6 +120,7 @@ export class SolarSystem {
         this.markers,
       );
       this.satSystems.set(parentId, sats);
+      for (const m of moons) this.satSystemOf.set(m.id, sats);
       this.pickables.push(...sats.pickables);
     }
 
@@ -146,7 +151,7 @@ export class SolarSystem {
 
     for (const planet of this.planets.values()) {
       const def = planet.def;
-      const [x, y, z] = keplerPosition(def.orbit!, simDays);
+      const [x, y, z] = keplerPosition(def.orbit!, simDays, this.tmpK);
       mapPositionAU(x, y, z, scaleT, this.tmp);
       planet.group.position.set(this.tmp.x, this.tmp.y, this.tmp.z);
       planet.update(simDays, scaleT);
@@ -298,9 +303,8 @@ export class SolarSystem {
     const p = this.planets.get(id);
     if (p) return out.copy(p.group.position);
     if (this.smallBodies.position(id, out)) return out;
-    for (const sats of this.satSystems.values()) {
-      if (sats.worldPosition(id, out)) return out;
-    }
+    const sats = this.satSystemOf.get(id);
+    if (sats?.worldPosition(id, out)) return out;
     return out.set(0, 0, 0);
   }
 
@@ -310,9 +314,8 @@ export class SolarSystem {
     const p = this.planets.get(id);
     if (p) return p.radius;
     if (this.smallBodies.has(id)) return this.smallBodies.displayRadius(id);
-    for (const sats of this.satSystems.values()) {
-      if (sats.has(id)) return sats.displayRadius(id, scaleT);
-    }
+    const sats = this.satSystemOf.get(id);
+    if (sats) return sats.displayRadius(id, scaleT);
     return 1;
   }
 
@@ -346,7 +349,7 @@ export class SolarSystem {
     if (small !== null) return small;
     const planet = this.planets.get(id);
     if (planet?.def.orbit) {
-      const [x, y, z] = keplerPosition(planet.def.orbit, this.lastSimDays);
+      const [x, y, z] = keplerPosition(planet.def.orbit, this.lastSimDays, this.tmpK);
       return Math.hypot(x, y, z);
     }
     return null;

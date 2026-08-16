@@ -40,7 +40,6 @@ import {
   bodyRadiusKm,
   bodyRadiusTrue,
   minSafeDistance,
-  nearestBodies,
 } from './ephemeris';
 
 /** Gravitational constant in km³ kg⁻¹ s⁻². */
@@ -512,8 +511,11 @@ export class Ship {
     this.event = 'Hull aligned to line of sight.';
   }
 
+  private headEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+
   headQuaternion(out: THREE.Quaternion): THREE.Quaternion {
-    return out.setFromEuler(new THREE.Euler(this.headPitch, this.headYaw, 0, 'YXZ'));
+    this.headEuler.set(this.headPitch, this.headYaw, 0);
+    return out.setFromEuler(this.headEuler);
   }
 
   // --------------------------------------------------------- flight plans --
@@ -1234,31 +1236,34 @@ export class Ship {
 
   private enforceProximity(simDays: number): void {
     this.warning = null;
-    const near = nearestBodies(this.pos, simDays, 4);
     // In orbit the trajectory owns the hull's position, and stepOrbit already
     // holds it at the safe radius. Snapping this.pos here would desynchronise
     // the state vector from the rendered position, and cutting the throttle on
     // every low periapsis pass would take the controls away exactly when the
     // pilot is using them - so orbit keeps the warning and skips the grab.
     const advisoryOnly = this.mode === 'orbit';
-    for (const n of near) {
-      const limit = minSafeDistance(n.id);
-      if (n.dist > limit * 4) continue;
-      const sev = THREE.MathUtils.clamp(1 - (n.dist - limit) / (limit * 3), 0, 1);
+    // Every catalogued neighbour is tested against its own limit directly -
+    // this runs every SUBSTEP, and the sorted/cloned list nearestBodies
+    // builds was the hot path's single biggest allocation source.
+    for (const id of NEIGHBOUR_IDS) {
+      const body = bodyPositionTrue(id, simDays, this.tmpA);
+      const dist = this.pos.distanceTo(body);
+      const limit = minSafeDistance(id);
+      if (dist > limit * 4) continue;
+      const sev = THREE.MathUtils.clamp(1 - (dist - limit) / (limit * 3), 0, 1);
       if (!this.warning || sev > this.warning.severity) {
-        this.warning = { id: n.id, name: n.name, severity: sev };
+        this.warning = { id, name: this.nameOf(id), severity: sev };
       }
-      if (!advisoryOnly && n.dist < limit) {
+      if (!advisoryOnly && dist < limit) {
         // hard stop: slide the hull back out along the radial direction
-        const body = bodyPositionTrue(n.id, simDays, this.tmpA);
         const out = this.tmpB.copy(this.pos).sub(body);
         if (out.lengthSq() < 1e-20) out.set(0, 0, 1);
         out.setLength(limit);
         this.pos.copy(body).add(out);
-        if (this.mode === 'follow' && this.anchorId === n.id) this.followOffset.copy(out);
+        if (this.mode === 'follow' && this.anchorId === id) this.followOffset.copy(out);
         if (this.mode === 'transit' || this.mode === 'flyby') this.abort('Proximity limit - autopilot held.');
         this.idle();
-        this.event = `Proximity limit at ${n.name}. Hull held at a safe standoff.`;
+        this.event = `Proximity limit at ${this.nameOf(id)}. Hull held at a safe standoff.`;
       }
     }
   }

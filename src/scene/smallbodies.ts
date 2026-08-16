@@ -14,6 +14,8 @@
 import * as THREE from 'three';
 import type { CatalogObject } from '../data/types';
 import { keplerPosition } from '../data/bodies';
+
+const KEPLER_SCRATCH: [number, number, number] = [0, 0, 0];
 import { mapPositionAU, minorDisplayRadius } from '../sim/scale';
 import type { Layers } from '../sim/state';
 import { OrbitLine } from './orbits';
@@ -242,7 +244,7 @@ export class SmallBodies {
         continue;
       }
       const el = b.def.orbit!;
-      const [x, y, z] = keplerPosition(el, simDays);
+      const [x, y, z] = keplerPosition(el, simDays, KEPLER_SCRATCH);
       b.rAU = Math.hypot(x, y, z);
       mapPositionAU(x, y, z, scaleT, this.tmp);
       b.root.position.set(this.tmp.x, this.tmp.y, this.tmp.z);
@@ -278,7 +280,7 @@ export class SmallBodies {
       if (b.fx) {
         const antiSun = this.tmpV.copy(b.root.position).normalize();
         // orbital velocity direction from a short finite difference
-        const [x2, y2, z2] = keplerPosition(el, simDays + el.periodDays * 1e-4);
+        const [x2, y2, z2] = keplerPosition(el, simDays + el.periodDays * 1e-4, KEPLER_SCRATCH);
         mapPositionAU(x2, y2, z2, scaleT, this.tmp);
         const vel = this.tmpV2
           .set(this.tmp.x, this.tmp.y, this.tmp.z)

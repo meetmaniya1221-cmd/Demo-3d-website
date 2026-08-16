@@ -436,7 +436,17 @@ const DEG = Math.PI / 180;
  * (days since J2000). Returns AU in ecliptic coords [x, y, z] where the
  * x–y plane is the ecliptic and orbits run counterclockwise seen from +z.
  */
-export function keplerPosition(el: OrbitalElements, tDays: number): [number, number, number] {
+/**
+ * Heliocentric ecliptic position, AU. Pass `out` from per-frame callers -
+ * the render loop computes ~40 of these per frame (plus every spacecraft
+ * substep), and per-call tuple allocations were the largest steady GC load
+ * in the hot path.
+ */
+export function keplerPosition(
+  el: OrbitalElements,
+  tDays: number,
+  out?: [number, number, number],
+): [number, number, number] {
   const n = 360 / el.periodDays; // mean motion, deg/day
   const L = el.L0 + n * tDays;
   let M = ((L - el.wBar) % 360) * DEG;
@@ -468,11 +478,19 @@ export function keplerPosition(el: OrbitalElements, tDays: number): [number, num
   const y =
     (cosW * sinO + sinW * cosO * cosI) * xOrb + (-sinW * sinO + cosW * cosO * cosI) * yOrb;
   const z = sinW * sinI * xOrb + cosW * sinI * yOrb;
+  if (out) {
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    return out;
+  }
   return [x, y, z];
 }
 
+const HELIO_SCRATCH: [number, number, number] = [0, 0, 0];
+
 /** Current heliocentric distance in AU. */
 export function heliocentricDistance(el: OrbitalElements, tDays: number): number {
-  const [x, y, z] = keplerPosition(el, tDays);
+  const [x, y, z] = keplerPosition(el, tDays, HELIO_SCRATCH);
   return Math.hypot(x, y, z);
 }
