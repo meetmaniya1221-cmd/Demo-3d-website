@@ -185,6 +185,11 @@ function assertRoutes(r, stage) {
     `${offAxis} runs wandered off their coordinate, ${breaks} breaks, across ${r.edges.length} routes`,
   );
   check(
+    `each route turns exactly once (${stage})`,
+    r.edges.every((e) => e.corners.length === 1 && e.held.length === 2),
+    `corners per route: ${[...new Set(r.edges.map((e) => e.corners.length))].join(', ')}`,
+  );
+  check(
     `every corner is a right angle (${stage})`,
     sameFamily === 0 && worstCorner < 0,
     `${sameFamily} corners join two runs of the same family;` +

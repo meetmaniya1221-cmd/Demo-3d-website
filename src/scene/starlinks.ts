@@ -16,10 +16,10 @@
  * first attempt at this did.
  *
  * The runs instead hold one spherical coordinate fixed at a time: along a
- * parallel at constant elevation, then up a meridian at constant azimuth, then
- * along a parallel again. Those two families of curves meet at right angles
- * everywhere on a sphere, so the corners are true 90 degrees, and with the
- * camera level they read as horizontal and vertical on screen - the same
+ * parallel at constant elevation, then up a meridian at constant azimuth - one
+ * of each, so a route turns exactly once. Those two families of curves meet at
+ * right angles everywhere on a sphere, so the corner is a true 90 degrees, and
+ * with the camera level they read as horizontal and vertical on screen - the same
  * language as the celestial grid the app already draws. A route also stays in
  * the neighbourhood of the two systems it joins, which is what stops it
  * crossing the Sun or wandering off through unrelated stars.
@@ -72,8 +72,8 @@ const DROP_AT = Math.PI * (78 / 180);
 
 /** Samples per run. Enough that a parallel reads as a smooth arc. */
 const SAMPLES = 7;
-/** Runs per route: parallel, meridian, parallel. */
-const RUNS = 3;
+/** Runs per route: one parallel and one meridian, so exactly one corner. */
+const RUNS = 2;
 /** Line segments, and so vertex pairs, per route. */
 const SEGS_PER_EDGE = RUNS * SAMPLES;
 const VERTS_PER_EDGE = SEGS_PER_EDGE * 2;
@@ -149,9 +149,10 @@ function spanningTree(nodes: LinkNode[], use: number[]): [number, number][] {
  * The route from A to B as a list of (azimuth, elevation, radius fraction)
  * waypoints, one per sample, including both ends.
  *
- * Three runs in a Z: half the turn along a parallel, the whole climb up a
- * meridian, then the rest of the turn. Two corners rather than one, because a
- * single elbow reads as a mistake and a Z reads as a route.
+ * Two runs and one corner: the whole turn along a parallel, then the whole
+ * climb up a meridian, or the other way round. One bend per route - a Z with a
+ * doubled-back midpoint puts two corners in empty space and reads as fussier
+ * than the connection it is describing.
  */
 function waypoints(
   aAz: number,
@@ -162,7 +163,6 @@ function waypoints(
   out: { az: number; el: number; t: number }[],
 ): void {
   const dAz = shortAz(aAz, bAz);
-  const dEl = bEl - aEl;
   let n = 0;
   const push = (az: number, el: number) => {
     const o = out[n] ?? (out[n] = { az: 0, el: 0, t: 0 });
@@ -186,15 +186,11 @@ function waypoints(
   };
   push(aAz, aEl);
   if (alongFirst) {
-    const mid = aAz + dAz * 0.5;
-    run(aAz, aEl, mid, aEl); // parallel
-    run(mid, aEl, mid, bEl); // meridian
-    run(mid, bEl, aAz + dAz, bEl); // parallel
+    run(aAz, aEl, aAz + dAz, aEl); // parallel, at A's elevation
+    run(aAz + dAz, aEl, aAz + dAz, bEl); // meridian, at B's azimuth
   } else {
-    const mid = aEl + dEl * 0.5;
-    run(aAz, aEl, aAz, mid); // meridian
-    run(aAz, mid, aAz + dAz, mid); // parallel
-    run(aAz + dAz, mid, aAz + dAz, bEl); // meridian
+    run(aAz, aEl, aAz, bEl); // meridian, at A's azimuth
+    run(aAz, bEl, aAz + dAz, bEl); // parallel, at B's elevation
   }
   out.length = n;
 }
