@@ -33,7 +33,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { AppState } from '../sim/state';
 import { GalaxyScene } from './scene';
-import { SGRA_DISK_NORMAL } from './sgra';
+import { PLATE_WIDTH_RS, SGRA_DISK_NORMAL } from './sgra';
 import { GalaxyShip } from './ship';
 import { GalaxyHud, type HudMarker } from './hud';
 import { GalaxyMap } from './map';
@@ -587,14 +587,26 @@ export class GalaxyMode {
     galToScene(-this.ship.pos.x, -this.ship.pos.y, -this.ship.pos.z, this.tmpS);
     this.tmpV.set(this.tmpS.x, this.tmpS.y, this.tmpS.z);
     const lensStrength = THREE.MathUtils.clamp(1 - (sgraDist - 0.004) / 0.6, 0, 1);
-    this.lens?.syncFrame(
-      this.tmpV,
-      SGRA_DISK_NORMAL,
-      camera,
-      this.elapsed,
-      this.gscene.flareState.level,
-      lensStrength,
-    );
+    if (this.lens) {
+      // while the photoreal plate carries the disk, the march contributes
+      // bending and shadow only - two disks at once is how you get the
+      // double-exposed eyeball. The plate's angular footprint is also
+      // shielded from the background deflection: it bakes its own bending
+      const plateFade = this.gscene.accretionFade;
+      this.lens.uniforms.uGlow.value = 1.0 - plateFade * 0.85;
+      this.lens.uniforms.uProtect.value =
+        plateFade > 0.01
+          ? Math.atan(((PLATE_WIDTH_RS / 2) * SGRA_RS_LY) / Math.max(sgraDist, 1e-9)) * plateFade
+          : 0;
+      this.lens.syncFrame(
+        this.tmpV,
+        SGRA_DISK_NORMAL,
+        camera,
+        this.elapsed,
+        this.gscene.flareState.level,
+        lensStrength,
+      );
+    }
 
     // ---- HUD ---------------------------------------------------------
     this.buildMarkers(camera);

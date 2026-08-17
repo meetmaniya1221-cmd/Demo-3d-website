@@ -1000,8 +1000,8 @@ export class GalaxyScene {
     // hands over as the next can put real pixels on screen.
     this.sgraMat.opacity =
       THREE.MathUtils.clamp(0.35 + Math.log10(flare.level + 1) * 0.5, 0, 1) *
-      THREE.MathUtils.smoothstep(sgraDist, 0.018, 0.05);
-    this.accretion.update(sgraDist, this.time, flare.level);
+      THREE.MathUtils.smoothstep(sgraDist, 0.0022, 0.006);
+    this.accretion.update(sgraDist, this.time, flare.level, camera);
 
     // Sol marker
     galToScene(SUN_POS.x - camPos.x, SUN_POS.y - camPos.y, SUN_POS.z - camPos.z, this.tmp);
@@ -1018,6 +1018,11 @@ export class GalaxyScene {
 
   get flareState() {
     return this.flares.state;
+  }
+
+  /** How present the photoreal plate is, for ducking the march's emission. */
+  get accretionFade(): number {
+    return this.accretion.fade;
   }
 
   setPixelRatio(pr: number): void {

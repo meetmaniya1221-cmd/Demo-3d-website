@@ -55,6 +55,17 @@ angle between equatorial and galactic north; the lensing pass integrates the
 standard weak-field photon-bending approximation, not a full Kerr geodesic;
 procedural "survey" stars are statistical stand-ins, not Gaia sources.
 
+The mid-range accretion-flow plate (`public/textures/blackhole/gargantua.webp`)
+is an **AI-generated artistic visualization** (Higgsfield, nano-banana-2),
+prompted after the NASA 2019 black-hole visualization and the Event Horizon
+Telescope phenomenology (lensed far side over/under the shadow, photon ring,
+Doppler-bright approaching side) and scaled in-engine so its photon ring spans
+the physical √27⁄2·R_s capture radius. It is a rendering, not a photograph,
+and far brighter than the real, badly underluminous Sgr A* flow. The
+screen-space deflection pass shields the plate's own angular footprint
+(it bakes its own strong-field bending) and bends only the background
+starfield around it.
+
 ## Surface maps (`public/textures/`)
 
 All USGS Astrogeology / NASA products are public domain. Downsampled to
