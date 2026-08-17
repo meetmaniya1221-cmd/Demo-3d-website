@@ -89,6 +89,8 @@ function unitRing(): THREE.BufferGeometry {
 
 export class SatelliteSystem {
   readonly sats: Sat[] = [];
+  /** O(1) id lookup - labels query every body every frame. */
+  private byId = new Map<string, Sat>();
   readonly pickables: THREE.Object3D[] = [];
   private parentRadiusKm: number;
   private visible = true;
@@ -153,7 +155,7 @@ export class SatelliteSystem {
         host.add(haze);
       }
       this.pickables.push(hit);
-      this.sats.push({
+      const satRec = {
         def,
         mesh,
         hit,
@@ -169,7 +171,9 @@ export class SatelliteSystem {
             : (def.id.charCodeAt(0) * 1.37 + def.id.length) % (Math.PI * 2),
         radius: 0.1,
         activated: false,
-      });
+      };
+      this.sats.push(satRec);
+      this.byId.set(def.id, satRec);
     }
   }
 
@@ -218,7 +222,7 @@ export class SatelliteSystem {
   }
 
   activateMoon(id: string): void {
-    const sat = this.sats.find((s) => s.def.id === id);
+    const sat = this.byId.get(id);
     if (sat) this.activate(sat);
   }
 
@@ -344,16 +348,16 @@ export class SatelliteSystem {
 
   /** True while this satellite id belongs to the system. */
   has(id: string): boolean {
-    return this.sats.some((s) => s.def.id === id);
+    return this.byId.has(id);
   }
 
   worldPosition(id: string, out: THREE.Vector3): THREE.Vector3 | null {
-    const sat = this.sats.find((s) => s.def.id === id);
+    const sat = this.byId.get(id);
     return sat ? sat.mesh.getWorldPosition(out) : null;
   }
 
   displayRadius(id: string, scaleT: number): number {
-    const sat = this.sats.find((s) => s.def.id === id);
+    const sat = this.byId.get(id);
     if (!sat) return 0.1;
     if (!this.visible) {
       return moonDisplayRadius(
@@ -368,7 +372,7 @@ export class SatelliteSystem {
   }
 
   trueRadiusOf(id: string): number {
-    const sat = this.sats.find((s) => s.def.id === id);
+    const sat = this.byId.get(id);
     return sat ? trueRadius(id, sat.def.physical.diameterKm) : 0.01;
   }
 }

@@ -32,6 +32,7 @@ export const UNITS_PER_AU = TRUE_UNITS_PER_AU;
 
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const tmpMap = { x: 0, y: 0, z: 0 };
+const tmpKep: [number, number, number] = [0, 0, 0];
 const tmpParent = new THREE.Vector3();
 
 /**
@@ -87,7 +88,7 @@ function satPhase(id: string): number {
 
 /** Heliocentric true-scale position of anything carrying Kepler elements. */
 function heliocentric(def: CatalogObject, simDays: number, out: THREE.Vector3): THREE.Vector3 {
-  const [x, y, z] = keplerPosition(def.orbit!, simDays);
+  const [x, y, z] = keplerPosition(def.orbit!, simDays, tmpKep);
   mapPositionAU(x, y, z, 1, tmpMap);
   return out.set(tmpMap.x, tmpMap.y, tmpMap.z);
 }

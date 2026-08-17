@@ -101,9 +101,13 @@ export class Hud {
     };
 
     const muteBtn = document.createElement('button');
-    muteBtn.className = 'chip';
+    muteBtn.className = 'chip chip-icon';
+    const SPEAKER_ON =
+      '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 6v4h2.6L9 13V3L5.1 6H2.5z" fill="currentColor" stroke="none"/><path d="M11 5.5a3.4 3.4 0 0 1 0 5M12.8 3.8a6 6 0 0 1 0 8.4"/></svg>';
+    const SPEAKER_OFF =
+      '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 6v4h2.6L9 13V3L5.1 6H2.5z" fill="currentColor" stroke="none"/><path d="M11 6l4 4M15 6l-4 4"/></svg>';
     const syncMute = () => {
-      muteBtn.textContent = sound.muted ? '🔇' : '🔊';
+      muteBtn.innerHTML = sound.muted ? SPEAKER_OFF : SPEAKER_ON;
       muteBtn.setAttribute('aria-label', sound.muted ? 'Unmute sound' : 'Mute sound');
       muteBtn.setAttribute('aria-pressed', String(!sound.muted));
     };

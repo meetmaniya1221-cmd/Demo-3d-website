@@ -140,7 +140,7 @@ export const PLANETS: BodyDef[] = [
     name: 'Venus',
     kind: 'rocky',
     color: 0xe6c689,
-    orbit: { a: 0.72333, e: 0.00677, i: 3.395, omega: 76.680, wBar: 131.533, L0: 181.980, periodDays: 224.701 },
+    orbit: { a: 0.72333, e: 0.00677, i: 3.395, omega: 76.680, wBar: 131.602, L0: 181.980, periodDays: 224.701 },
     facts: {
       diameterKm: 12_104,
       massKg: 4.87e24,
@@ -253,10 +253,10 @@ export const PLANETS: BodyDef[] = [
       gravity: 23.1,
       rotationHours: 9.925,
       dayLengthHours: 9.9,
-      orbitDays: 4331,
+      orbitDays: 4333,
       distanceAU: 5.204,
       tempMeanC: -110,
-      moons: 95, // IAU-recognised as of early 2026
+      moons: 97, // IAU-recognised as of 2025
       axialTiltDeg: 3.1,
       w0Deg: 284.95,
       density: 1.326,
@@ -302,7 +302,7 @@ export const PLANETS: BodyDef[] = [
       text: 'Every ring particle is a tiny moon on its own orbit. Inner particles orbit faster than outer ones, and small shepherd moons sculpt the gaps - the rings are gravity made visible.',
     },
     quickFacts: [
-      'With 285 known moons, Saturn has more than every other planet combined.',
+      'With 274 known moons, Saturn has more than every other planet combined.',
       'Its average density is less than water’s.',
       'The rings may be young - perhaps only a few hundred million years old.',
     ],
@@ -319,7 +319,7 @@ export const PLANETS: BodyDef[] = [
       gravity: 8.7,
       rotationHours: -17.24,
       dayLengthHours: 17.2,
-      orbitDays: 30_685,
+      orbitDays: 30_689,
       distanceAU: 19.191,
       tempMeanC: -195,
       moons: 29,
@@ -352,7 +352,7 @@ export const PLANETS: BodyDef[] = [
       gravity: 11.0,
       rotationHours: 16.11,
       dayLengthHours: 16.1,
-      orbitDays: 60_190,
+      orbitDays: 60_182,
       distanceAU: 30.07,
       tempMeanC: -200,
       moons: 16,
@@ -436,7 +436,17 @@ const DEG = Math.PI / 180;
  * (days since J2000). Returns AU in ecliptic coords [x, y, z] where the
  * x–y plane is the ecliptic and orbits run counterclockwise seen from +z.
  */
-export function keplerPosition(el: OrbitalElements, tDays: number): [number, number, number] {
+/**
+ * Heliocentric ecliptic position, AU. Pass `out` from per-frame callers -
+ * the render loop computes ~40 of these per frame (plus every spacecraft
+ * substep), and per-call tuple allocations were the largest steady GC load
+ * in the hot path.
+ */
+export function keplerPosition(
+  el: OrbitalElements,
+  tDays: number,
+  out?: [number, number, number],
+): [number, number, number] {
   const n = 360 / el.periodDays; // mean motion, deg/day
   const L = el.L0 + n * tDays;
   let M = ((L - el.wBar) % 360) * DEG;
@@ -468,11 +478,19 @@ export function keplerPosition(el: OrbitalElements, tDays: number): [number, num
   const y =
     (cosW * sinO + sinW * cosO * cosI) * xOrb + (-sinW * sinO + cosW * cosO * cosI) * yOrb;
   const z = sinW * sinI * xOrb + cosW * sinI * yOrb;
+  if (out) {
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    return out;
+  }
   return [x, y, z];
 }
 
+const HELIO_SCRATCH: [number, number, number] = [0, 0, 0];
+
 /** Current heliocentric distance in AU. */
 export function heliocentricDistance(el: OrbitalElements, tDays: number): number {
-  const [x, y, z] = keplerPosition(el, tDays);
+  const [x, y, z] = keplerPosition(el, tDays, HELIO_SCRATCH);
   return Math.hypot(x, y, z);
 }

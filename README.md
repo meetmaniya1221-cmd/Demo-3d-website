@@ -74,7 +74,8 @@ starts at Off if the system asks for reduced motion.
 
 **Real NASA surfaces.** 22 mission-imagery global mosaics (USGS
 Astrogeology / New Horizons / Cassini / Galileo / Dawn / Hayabusa2 -
-see [SOURCES.md](SOURCES.md)). Where no map exists the app paints a
+see [SOURCES.md](SOURCES.md)), plus the layered NASA Earth and Moon
+close-range stacks below. Where no map exists the app paints a
 seeded procedural surface and labels it *Artistic rendering* - it never
 passes art off as photography.
 
@@ -248,8 +249,9 @@ half resolution, thins the decorative particle fields, never reaches for the
 8k Earth and Moon maps, and stops drawing the solar system entirely behind a
 full-screen sheet.
 
-**First-person spacecraft mode.** Board a research vessel with glass on every side. The cabin is a 360° observation deck: the pilot's head turns continuously through every bearing, so front, port, starboard, astern, overhead and the floor port are simply directions you happen to be facing, not a set of preset cameras. Turn right round and you watch where the ship has been - the real scene behind the hull, never a substitute backdrop.
-Solar System from inside its cockpit. This is not a free camera with a
+**First-person spacecraft mode.** Board a research vessel with glass on every side. The cabin is a 360° observation deck: the pilot's head turns continuously through every bearing, so front, port, starboard, astern, overhead and the floor port are simply directions you happen to be facing, not a set of preset cameras. Turn right round and you watch where the ship has been - the real scene
+behind the hull, never a substitute backdrop - and fly the Solar System
+from inside its cockpit. This is not a free camera with a
 frame drawn over it: the world is pinned to true scale, so a scene unit is
 a fixed 1,495,978.707 km and a body's apparent size is nothing but its
 real radius over its real distance. Earth swells to 16° across at a

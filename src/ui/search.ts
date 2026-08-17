@@ -55,16 +55,36 @@ const SKY_TO_SYSTEM: Record<string, string> = {
 
 const ALIASES: Record<string, string[]> = {
   moon: ['the moon', 'luna'],
-  halley: ["halley's comet", 'comet halley', '1p'],
+  halley: ["halley's comet", 'comet halley', '1p', 'orionids', 'eta aquariids'],
+  encke: ['taurids'],
   '67p': ['churyumov', 'gerasimenko', 'rosetta comet'],
-  swifttuttle: ['swift tuttle', 'perseids comet'],
-  tempeltuttle: ['tempel tuttle', 'leonids comet'],
+  swifttuttle: ['swift tuttle', 'perseids comet', 'perseids'],
+  tempeltuttle: ['tempel tuttle', 'leonids comet', 'leonids'],
   halebopp: ['hale bopp'],
   'main-belt': ['asteroid belt', 'belt'],
   'kuiper-belt': ['kuiper'],
   'oort-cloud': ['oort'],
   sun: ['sol', 'the sun', 'star'],
   gonggong: ['2007 or10'],
+};
+
+/** NGC cross-identifications for the Messier highlights ("NGC 224" → M31). */
+const NGC_IDS: Record<string, string> = {
+  m31: 'ngc 224',
+  m33: 'ngc 598',
+  m42: 'ngc 1976',
+  m44: 'ngc 2632',
+  m13: 'ngc 6205',
+  m22: 'ngc 6656',
+  m8: 'ngc 6523',
+  m16: 'ngc 6611',
+  m1: 'ngc 1952',
+  m27: 'ngc 6853',
+  m57: 'ngc 6720',
+  m51: 'ngc 5194',
+  m81: 'ngc 3031',
+  m87: 'ngc 4486',
+  m104: 'ngc 4594',
 };
 
 function norm(s: string): string {
@@ -168,14 +188,35 @@ function buildIndex(): SearchItem[] {
     }
   }
   for (const o of DEEP_SKY) {
+    const ngc = NGC_IDS[o.id];
     items.push({
       id: o.id,
       kind: 'sky',
       name: o.m ? `${o.m} · ${o.name}` : o.name,
       detail: `${o.type[0].toUpperCase()}${o.type.slice(1)} · ${o.constellation}`,
       color: '#b9c8f0',
-      keys: [norm(o.name), norm(o.m), norm(o.type), norm(o.constellation), 'messier'],
+      keys: [
+        norm(o.name),
+        norm(o.m),
+        ...(ngc ? [ngc, ngc.replace(' ', '')] : []),
+        norm(o.type),
+        norm(o.constellation),
+        ...(o.m ? ['messier'] : []),
+      ],
     });
+  }
+  // confirmed planets of the near stars: "Proxima b" opens its star's page
+  for (const s of NEAR_STARS) {
+    for (const p of s.planets ?? []) {
+      items.push({
+        id: s.id,
+        kind: 'sky',
+        name: p.name,
+        detail: `${p.status === 'candidate' ? 'Candidate planet' : 'Exoplanet'} of ${s.name}`,
+        color: '#a8d8c8',
+        keys: [norm(p.name), 'exoplanet', 'planet'],
+      });
+    }
   }
   return items;
 }

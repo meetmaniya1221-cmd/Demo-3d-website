@@ -23,6 +23,8 @@
  * star, which the chunk streamer and the discovery database both rely on.
  */
 import { mulberry32 } from '../scene/noise';
+import { NEAR_STARS } from '../data/catalog/stars';
+import { equatorialToGalacticLB } from '../scene/galaxy';
 import {
   BAR_ANGLE_DEG,
   BAR_HALF_LY,
@@ -361,6 +363,26 @@ export function buildLandmarks(): Landmark[] {
       real: true,
     },
   ];
+  // The real stellar neighbourhood: every Observatory census star, placed by
+  // its published RA/Dec + distance through the standard J2000 equatorial →
+  // galactic rotation. These make Alpha Centauri, Sirius, Vega and the rest
+  // genuinely visitable - searchable on the map, routable by autopilot and
+  // scannable into the survey log - instead of leaving the neighbourhood to
+  // anonymous procedural stars.
+  for (const star of NEAR_STARS) {
+    const { lDeg, bDeg } = equatorialToGalacticLB(star.raH * 15, star.decDeg);
+    list.push({
+      id: `star-${star.id}`,
+      name: star.name,
+      kind: 'star',
+      pos: fromGalacticLBD(lDeg, bDeg, star.distanceLy),
+      // reach scales with remoteness: a neighbourhood dwarf is a precise
+      // pinpoint, a distant supergiant is a beacon you aim at from afar
+      radiusLy: star.distanceLy < 20 ? 0.12 : star.distanceLy < 200 ? 1 : 3,
+      note: `${star.spectral} · ${star.distanceLy} ly from Sol. ${star.note}`,
+      real: true,
+    });
+  }
   for (const [id, name, l, b, d, note] of NEBULAE) {
     list.push({ id, name, kind: 'nebula', pos: fromGalacticLBD(l, b, d), radiusLy: 90, note, real: true });
   }

@@ -13,6 +13,7 @@ import { isCompact, onDeviceChange } from './device';
 import { fmtInt, fmtSimDate, fmtSimTime } from './format';
 import { magnitudeNote } from '../scene/nakedeye';
 import {
+  LIGHT_SPEED_KMS,
   THROTTLE_STEPS,
   THRUST_STEPS_MS2,
   TIME_STEPS,
@@ -21,6 +22,7 @@ import {
   type FlightMode,
   type OrbitTelemetry,
 } from '../spacecraft/ship';
+import { UNITS_PER_AU, bodyPositionTrue } from '../spacecraft/ephemeris';
 import { BURN_AXES, BURN_EFFECT, BURN_LABEL } from '../spacecraft/orbit';
 import {
   KM_PER_UNIT,
@@ -130,6 +132,7 @@ const MODE_LABEL: Record<FlightMode, string> = {
 
 const AU_KM = 149_597_870.7;
 const tmpAU = new THREE.Vector3();
+const tmpTargetPos = new THREE.Vector3();
 
 /** Distance with a sensible unit: km → million km → AU. */
 export function fmtSpaceDist(km: number): string {
@@ -152,10 +155,16 @@ export function fmtDuration(sec: number): string {
   return `${(days / 365.25).toFixed(1)} years`;
 }
 
-/** Physical velocity, in the units a mission report would use. */
+/** Physical velocity, in the units a mission report would use. The
+ *  accelerated band reads in light-multiples and AU/s because six-figure
+ *  km/s numbers stop meaning anything. */
 function fmtSpeed(kms: number): string {
   if (kms === 0) return '0 km/s';
   if (kms < 1) return `${(kms * 1000).toFixed(0)} m/s`;
+  const auPerSec = kms / AU_KM;
+  if (auPerSec >= 0.05) return `${auPerSec.toFixed(auPerSec >= 0.45 ? 1 : 2)} AU/s`;
+  if (kms > LIGHT_SPEED_KMS) return `${(kms / LIGHT_SPEED_KMS).toFixed(1)}c`;
+  if (kms >= 10_000) return `${(kms / LIGHT_SPEED_KMS).toFixed(1)}c`;
   return `${kms.toFixed(kms < 10 ? 1 : 0)} km/s`;
 }
 
@@ -706,12 +715,15 @@ export class SpacecraftUI {
     const row = el('div', 'sc-deck-row');
     THROTTLE_STEPS.forEach((v, i) => {
       const b = el('button', 'sc-step', v === 0 ? 'STOP' : fmtSpeed(v));
+      if (v > LIGHT_SPEED_KMS) b.classList.add('warp');
       b.title =
         v === 0
           ? 'Cut the main engine'
-          : v > FASTEST_PROBE_KMS
-            ? `${fmtSpeed(v)} — faster than any vehicle humans have built (record: ${FASTEST_PROBE_KMS} km/s)`
-            : `${fmtSpeed(v)} — within the range of real deep-space probes`;
+          : v > LIGHT_SPEED_KMS
+            ? `${fmtSpeed(v)} — accelerated exploration band, beyond known physics (labelled, not simulated relativity)`
+            : v > FASTEST_PROBE_KMS
+              ? `${fmtSpeed(v)} — faster than any vehicle humans have built (record: ${FASTEST_PROBE_KMS} km/s)`
+              : `${fmtSpeed(v)} — within the range of real deep-space probes`;
       b.addEventListener('click', () => this.cb.onThrottle(i));
       this.throttleChips.push(b);
       row.appendChild(b);
@@ -885,7 +897,7 @@ export class SpacecraftUI {
       <h3>Flying the vessel</h3>
       <ul>
         <li><kbd>Drag</kbd> Look around the cockpit</li>
-        <li><kbd>1</kbd>–<kbd>5</kbd> Snap to front / left / right / up / down window</li>
+        <li><kbd>1</kbd>–<kbd>6</kbd> Snap to front / left / right / up / down / aft window</li>
         <li><kbd>W</kbd><kbd>S</kbd> Main engine: throttle up / down</li>
         <li><kbd>A</kbd><kbd>D</kbd> RCS translation: slide left / right</li>
         <li><kbd>R</kbd><kbd>F</kbd> RCS translation: slide up / down</li>
@@ -898,9 +910,9 @@ export class SpacecraftUI {
       </ul>
       <h3>In orbit</h3>
       <ul>
-        <li><kbd>6</kbd> Hold prograde &nbsp;·&nbsp; <kbd>7</kbd> retrograde</li>
-        <li><kbd>8</kbd> Radial out &nbsp;·&nbsp; <kbd>9</kbd> radial in &nbsp;·&nbsp; <kbd>0</kbd> normal</li>
-        <li><kbd>C</kbd> Cycle the attitude hold, including anti-normal and manual</li>
+        <li><kbd>7</kbd> Hold prograde &nbsp;·&nbsp; <kbd>8</kbd> retrograde</li>
+        <li><kbd>9</kbd> Radial out &nbsp;·&nbsp; <kbd>0</kbd> radial in</li>
+        <li><kbd>C</kbd> Cycle the attitude hold, including normal, anti-normal and manual</li>
         <li><kbd>O</kbd> Release the orbit into free flight</li>
         <li>The throttle becomes engine <b>acceleration</b>. The engine burns
           whenever it is above CUT, along whichever way the nose points.</li>
@@ -1118,9 +1130,10 @@ export class SpacecraftUI {
         ? `${MODE_LABEL[t.mode]} · ${t.anchorName}`
         : MODE_LABEL[t.mode];
 
-    // In orbit the same seven notches mean acceleration, not velocity - a
+    // In orbit the physical notches mean acceleration, not velocity - a
     // velocity setpoint is meaningless on a trajectory. Relabel rather than
     // build a second control, so there is only ever one throttle to learn.
+    // The accelerated-travel notches have no orbital meaning and grey out.
     const orbiting = t.mode === 'orbit';
     if (orbiting !== this.throttleInOrbit) {
       this.throttleInOrbit = orbiting;
@@ -1130,16 +1143,25 @@ export class SpacecraftUI {
       for (let i = 0; i < this.throttleChips.length; i++) {
         const b = this.throttleChips[i];
         if (orbiting) {
-          b.textContent = i === 0 ? 'CUT' : fmtAccel(THRUST_STEPS_MS2[i]);
-          b.title = `${fmtAccel(THRUST_STEPS_MS2[i])} of main-engine acceleration`;
+          const inLadder = i < THRUST_STEPS_MS2.length;
+          b.disabled = !inLadder;
+          b.hidden = !inLadder;
+          if (inLadder) {
+            b.textContent = i === 0 ? 'CUT' : fmtAccel(THRUST_STEPS_MS2[i]);
+            b.title = `${fmtAccel(THRUST_STEPS_MS2[i])} of main-engine acceleration`;
+          }
         } else {
+          b.disabled = false;
+          b.hidden = false;
           b.textContent = THROTTLE_STEPS[i] === 0 ? 'STOP' : fmtSpeed(THROTTLE_STEPS[i]);
           b.title =
             THROTTLE_STEPS[i] === 0
               ? 'Cut the main engine'
-              : THROTTLE_STEPS[i] > FASTEST_PROBE_KMS
-                ? `${fmtSpeed(THROTTLE_STEPS[i])} — faster than any vehicle humans have built (record: ${FASTEST_PROBE_KMS} km/s)`
-                : `${fmtSpeed(THROTTLE_STEPS[i])} — within the range of real deep-space probes`;
+              : THROTTLE_STEPS[i] > LIGHT_SPEED_KMS
+                ? `${fmtSpeed(THROTTLE_STEPS[i])} — accelerated exploration band, beyond known physics (labelled, not simulated relativity)`
+                : THROTTLE_STEPS[i] > FASTEST_PROBE_KMS
+                  ? `${fmtSpeed(THROTTLE_STEPS[i])} — faster than any vehicle humans have built (record: ${FASTEST_PROBE_KMS} km/s)`
+                  : `${fmtSpeed(THROTTLE_STEPS[i])} — within the range of real deep-space probes`;
         }
       }
     }
@@ -1274,7 +1296,7 @@ export class SpacecraftUI {
     if (o.impactPredicted) {
       this.orbitBanner.className = 'sc-orbit-banner danger';
       this.orbitBanner.innerHTML =
-        `<b>Impact predicted</b><i>Periapsis is below the surface. Burn prograde at periapsis, ` +
+        `<b>Impact predicted</b><i>Periapsis is inside the safety margin. Burn prograde at periapsis, ` +
         `or radial out, to raise it.</i>`;
     } else if (o.escaping) {
       this.orbitBanner.className = 'sc-orbit-banner warn';
@@ -1410,18 +1432,57 @@ export class SpacecraftUI {
 
     // neighbours
     c.font = '11px ui-monospace, monospace';
+    const drawn = new Set<string>();
     for (const n of t.neighbours.slice(0, 7)) {
       if (n.id === 'sun') continue;
       const def = catalogObject(n.id);
-      const au = tmpAU.copy(n.scenePos).multiplyScalar(0.01);
+      const au = tmpAU.copy(n.scenePos).multiplyScalar(1 / UNITS_PER_AU);
       const [px, py] = proj(au);
       if (px < -20 || px > size + 20 || py < -20 || py > size + 20) continue;
+      drawn.add(n.id);
       c.fillStyle = def ? `#${def.color.toString(16).padStart(6, '0')}` : '#9ab';
       c.beginPath();
       c.arc(px, py, n.id === t.targetId ? 5 : 3, 0, Math.PI * 2);
       c.fill();
       c.fillStyle = 'rgba(200,220,245,0.72)';
       c.fillText(n.name, px + 7, py + 4);
+    }
+
+    // the target always appears - as a marker in range, or clamped to the rim
+    // with its name when it lies beyond the current span (the aria-label
+    // promises the current target, and losing it made the map useless for
+    // exactly the trips it exists to support)
+    if (t.targetId && t.targetId !== 'sun' && !drawn.has(t.targetId)) {
+      const def = catalogObject(t.targetId);
+      bodyPositionTrue(t.targetId, t.simDays, tmpTargetPos);
+      const au = tmpAU.copy(tmpTargetPos).multiplyScalar(1 / UNITS_PER_AU);
+      let dx = (au.x - cx) * k;
+      let dy = (-au.z - cy) * k;
+      const dist = Math.hypot(dx, dy);
+      const rim = mid - 18;
+      const off = dist > rim;
+      if (off) {
+        dx *= rim / dist;
+        dy *= rim / dist;
+      }
+      const px = mid + dx;
+      const py = mid + dy;
+      c.strokeStyle = def ? `#${def.color.toString(16).padStart(6, '0')}` : '#9ab';
+      c.lineWidth = 1.4;
+      c.beginPath();
+      if (off) {
+        // hollow chevron pointing outward: "this way, beyond the edge"
+        const ang = Math.atan2(dy, dx);
+        c.moveTo(px - Math.cos(ang - 0.4) * 7, py - Math.sin(ang - 0.4) * 7);
+        c.lineTo(px, py);
+        c.lineTo(px - Math.cos(ang + 0.4) * 7, py - Math.sin(ang + 0.4) * 7);
+      } else {
+        c.arc(px, py, 5, 0, Math.PI * 2);
+      }
+      c.stroke();
+      c.fillStyle = 'rgba(200,220,245,0.72)';
+      const name = def?.name ?? t.targetId;
+      c.fillText(name, Math.min(px + 7, size - 8 - c.measureText(name).width), py + 4);
     }
 
     // the ship, with its nose direction

@@ -33,7 +33,7 @@
  */
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import { SGRA_RS_LY } from './units';
+import { SGRA_CAPTURE_RS, SGRA_ISCO_RS, SGRA_RS_LY } from './units';
 
 const LENS_FRAG = /* glsl */ `
   precision highp float;
@@ -99,14 +99,13 @@ const LENS_FRAG = /* glsl */ `
     float theta = acos(cosA);
 
     float thetaE = sqrt(2.0 * uRs / D);          // Einstein angle
-    float thetaC = 2.598 * uRs / D;              // apparent capture radius
+    float thetaC = ${SGRA_CAPTURE_RS.toFixed(4)} * uRs / D; // apparent capture radius
 
     // ---- background deflection (point lens) -----------------------------
     vec2 bhUv = dirToUv(toBh);
     vec2 offs = vUv - bhUv;
     // aspect-corrected angular offset so the ring stays a circle
     vec2 ang = offs * vec2(uAspect, 1.0);
-    float aLen = max(length(ang), 1e-6);
     float bend = 1.0 - (thetaE * thetaE) / (theta * theta + 1e-12);
     // the deflection applies to BACKGROUND light. The photoreal plate at
     // the hole already bakes its own strong-field bending - re-lensing it
@@ -148,7 +147,7 @@ const LENS_FRAG = /* glsl */ `
       vec3 emission = vec3(0.0);
       float captured = 0.0;
       float prevSide = dot(rel0, nDisk);
-      float rIn = 3.0 * rs;    // ISCO
+      float rIn = ${SGRA_ISCO_RS.toFixed(1)} * rs; // ISCO
       float rOut = 14.0 * rs;
 
       for (int i = 0; i < 52; i++) {
@@ -188,8 +187,10 @@ const LENS_FRAG = /* glsl */ `
             float boost = dopp * dopp * dopp;
             // gravitational redshift dims the inner edge
             float gred = sqrt(max(0.0, 1.0 - rs / rHit));
-            float radial = pow(3.0 / rRs, 2.1);
+            float radial = pow(${SGRA_ISCO_RS.toFixed(1)} / rRs, 2.1);
             float e = radial * streak * boost * gred;
+            // the comparison doubles as a NaN guard: a NaN e fails it and
+            // never reaches the accumulator (one NaN poisons every bloom mip)
             if (e >= 0.0) {
               vec3 c = gasColor(rRs);
               // Doppler colour skew: approaching side slightly hotter/bluer
@@ -197,13 +198,14 @@ const LENS_FRAG = /* glsl */ `
               emission += c * e;
             }
           }
-          prevSide = side;
-        } else {
-          prevSide = side;
         }
+        prevSide = side;
       }
 
-      // photon ring: rays that lingered near the photon sphere pile up
+      // Photon ring: drawn analytically at the capture angle. The 52-step
+      // march resolves the shadow but is too coarse to build the ring from
+      // ray pile-up alone, so this term stands in for it - an approximation,
+      // not an emergent result (the shadow above IS emergent).
       float ring = exp(-pow((theta - thetaC) / (thetaC * 0.16 + 1e-9), 2.0));
       emission += vec3(1.3, 1.0, 0.75) * ring * 0.55;
 

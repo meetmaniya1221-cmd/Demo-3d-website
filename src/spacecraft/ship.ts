@@ -40,13 +40,19 @@ import {
   bodyRadiusKm,
   bodyRadiusTrue,
   minSafeDistance,
-  nearestBodies,
 } from './ephemeris';
 
 /** Gravitational constant in km³ kg⁻¹ s⁻². */
 const G_KM = 6.6743e-20;
 
 /** Compact duration for autopilot messages. */
+/** Label for the accelerated band: light-multiples below 0.05 AU/s, AU/s above. */
+export function fmtAcceleratedSpeed(kms: number): string {
+  const auPerSec = kms / 149_597_870.7;
+  if (auPerSec >= 0.05) return `${auPerSec.toFixed(auPerSec >= 0.45 ? 1 : 2)} AU/s`;
+  return `${(kms / LIGHT_SPEED_KMS).toFixed(1)}c`;
+}
+
 function fmtHours(sec: number): string {
   if (!Number.isFinite(sec)) return 'unbound';
   if (sec < 5400) return `${(sec / 60).toFixed(1)} min`;
@@ -56,8 +62,30 @@ function fmtHours(sec: number): string {
 
 export type FlightMode = 'free' | 'transit' | 'orbit' | 'flyby' | 'follow';
 
-/** Commanded physical velocities, in km/s. */
-export const THROTTLE_STEPS = [0, 1, 10, 50, 150, 400, 1000] as const;
+/**
+ * Commanded physical velocities, in km/s.
+ *
+ * Two bands. The lower seven notches are plausible spacecraft velocities
+ * (anything over 191 km/s already outruns every vehicle humans have built).
+ * The upper four are the ACCELERATED EXPLORATION band - 0.1c up to 0.5 AU/s -
+ * a labelled convenience for crossing interplanetary distances without
+ * touching the simulation clock. They are still physical velocity: the hull
+ * really covers that distance, time compression stays a separate instrument,
+ * and the HUD flags the band as beyond known physics.
+ */
+export const THROTTLE_STEPS = [
+  0, 1, 10, 50, 150, 400, 1000,
+  29_979, // 0.1c
+  1_000_000, // 3.3c
+  14_959_787, // 0.1 AU/s
+  74_798_935, // 0.5 AU/s
+] as const;
+
+/** Speed of light, for labelling the accelerated band honestly. */
+export const LIGHT_SPEED_KMS = 299_792.458;
+
+/** First throttle index that exceeds light speed (the accelerated band). */
+export const SUPERLUMINAL_INDEX = THROTTLE_STEPS.findIndex((v) => v > LIGHT_SPEED_KMS);
 
 /** Simulated seconds per real second. */
 export const TIME_STEPS = [1, 10, 100, 1_000, 10_000, 100_000, 1_000_000] as const;
@@ -231,6 +259,13 @@ export class Ship {
   gazeLock = true;
 
   distanceTravelledKm = 0;
+  /** Own-motion displacement this step (km) - excludes riding the local frame,
+   *  so station-keeping shows a stationary odometer. */
+  private ownKm = 0;
+  /** The pilot's time-compression choice before a transit borrowed a raise. */
+  private preTransitTimeIndex: number | null = null;
+  /** Debounce for the orbit floor announcement (it runs every substep). */
+  private floorHeld = false;
 
   /** Set by the autopilot when it finishes something worth announcing. */
   event: string | null = null;
@@ -311,7 +346,9 @@ export class Ship {
   // ------------------------------------------------------------- controls --
 
   setThrottleIndex(i: number): void {
-    this.throttleIndex = THREE.MathUtils.clamp(i, 0, THROTTLE_STEPS.length - 1);
+    // in orbit the ladder means thrust, and only the physical notches exist
+    const top = this.mode === 'orbit' ? THRUST_STEPS_MS2.length - 1 : THROTTLE_STEPS.length - 1;
+    this.throttleIndex = THREE.MathUtils.clamp(i, 0, top);
     this.cmdKms = THROTTLE_STEPS[this.throttleIndex];
     // A throttle change means the pilot is flying, not the autopilot - except in
     // orbit, where the throttle IS the pilot's control over the trajectory and
@@ -319,9 +356,12 @@ export class Ship {
     if (this.mode === 'transit' || this.mode === 'flyby') this.abort('Autopilot released - manual throttle.');
   }
 
-  /** Main-engine acceleration at the current notch, m/s² (orbit mode). */
+  /** Main-engine acceleration at the current notch, m/s² (orbit mode). The
+   *  accelerated-travel notches have no orbital meaning and clamp to the top
+   *  physical thrust. */
   get thrustMs2(): number {
-    return THRUST_STEPS_MS2[this.throttleIndex] ?? 0;
+    if (this.throttleIndex < 0) return 0;
+    return THRUST_STEPS_MS2[Math.min(this.throttleIndex, THRUST_STEPS_MS2.length - 1)] ?? 0;
   }
 
   /** Set the attitude the flight computer holds. */
@@ -386,9 +426,12 @@ export class Ship {
     return speed;
   }
 
-  setTimeIndex(i: number): void {
+  setTimeIndex(i: number, opts: { loan?: boolean } = {}): void {
     this.timeIndex = THREE.MathUtils.clamp(i, 0, TIME_STEPS.length - 1);
     this.timeScale = TIME_STEPS[this.timeIndex];
+    // a deliberate change by the pilot overrides any pending transit loan -
+    // arrival must not yank the clock away from an explicit choice
+    if (!opts.loan) this.preTransitTimeIndex = null;
   }
 
   nudgeThrottle(dir: 1 | -1): void {
@@ -418,15 +461,18 @@ export class Ship {
       this.mode = 'free';
       this.anchorId = null;
     }
+    if (this.transit) this.restoreLoanedTime();
     this.transit = this.orbit = this.flyby = null;
     this.event = 'All stop. Relative velocity zeroed.';
   }
 
   abort(reason = 'Autopilot disengaged.'): void {
     if (this.mode === 'free') return;
+    const wasTransit = this.mode === 'transit';
     this.mode = 'free';
     this.anchorId = null;
     this.transit = this.orbit = this.flyby = null;
+    if (wasTransit) this.restoreLoanedTime();
     this.event = reason;
   }
 
@@ -496,8 +542,11 @@ export class Ship {
     this.event = 'Hull aligned to line of sight.';
   }
 
+  private headEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+
   headQuaternion(out: THREE.Quaternion): THREE.Quaternion {
-    return out.setFromEuler(new THREE.Euler(this.headPitch, this.headYaw, 0, 'YXZ'));
+    this.headEuler.set(this.headPitch, this.headYaw, 0);
+    return out.setFromEuler(this.headEuler);
   }
 
   // --------------------------------------------------------- flight plans --
@@ -544,18 +593,34 @@ export class Ship {
     // Pick a compression that makes the trip watchable. The physical velocity
     // is untouched - only how fast the simulation clock runs - and the HUD keeps
     // showing both, so the honesty of the distance survives the convenience.
+    // The raise is a loan, not a setting: the pilot's own choice is restored
+    // when the transit ends (see restoreLoanedTime).
     const runKm = Math.max(0, separation - standoff) * KM_PER_UNIT;
     const simSeconds = runKm / Math.max(this.cmdKms, 1);
+    if (this.preTransitTimeIndex === null) this.preTransitTimeIndex = this.timeIndex;
     while (
       this.timeIndex < TIME_STEPS.length - 1 &&
       simSeconds / TIME_STEPS[this.timeIndex] > wallSeconds
     ) {
-      this.setTimeIndex(this.timeIndex + 1);
+      this.setTimeIndex(this.timeIndex + 1, { loan: true });
     }
+    const speedLabel =
+      this.cmdKms > LIGHT_SPEED_KMS
+        ? `${fmtAcceleratedSpeed(this.cmdKms)} (accelerated travel)`
+        : `${Math.round(this.cmdKms)} km/s`;
     this.event =
       `Cruise to ${this.nameOf(id)} engaged - ` +
       `${(simSeconds / 86_400).toFixed(simSeconds > 8.64e6 ? 0 : 1)} days of flight ` +
-      `at ${Math.round(this.cmdKms)} km/s, compressed ${TIME_STEPS[this.timeIndex].toLocaleString('en-US')}x.`;
+      `at ${speedLabel}, compressed ${TIME_STEPS[this.timeIndex].toLocaleString('en-US')}x.`;
+  }
+
+  /** Give back a time-compression raise the transit autopilot borrowed. */
+  private restoreLoanedTime(): void {
+    if (this.preTransitTimeIndex !== null) {
+      const idx = this.preTransitTimeIndex;
+      this.setTimeIndex(idx, { loan: true });
+      this.preTransitTimeIndex = null;
+    }
   }
 
   private setThrottleIndexQuiet(i: number): void {
@@ -754,7 +819,10 @@ export class Ship {
     }
 
     this.enforceProximity(newSimDays);
-    this.distanceTravelledKm += this.prevPos.distanceTo(this.pos) * KM_PER_UNIT;
+    // odometer counts motion under the ship's own power; riding a body's
+    // heliocentric frame (station-keeping, orbit anchor carry) is not travel
+    this.distanceTravelledKm += this.ownKm;
+    this.ownKm = 0;
     this.updateHead(dt, newSimDays);
     return simDt;
   }
@@ -865,6 +933,7 @@ export class Ship {
       v.addScaledVector(this.tmpB.copy(UP).applyQuaternion(this.quat), this.input.strafeY * rcs);
     }
     this.pos.addScaledVector(v, simDt * UNITS_PER_KM);
+    this.ownKm += v.length() * simDt;
     this.carryFrame(simDt);
   }
 
@@ -937,12 +1006,14 @@ export class Ship {
     this.speedKms = THREE.MathUtils.lerp(this.speedKms, want * gate, 1 - Math.exp(-dt * 3));
 
     this.stepAlong(fwd, this.speedKms * simDt, d);
+    this.ownKm += Math.min(this.speedKms * simDt, d * KM_PER_UNIT);
     this.carryFrame(simDt);
 
     if (d < plan.standoff * 0.1 || d < 1e-7) {
       const name = this.nameOf(this.anchorId);
       this.startFollow(this.anchorId, simDays);
       this.idle();
+      this.restoreLoanedTime();
       this.event = `Arrived: ${name}. Station-keeping - fly manually to close in.`;
     }
   }
@@ -1008,7 +1079,13 @@ export class Ship {
       const radial = this.tmpB.copy(plan.r).normalize();
       const vr = plan.v.dot(radial);
       if (vr < 0) plan.v.addScaledVector(radial, -vr);
-      this.event = `Proximity limit at ${this.nameOf(this.anchorId)}. Trajectory held at the safe radius.`;
+      // announce once per contact, not once per substep
+      if (!this.floorHeld) {
+        this.floorHeld = true;
+        this.event = `Proximity limit at ${this.nameOf(this.anchorId)}. Trajectory held at the safe radius.`;
+      }
+    } else if (this.floorHeld && rMag > plan.safeRadiusKm * 1.05) {
+      this.floorHeld = false;
     }
 
     plan.el = elementsFrom(plan.r, plan.v, plan.mu);
@@ -1031,6 +1108,7 @@ export class Ship {
     // in `target`; adding it again would double-count it and fling the ship out.
 
     this.speedKms = plan.v.length();
+    this.ownKm += this.speedKms * Math.abs(simDt);
 
     // Once an unbound trajectory has genuinely left the body's neighbourhood,
     // two-body maths about that body stops meaning anything - hand the state
@@ -1148,6 +1226,7 @@ export class Ship {
       const gate = THREE.MathUtils.smoothstep(align, 0.5, 0.92);
       this.speedKms = THREE.MathUtils.lerp(this.speedKms, want * gate, 1 - Math.exp(-dt * 3));
       this.stepAlong(fwd, this.speedKms * simDt, d);
+      this.ownKm += Math.min(this.speedKms * simDt, d * KM_PER_UNIT);
       this.carryFrame(simDt);
       if (d < plan.standoff * 0.6) {
         plan.phase = 'pass';
@@ -1163,6 +1242,7 @@ export class Ship {
     this.slewTo(toExit, dt, SLEW_RATE * 0.6);
     this.speedKms = plan.passSpeedKms;
     this.pos.addScaledVector(this.forward(this.tmpB), this.speedKms * simDt * UNITS_PER_KM);
+    this.ownKm += this.speedKms * simDt;
     this.carryFrame(simDt);
     if (toExit.length() < plan.standoff * 0.8) {
       const name = this.nameOf(this.anchorId);
@@ -1191,6 +1271,7 @@ export class Ship {
       v.addScaledVector(this.tmpC.copy(UP).applyQuaternion(this.quat), this.input.strafeY * rcs);
     }
     this.followOffset.addScaledVector(v, simDt * UNITS_PER_KM);
+    this.ownKm += v.length() * simDt;
     const minD = minSafeDistance(anchor) * 1.02;
     if (this.followOffset.length() < minD) this.followOffset.setLength(minD);
     this.pos.copy(target).add(this.followOffset);
@@ -1200,31 +1281,34 @@ export class Ship {
 
   private enforceProximity(simDays: number): void {
     this.warning = null;
-    const near = nearestBodies(this.pos, simDays, 4);
     // In orbit the trajectory owns the hull's position, and stepOrbit already
     // holds it at the safe radius. Snapping this.pos here would desynchronise
     // the state vector from the rendered position, and cutting the throttle on
     // every low periapsis pass would take the controls away exactly when the
     // pilot is using them - so orbit keeps the warning and skips the grab.
     const advisoryOnly = this.mode === 'orbit';
-    for (const n of near) {
-      const limit = minSafeDistance(n.id);
-      if (n.dist > limit * 4) continue;
-      const sev = THREE.MathUtils.clamp(1 - (n.dist - limit) / (limit * 3), 0, 1);
+    // Every catalogued neighbour is tested against its own limit directly -
+    // this runs every SUBSTEP, and the sorted/cloned list nearestBodies
+    // builds was the hot path's single biggest allocation source.
+    for (const id of NEIGHBOUR_IDS) {
+      const body = bodyPositionTrue(id, simDays, this.tmpA);
+      const dist = this.pos.distanceTo(body);
+      const limit = minSafeDistance(id);
+      if (dist > limit * 4) continue;
+      const sev = THREE.MathUtils.clamp(1 - (dist - limit) / (limit * 3), 0, 1);
       if (!this.warning || sev > this.warning.severity) {
-        this.warning = { id: n.id, name: n.name, severity: sev };
+        this.warning = { id, name: this.nameOf(id), severity: sev };
       }
-      if (!advisoryOnly && n.dist < limit) {
+      if (!advisoryOnly && dist < limit) {
         // hard stop: slide the hull back out along the radial direction
-        const body = bodyPositionTrue(n.id, simDays, this.tmpA);
         const out = this.tmpB.copy(this.pos).sub(body);
         if (out.lengthSq() < 1e-20) out.set(0, 0, 1);
         out.setLength(limit);
         this.pos.copy(body).add(out);
-        if (this.mode === 'follow' && this.anchorId === n.id) this.followOffset.copy(out);
+        if (this.mode === 'follow' && this.anchorId === id) this.followOffset.copy(out);
         if (this.mode === 'transit' || this.mode === 'flyby') this.abort('Proximity limit - autopilot held.');
         this.idle();
-        this.event = `Proximity limit at ${n.name}. Hull held at a safe standoff.`;
+        this.event = `Proximity limit at ${this.nameOf(id)}. Hull held at a safe standoff.`;
       }
     }
   }
@@ -1275,10 +1359,12 @@ export class Ship {
     const def = catalogObject(id);
     const mass = def?.physical.massKg;
     if (mass) return G_KM * mass;
-    // fall back to a 2.0 g/cm³ sphere - stated as an estimate in the HUD
+    // fall back to a 2.0 g/cm³ sphere - stated as an estimate in the HUD.
+    // The floor guards elementsFrom against a zero-mass division: a body with
+    // neither mass nor size must never produce a NaN eccentricity readout.
     const rKm = bodyRadiusKm(id);
     const volumeKm3 = (4 / 3) * Math.PI * rKm ** 3;
-    return G_KM * volumeKm3 * 2.0e12;
+    return Math.max(G_KM * volumeKm3 * 2.0e12, 1e-6);
   }
 
   /** Name of the body the active flight mode is attached to. */
@@ -1324,11 +1410,6 @@ export class Ship {
   get orbitState(): { r: THREE.Vector3; v: THREE.Vector3; mu: number; anchorId: string } | null {
     if (this.mode !== 'orbit' || !this.orbit || !this.anchorId) return null;
     return { r: this.orbit.r, v: this.orbit.v, mu: this.orbit.mu, anchorId: this.anchorId };
-  }
-
-  /** Apparent travel rate: physical velocity multiplied by time compression. */
-  get apparentKmPerSec(): number {
-    return this.speedKms * this.effectiveTimeScale;
   }
 
   /** Distance to the current target, in scene units (null when untargeted). */
@@ -1384,37 +1465,9 @@ export class Ship {
     return true;
   }
 
-  /** Serialise just enough to restore the ship on re-entry. */
-  snapshot(): {
-    pos: [number, number, number];
-    quat: [number, number, number, number];
-    throttleIndex: number;
-    timeIndex: number;
-    targetId: string | null;
-    distanceTravelledKm: number;
-  } {
-    return {
-      pos: [this.pos.x, this.pos.y, this.pos.z],
-      quat: [this.quat.x, this.quat.y, this.quat.z, this.quat.w],
-      throttleIndex: this.throttleIndex,
-      timeIndex: this.timeIndex,
-      targetId: this.targetId,
-      distanceTravelledKm: this.distanceTravelledKm,
-    };
-  }
-
   /** True when the ship has never been placed. */
   get unplaced(): boolean {
     return this.pos.lengthSq() === 0;
   }
 
-  /** Distance travelled expressed in AU. */
-  get distanceTravelledAU(): number {
-    return (this.distanceTravelledKm / KM_PER_UNIT) / 100;
-  }
-
-  /** Radius of the currently targeted body in scene units (0 when none). */
-  get targetRadius(): number {
-    return this.targetId ? bodyRadiusTrue(this.targetId) : 0;
-  }
 }

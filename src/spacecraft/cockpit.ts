@@ -353,7 +353,7 @@ export class Cockpit {
     deck.add(coaming);
     this.disposables.push(coaming.geometry);
 
-    // three restrained indicator strips - the only self-lit surfaces in here
+    // two restrained indicator strips - the only self-lit surfaces in here
     for (const [x, color, intensity] of [
       [-AW * 0.62, 0x24455e, 0.45],
       [AW * 0.62, 0x53412c, 0.4],
@@ -447,6 +447,27 @@ export class Cockpit {
         m.position.y = WYt + 0.015;
       },
       new THREE.Vector3(0, 1, 0),
+    );
+    // aft observation window - the frame and seal were cut above; without this
+    // pane it was the only aperture with no glass material (no coating, no
+    // glare response), which read as a hole rather than a window
+    addGlass(
+      pane({ x0: aft.x0, y0: aft.y0, x1: aft.x1, y1: aft.y1 }),
+      (m) => {
+        m.rotation.y = Math.PI;
+        m.position.z = ZR + 0.015;
+      },
+      new THREE.Vector3(0, 0, 1),
+    );
+    // floor observation port (shape y maps to -z under this rotation, so the
+    // extents are mirrored to land on the same cutout as the floor frame)
+    addGlass(
+      pane({ x0: -0.46 * hx, y0: -0.42, x1: 0.46 * hx, y1: 0.95 }),
+      (m) => {
+        m.rotation.x = -Math.PI / 2;
+        m.position.y = -WYb - 0.015;
+      },
+      new THREE.Vector3(0, -1, 0),
     );
   }
 

@@ -42,6 +42,16 @@ const RINGS: RingSpec[] = [
   { rAU: 30, major: true },
   { rAU: 40, major: false },
   { rAU: 50, major: true },
+  // the outer system: scattered disc, Sedna (aphelion 937 AU), inner Oort
+  // approaches - true-scale zoom-outs reach past 1,000 AU and deserve a
+  // distance reference too (the LOD window hides these when irrelevant)
+  { rAU: 75, major: false },
+  { rAU: 100, major: true },
+  { rAU: 150, major: false },
+  { rAU: 250, major: true },
+  { rAU: 400, major: false },
+  { rAU: 700, major: false },
+  { rAU: 1000, major: true },
 ];
 
 const RING_SEGMENTS = 256;
@@ -236,7 +246,7 @@ export class ReferenceGrid {
     const f = THREE.MathUtils.clamp(
       explorer * (1 - this.scaleT) + trueScale * this.scaleT,
       0.08,
-      60,
+      1050,
     );
     // ease toward the target so zooming never pops rings in and out
     this.focusAU += (f - this.focusAU) * 0.08;

@@ -119,7 +119,13 @@ export class Labels {
         const d = camPos.distanceTo(selEntry.world);
         const r = system.bodyRadius(selEntry.def.id, state.scaleT);
         if (d > 1e-9 && (r / (d * halfTan)) * (h / 2) > h * 0.42) {
-          dominantSystem = selEntry.def.parent ?? selEntry.def.id;
+          // a moon's neighbourhood is its parent's system; a planet's is its
+          // own (falling back through `parent` would name the Sun and let
+          // every heliocentric label float over the close-up)
+          dominantSystem =
+            selEntry.def.type === 'moon'
+              ? (selEntry.def.parent ?? selEntry.def.id)
+              : selEntry.def.id;
         }
       }
     }
@@ -137,7 +143,7 @@ export class Labels {
         }
       }
       const { el, def } = entry;
-      if (!state.showLabels || !system.labelVisible(def.id, camPos, state.selectedId)) {
+      if (!state.showLabels || !system.labelVisible(def.id, camPos, state.selectedId, state.scaleT)) {
         el.style.display = 'none';
         continue;
       }

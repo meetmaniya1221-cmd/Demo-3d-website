@@ -95,6 +95,16 @@ class SoundFX {
     if (this.master && this.ctx) {
       this.master.gain.setValueAtTime(this.master.gain.value, this.ctx.currentTime);
       this.master.gain.linearRampToValueAtTime(muted ? 0 : 1, this.ctx.currentTime + 0.15);
+      // muting should also stop the machinery, not just silence it: suspend
+      // the whole context once the ramp lands so the looping ambient stops
+      // burning cycles (and battery) into a zero gain
+      if (muted) {
+        window.setTimeout(() => {
+          if (this.muted) this.ctx?.suspend().catch(() => {});
+        }, 200);
+      } else {
+        this.ctx.resume().catch(() => {});
+      }
     }
   }
 }

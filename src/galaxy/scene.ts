@@ -454,6 +454,7 @@ export class GalaxyScene {
     this.cloudRoot.add(buildPoints(this.sampleCentre(rnd), bulgeMat, -12));
     this.cloudRoot.add(buildPoints(this.sampleHaloAndGlobulars(rnd), haloMat, -16));
     this.cloudRoot.add(buildPoints(this.sampleSatellites(rnd), haloMat, -16));
+    this.cloudRoot.add(buildPoints(this.sampleNamedStars(), youngMat, -10));
     this.cloudRoot.add(this.buildDust(rnd));
     for (const neb of this.buildNebulae(rnd)) this.cloudRoot.add(neb);
     this.cloudRoot.add(this.buildDistantGalaxies(rnd));
@@ -731,6 +732,21 @@ export class GalaxyScene {
     return b;
   }
 
+  /** The catalogued neighbourhood stars (real RA/Dec + distance): a bright
+   *  glint at each landmark position so flying to Sirius means arriving at
+   *  something, not at an empty coordinate. */
+  private sampleNamedStars(): CloudBuild {
+    const b: CloudBuild = { pos: [], size: [], color: [] };
+    for (const lm of this.landmarks) {
+      if (lm.kind !== 'star' || lm.id === 'sol') continue;
+      // remoteness stands in for luminosity: a supergiant you can see from
+      // hundreds of ly gets a bigger glint than a neighbourhood dwarf
+      const size = lm.radiusLy >= 3 ? 3.4 : lm.radiusLy >= 1 ? 2.6 : 2.0;
+      pushStar(b, lm.pos.x, lm.pos.y, lm.pos.z, size, 1.0, 0.96, 0.88);
+    }
+    return b;
+  }
+
   private sampleSatellites(rnd: () => number): CloudBuild {
     const b: CloudBuild = { pos: [], size: [], color: [] };
     for (const lm of this.landmarks) {
@@ -990,10 +1006,13 @@ export class GalaxyScene {
     this.sStars.update(simDays, sgraDist);
 
     // beacon glow: min apparent size so the centre is findable from the
-    // rim; physically scaled once you are close; flare-driven brightness
+    // rim; physically scaled once you are close; flare-driven brightness.
+    // The findability floor must shrink with distance - held at a fixed 0.02
+    // ly it subtended tens of degrees exactly when the lensing shadow (a few
+    // hundredths of a degree) was trying to take over the view.
     const flare = this.flares.update(dt);
-    const base = Math.max(sgraDist * 0.012, 0.02);
-    const s = Math.min(base, 260);
+    const floor = Math.min(0.02, sgraDist * 0.05);
+    const s = Math.min(Math.max(sgraDist * 0.012, floor), 260);
     this.sgraGlow.scale.set(s, s, 1);
     // three representations, one object: far beacon glow → mid-range disk
     // mesh with its shadow silhouette → close-range geodesic march. Each

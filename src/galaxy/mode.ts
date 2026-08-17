@@ -38,11 +38,13 @@ import { GalaxyShip } from './ship';
 import { GalaxyHud, type HudMarker } from './hud';
 import { GalaxyMap } from './map';
 import { DiscoveryLog, DiscoveryPanel } from './discovery';
+import { S_STARS } from './sgra';
 import { EventDirector, type GalaxyEvent } from './events';
 import { GalaxyAudio } from './audio';
 import { LensingPass } from './lensing';
 import { DEFAULT_PARAMS, regionAt, starsPerPc3 } from './model';
 import {
+  NSC_RADIUS_LY,
   SGRA_RS_LY,
   SUN_POS,
   Vec3d,
@@ -122,6 +124,9 @@ export class GalaxyMode {
     this.root = root;
     this.veil = document.createElement('div');
     this.veil.className = 'gx-veil';
+    // the fades write opacity every frame; the stylesheet's 0.2 s transition
+    // would re-arm on each write and trail the commanded value by a beat
+    this.veil.style.transition = 'none';
     root.appendChild(this.veil);
     this.hud = new GalaxyHud(root, {
       onExit: () => this.exit(),
@@ -170,7 +175,6 @@ export class GalaxyMode {
             this.ship.engageRoute(label, target, 0.05);
             this.hud.toast('Route engaged', 'Autopilot will decelerate on approach.');
           },
-          onClose: () => {},
         },
       );
       this.composer = new EffectComposer(this.deps.renderer);
@@ -325,6 +329,12 @@ export class GalaxyMode {
       else this.exit();
       return;
     }
+    // the full-screen chart owns the keyboard while it is up: throttling or
+    // yawing a ship you cannot see is never what the M key meant
+    if (this.map?.isOpen) {
+      if (k === 'm') this.toggleMap();
+      return;
+    }
     switch (k) {
       case 'm':
         this.toggleMap();
@@ -391,7 +401,24 @@ export class GalaxyMode {
   private finishScan(): void {
     if (!this.gscene) return;
     const stars = this.gscene.chunks.starsNear(this.ship.pos, 25);
-    const result = this.log.scan(this.ship.pos, this.deps.state.simDays, stars, this.gscene.landmarks);
+    // deep in the centre the most interesting objects in range are the real
+    // S stars - the ones whose orbits weighed the black hole. Surface them
+    // as scannable landmarks so the survey log can hold them.
+    const scannable = [...this.gscene.landmarks];
+    if (this.ship.pos.length() < 0.4) {
+      S_STARS.forEach((def, i) => {
+        scannable.push({
+          id: `sstar-${def.name.toLowerCase()}`,
+          name: def.name,
+          kind: 'star',
+          pos: this.gscene!.sStars.starPos(i),
+          radiusLy: 0.01,
+          note: `S-star on a published orbit: P = ${def.periodYr.toFixed(1)} yr, e = ${def.e}.${def.contested ? ' Detection contested.' : ''}`,
+          real: true,
+        });
+      });
+    }
+    const result = this.log.scan(this.ship.pos, this.deps.state.simDays, stars, scannable);
     this.hud.scanStatus(null);
     if (result.fresh.length > 0) {
       const names = result.fresh.slice(0, 3).map((e) => e.name).join(', ');
@@ -450,7 +477,9 @@ export class GalaxyMode {
     this.elapsed += dt;
 
     if (this.phase === 'entering') {
-      this.t = Math.min(1, (performance.now() - this.transitionStart) / (ENTRY_SECONDS * 1000));
+      this.t = REDUCED_MOTION
+        ? 1
+        : Math.min(1, (performance.now() - this.transitionStart) / (ENTRY_SECONDS * 1000));
       this.veil.style.opacity = String(this.t < 0.55 ? 1 : 1 - (this.t - 0.55) / 0.45);
       if (this.t >= 1) {
         this.phase = 'flying';
@@ -458,7 +487,9 @@ export class GalaxyMode {
         this.veil.style.opacity = '0';
       }
     } else if (this.phase === 'exiting') {
-      this.t = Math.min(1, (performance.now() - this.transitionStart) / (EXIT_SECONDS * 1000));
+      this.t = REDUCED_MOTION
+        ? 1
+        : Math.min(1, (performance.now() - this.transitionStart) / (EXIT_SECONDS * 1000));
       this.veil.style.opacity = String(Math.min(1, this.t * 2));
       if (this.t >= 1) {
         this.finishExit();
@@ -495,7 +526,11 @@ export class GalaxyMode {
         // no trajectory returns from inside ~1.5 Rs; refuse the crossing
         this.emergencyCooldown = 10;
         this.emergencyUntil = this.elapsed + 9;
-        const out = this.ship.pos.clone().normalize().scale(rs * 80);
+        const out = this.ship.pos.clone();
+        // at the exact origin the outward direction is undefined - pick one
+        // rather than handing the autopilot a route to the singularity
+        if (out.length() < 1e-12) out.set(1, 0, 0);
+        out.normalize().scale(rs * 80);
         this.ship.engageRoute('EMERGENCY RECOVERY', out, 0);
         // slam the nose outward now - slerping politely toward safety is
         // how you cross a horizon
@@ -515,12 +550,23 @@ export class GalaxyMode {
     // ---- time: gravitational dilation, both clocks -------------------
     const dilation = gravitationalDilation(sgraDist);
     // ship proper time advanced inside ship.update; the Earth clock runs
-    // faster by 1/√(1−Rs/r) as seen from far away
-    state.simDays += (dt / 86_400) / dilation;
+    // faster by 1/√(1−Rs/r) as seen from far away. The pilot's pause still
+    // means pause, and the fades must not silently age the calendar.
+    if (this.phase === 'flying' && !state.paused) {
+      state.simDays += (dt / 86_400) / dilation;
+    }
 
     // ---- stage machine ----------------------------------------------
     const newStage =
-      sgraDist < 0.001 ? 4 : sgraDist < 0.15 ? 3 : sgraDist < 100 ? 2 : sgraDist < 3000 ? 1 : 0;
+      sgraDist < 0.001
+        ? 4
+        : sgraDist < 0.15
+          ? 3
+          : sgraDist < NSC_RADIUS_LY * 2.5 // same boundary regionAt names "Nuclear star cluster"
+            ? 2
+            : sgraDist < 3000
+              ? 1
+              : 0;
     if (newStage !== this.stage) {
       this.stage = newStage;
       const msgs: Record<number, [string, string]> = {
@@ -675,8 +721,6 @@ export class GalaxyMode {
   resize(w: number, h: number): void {
     this.composer?.setSize(w, h);
     this.map?.resize();
-    void w;
-    void h;
   }
 
   setPixelRatio(pr: number): void {
