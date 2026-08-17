@@ -1,80 +1,82 @@
+# Build the app and publish it to GitHub Pages.
+#
+# The built dist/ is force-pushed to the gh-pages branch and the Pages site
+# is configured (idempotently) to serve that branch, so every push to the
+# branches below goes live at:
+#   https://meetmaniya1221-cmd.github.io/Demo-3d-website/
 name: Deploy to GitHub Pages
 
 on:
   push:
     branches:
-      - claude/solar-system-explorer-1ylnq2
-      - claude/3d-solar-system-edu-rxmhpb
-      - claude/solar-system-upgrade-4d9hwd
-      - claude/solar-system-ui-visuals-7kbu69
-      - claude/spacecraft-exploration-mode-o7c17x
-      - claude/milky-way-sagittarius-a-wrk9bl
       - main
+      - claude/astronomy-sim-audit-polish-wl7yuw
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
-  id-token: write
-  actions: read
 
 concurrency:
-  group: pages
+  group: pages-deploy
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: npm
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      # Best effort: switch the Pages source to workflow deployments so the
-      # automatic "deploy from branch" build stops racing this workflow.
-      - name: Set Pages build type to workflow
-        run: |
-          curl -s -X PUT \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/pages \
-            -d '{"build_type":"workflow"}' \
-            -o /dev/null -w "pages config update: HTTP %{http_code}\n" || true
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci
 
-      # Fallback guard: if a legacy branch build is still running for this
-      # push, let it finish first so our deployment is the one that sticks.
-      - name: Wait out any in-flight legacy Pages build
+      - name: Build
+        run: npm run build
+
+      - name: Publish dist to gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          for i in $(seq 1 40); do
-            count=$(curl -s \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          touch dist/.nojekyll
+          cd dist
+          git init -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Deploy ${GITHUB_SHA::7}"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+
+      - name: Ensure the Pages site serves gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          api() {
+            curl -sS -o /tmp/pages-resp.json -w "%{http_code}" \
+              -X "$1" \
+              -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/runs?per_page=20" \
-              | jq '[.workflow_runs[] | select(.name == "pages build and deployment" and .status != "completed")] | length')
-            if [ "${count:-0}" = "0" ]; then
-              echo "no legacy pages build in flight"
-              break
-            fi
-            echo "legacy pages build still running ($count), waiting…"
-            sleep 10
-          done
-
-      - id: deployment
-        uses: actions/deploy-pages@v4
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages" \
+              ${2:+-d "$2"}
+          }
+          code=$(api GET)
+          if [ "$code" = "404" ]; then
+            echo "Pages site not configured yet - creating it against gh-pages"
+            code=$(api POST '{"build_type":"legacy","source":{"branch":"gh-pages","path":"/"}}')
+            echo "create -> $code"; cat /tmp/pages-resp.json; echo
+          else
+            echo "Pages site exists - making sure it serves gh-pages"
+            code=$(api PUT '{"build_type":"legacy","source":{"branch":"gh-pages","path":"/"}}')
+            echo "update -> $code"; cat /tmp/pages-resp.json; echo
+          fi
+          case "$code" in
+            2*) echo "Pages configured." ;;
+            *) echo "Pages API returned $code - if this is a permissions error, enable Pages once in the repo settings (source: gh-pages branch)."; exit 1 ;;
+          esac
