@@ -31,6 +31,7 @@ import * as THREE from 'three';
 import { STAR_SYSTEMS, type StarSystem } from '../data/catalog/starsystems';
 import { AU_PER_LY, NEIGHBOURHOOD_IDS, SOL_ID, positionLyOf, unitsPerLy } from '../sim/interstellar';
 import { blackbodyColor } from './hoststar';
+import { StarLinks, type LinkNode } from './starlinks';
 
 /** Just inside scene/sky.ts's 6000-unit shell, matching scene/nakedeye. */
 const SKY_R = 5700;
@@ -113,6 +114,13 @@ export class Neighbourhood {
    */
   readonly group = new THREE.Group();
   readonly points: THREE.Points;
+  /**
+   * The stepped routes between systems. It lives in this group and takes its
+   * endpoints from the very vertices written below, which is what makes "the
+   * route ends on the star" a property of the code rather than something to
+   * be re-checked whenever the projection changes.
+   */
+  readonly links = new StarLinks();
   readonly entries: Entry[] = [];
   private byId = new Map<string, Entry>();
   private pos: Float32Array;
@@ -126,6 +134,9 @@ export class Neighbourhood {
   private tmp = new THREE.Vector3();
   private dir = new THREE.Vector3();
   private enabled = true;
+  private linkOpacity = 0;
+  private chart = false;
+  private linkNodes: LinkNode[] = [];
 
   constructor() {
     for (const id of NEIGHBOURHOOD_IDS) {
@@ -186,6 +197,7 @@ export class Neighbourhood {
     // after the sky and the naked-eye planets, before anything solid, so a
     // planet's disc still paints over a star behind it
     this.points.renderOrder = -8;
+    this.group.add(this.links.lines);
   }
 
   /** Move the frame onto another system. Everything is re-expressed, not moved. */
@@ -203,6 +215,26 @@ export class Neighbourhood {
     this.group.visible = v;
   }
 
+  /**
+   * Sky, or chart.
+   *
+   * As sky, this layer is what the neighbours look like from here: brightness
+   * follows apparent magnitude, so the dwarfs that make up most of the local
+   * catalogue are correctly invisible. As chart - once the camera has pulled
+   * back far enough that the neighbourhood is the subject rather than the
+   * backdrop - every catalogued system is a node, whether or not you could see
+   * it, and the routes between them are drawn.
+   *
+   * One switch for both, because they have to agree. The label layer already
+   * names every system on the chart; if the points kept their sky brightness
+   * the faint ones would be labels hanging over nothing, with their routes
+   * silently dropped for want of a visible endpoint.
+   */
+  setChartMode(on: boolean): void {
+    this.chart = on;
+    this.linkOpacity = on ? 0.5 : 0;
+  }
+
   setPixelRatio(pr: number): void {
     this.mat.uniforms.uPr.value = pr;
   }
@@ -217,6 +249,14 @@ export class Neighbourhood {
     if (!this.enabled) return;
     this.group.position.copy(observer);
     const uply = unitsPerLy(scaleT);
+    if (this.linkNodes.length !== this.entries.length) {
+      this.linkNodes = this.entries.map((e) => ({
+        id: e.id,
+        ly: new THREE.Vector3(),
+        draw: new THREE.Vector3(),
+        visible: false,
+      }));
+    }
     for (let i = 0; i < this.entries.length; i++) {
       const e = this.entries[i];
       this.tmp.copy(positionLyOf(e.id)).sub(this.originLy);
@@ -233,6 +273,11 @@ export class Neighbourhood {
       // the system you are standing in is drawn as geometry, not as a point -
       // leaving its point on too would double up into an over-bright blob
       const isHome = e.id === this.originId;
+
+      // the route network is laid out in light-years, which is the real
+      // adjacency and does not move when the camera does
+      this.linkNodes[i].ly.copy(this.tmp);
+      this.linkNodes[i].visible = false;
 
       this.dir.copy(e.scenePos).sub(observer);
       const viewDist = this.dir.length();
@@ -253,14 +298,32 @@ export class Neighbourhood {
       // size and alpha from magnitude, on the same curve scene/nakedeye uses
       let size = 2.0 + 6.0 * THREE.MathUtils.clamp((4.5 - e.mag) / 10, 0, 1);
       if (e.mag < -6) size += Math.min(5, (-6 - e.mag) * 0.3);
-      const alpha = isHome ? 0 : THREE.MathUtils.clamp((7.5 - e.mag) / 5, 0, 1) * fadeIn;
+      // On the chart, every system is a node: a faint dwarf is floored to a dim
+      // but real dot rather than left at nothing, so its label and its routes
+      // have a star to attach to.
+      const sky = THREE.MathUtils.clamp((7.5 - e.mag) / 5, 0, 1);
+      const alpha = isHome ? 0 : Math.max(sky, this.chart ? 0.75 : 0) * fadeIn;
+      // big enough to read as a node a route can end on, rather than as a
+      // speck of starfield that happens to have a name next to it
+      if (this.chart) size = Math.max(size, 7);
       const gain = e.mag < -8 ? 1.4 : e.mag < -2 ? 1.05 : 0.85;
       this.color[i * 3] = e.color.r * gain;
       this.color[i * 3 + 1] = e.color.g * gain;
       this.color[i * 3 + 2] = e.color.b * gain;
       this.size[i] = Math.min(size, 9);
       this.alpha[i] = alpha;
+
+      // The route endpoint is the point's own vertex, not the star's true
+      // position: beyond the shell those differ by light-years, and routing to
+      // the latter would end every line in empty space near its star.
+      this.linkNodes[i].draw.set(
+        this.pos[i * 3],
+        this.pos[i * 3 + 1],
+        this.pos[i * 3 + 2],
+      );
+      this.linkNodes[i].visible = alpha > 0.02;
     }
+    this.links.update(this.linkNodes, this.originId, this.linkOpacity);
     this.geo.attributes.position.needsUpdate = true;
     this.geo.attributes.aColor.needsUpdate = true;
     this.geo.attributes.aSize.needsUpdate = true;
@@ -285,8 +348,18 @@ export class Neighbourhood {
     return positionLyOf(id).distanceTo(this.originLy);
   }
 
+  /** The route layer's own view of what it drew, for the test. */
+  get linkInfo(): StarLinks['info'] {
+    return this.links.info;
+  }
+
+  get linkNodeList(): LinkNode[] {
+    return this.linkNodes;
+  }
+
   dispose(): void {
     this.geo.dispose();
     this.mat.dispose();
+    this.links.dispose();
   }
 }

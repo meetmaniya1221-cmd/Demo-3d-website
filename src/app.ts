@@ -790,6 +790,38 @@ export class App implements TourHost {
   // --------------------------------------------------------------- frame --
 
   private skyBaked = false;
+
+  /**
+   * Place the neighbouring systems' labels, and set how strongly their routes
+   * are drawn.
+   *
+   * Both branches of the frame call this - inside the cockpit and outside it -
+   * because both render the same neighbourhood through the same camera. The
+   * "is the map the subject" test is the one that already governed the labels:
+   * out past the Oort cloud the stars stop being a backdrop and become the
+   * thing being navigated, which is also when the routes are worth drawing.
+   *
+   * The neighbourhood is stepped again here, having already been stepped in
+   * `system.update`. That is deliberate, not a leftover. The world is advanced
+   * before the camera flight for the frame is, so the first pass places the
+   * star points around wherever the camera was *last* frame; placing the labels
+   * from this frame's camera against those points is the same mismatch that
+   * made them look attached to the wrong stars, just smaller - a few pixels of
+   * drift, but only while the camera moves, which is exactly when it shows. A
+   * second pass over a few dozen catalogue entries costs nothing and leaves the
+   * points, their labels and the routes between them all derived from one
+   * camera in one frame.
+   */
+  private placeSystemLabels(inset: number): void {
+    const shown = this.state.layers.nearbyStars && !this.journey.active;
+    const mapIsSubject =
+      this.rig.camera.position.length() > mapDistanceAU(OORT_OUTER_AU, this.state.scaleT);
+    // The same condition the labels use, so the points, the names and the
+    // routes are all charting the same set of systems.
+    this.system.neighbourhood.setChartMode(shown && mapIsSubject);
+    this.system.neighbourhood.update(this.rig.camera.position, this.state.scaleT);
+    this.systemLabels.update(this.system.neighbourhood, this.rig.camera, shown, mapIsSubject, inset);
+  }
   private wormholeSkyReady = false;
   private warpNoteOn = false;
 
@@ -868,6 +900,16 @@ export class App implements TourHost {
       // same clamp as spacecraft.update so HUD timers age at the same rate
       // as the physics on a struggling machine
       this.spacecraft.postUpdate(Math.min(rawDt, 0.5));
+      // The neighbourhood labels have to be placed in here too.
+      //
+      // This branch used to return before the label pass ran, so in the
+      // cockpit the star names were simply left wherever the last frame
+      // outside it had put them - they stayed pinned to the glass while the
+      // sky moved past, which is why they looked like they belonged to the
+      // wrong stars. Nothing was wrong with the names or the data; they were
+      // just never repositioned. They are placed from the same camera the
+      // scene is rendered with, so a label lands on its own point.
+      this.placeSystemLabels(0);
       this.composer.render();
       this.spacecraft.renderOverlay();
       this.trackFrameCost(rawDt);
@@ -888,13 +930,7 @@ export class App implements TourHost {
     const panelInset = this.state.selectedId && !isCompact() ? 372 : 0;
     this.labels.update(this.system, this.rig.camera, this.state, panelInset);
     this.skyNotes.update(this.system, this.rig.camera, this.state);
-    this.systemLabels.update(
-      this.system.neighbourhood,
-      this.rig.camera,
-      this.state.layers.nearbyStars && !this.journey.active,
-      this.rig.camera.position.length() > mapDistanceAU(OORT_OUTER_AU, this.state.scaleT),
-      panelInset,
-    );
+    this.placeSystemLabels(panelInset);
 
     // right-edge distance readout: camera → focused body (or the system's star)
     if (this.state.layers.distanceScale) {
@@ -1266,6 +1302,33 @@ export class App implements TourHost {
         };
       },
       interstellarPos: (id: string) => positionLyOf(id).toArray(),
+      /** Distance past which the neighbourhood is the subject, in scene units.
+       *  Beyond it the labels name every system and the routes come on. */
+      mapSubjectDistance: () => mapDistanceAU(OORT_OUTER_AU, this.state.scaleT),
+      neighbourhoodEntry: (id: string) => {
+        const e = this.system.neighbourhood.entry(id);
+        return e
+          ? {
+              id: e.id,
+              name: e.name,
+              distLy: e.distLy,
+              mag: e.mag,
+              scenePos: e.scenePos.toArray(),
+              drawPos: e.drawPos.toArray(),
+            }
+          : null;
+      },
+      starLinks: () => {
+        const n = this.system.neighbourhood;
+        // Measured from the vertex buffer the routes are drawn from, not from
+        // a second copy of the same arithmetic.
+        return {
+          ...n.linkInfo,
+          visible: n.links.lines.visible,
+          planned: n.links.plannedEdges(n.linkNodeList).length,
+          edges: n.links.measured(n.linkNodeList),
+        };
+      },
       wormhole: () => ({
         active: this.system.wormhole.active,
         phase: this.system.wormhole.phase,
