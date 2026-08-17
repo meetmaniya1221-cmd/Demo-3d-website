@@ -48,6 +48,7 @@ const LENS_FRAG = /* glsl */ `
   uniform float uFlare;      // flare multiplier from the generator (~1..42)
   uniform float uStrength;   // pass fade 0..1
   uniform vec3 uDiskView;    // accretion-flow axis, view space (world-fixed)
+  uniform float uProtect;    // angular radius shielded from deflection
 
   // ---- helpers ----------------------------------------------------------
 
@@ -107,6 +108,13 @@ const LENS_FRAG = /* glsl */ `
     vec2 ang = offs * vec2(uAspect, 1.0);
     float aLen = max(length(ang), 1e-6);
     float bend = 1.0 - (thetaE * thetaE) / (theta * theta + 1e-12);
+    // the deflection applies to BACKGROUND light. The photoreal plate at
+    // the hole already bakes its own strong-field bending - re-lensing it
+    // smears its photon ring out to the Einstein radius. Pixels inside the
+    // plate's angular footprint pass through undeflected; the starfield
+    // beyond it still warps
+    float protect = smoothstep(uProtect * 0.9, uProtect * 1.6, theta);
+    bend = mix(1.0, bend, max(protect, step(uProtect, 1e-9)));
     vec2 srcUv = bhUv + (ang * bend) / vec2(uAspect, 1.0);
     srcUv = clamp(srcUv, vec2(0.001), vec2(0.999));
     vec3 lensed = texture2D(tDiffuse, srcUv).rgb;
@@ -240,6 +248,7 @@ export class LensingPass extends Pass {
       uFlare: { value: 1 },
       uStrength: { value: 0 },
       uDiskView: { value: new THREE.Vector3(0, 1, 0) },
+      uProtect: { value: 0 },
     };
     this.material = new THREE.ShaderMaterial({
       vertexShader: LENS_VERT,

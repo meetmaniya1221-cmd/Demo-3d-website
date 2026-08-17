@@ -264,29 +264,28 @@ export class SStarCluster {
 
 // ---------------------------------------------------------- accretion disk --
 
-const DISK_VERT = /* glsl */ `
-  varying vec3 vLocal;
-  varying vec3 vWorldDir;
-  varying vec3 vTangent;
+/** Photon-ring radius in the plate, as a fraction of the image half-width
+ *  (measured from the asset: 120 px of 512). The plate is scaled so this
+ *  circle spans the physical √27/2·Rs capture radius. */
+const PLATE_RING_FRAC = 0.234;
+/** Plate width in Schwarzschild radii, from the measurement above. */
+export const PLATE_WIDTH_RS = (2.598 * 2) / PLATE_RING_FRAC;
+
+const PLATE_VERT = /* glsl */ `
+  varying vec2 vUv;
   void main() {
-    vLocal = position;
-    vec4 w = modelMatrix * vec4(position, 1.0);
-    vWorldDir = w.xyz - cameraPosition;
-    // orbital direction in world space (modelMatrix only exists here, not
-    // in the fragment stage); smooth interpolation around the ring is fine
-    vTangent = normalize(mat3(modelMatrix) * vec3(-position.y, position.x, 0.0));
-    gl_Position = projectionMatrix * viewMatrix * w;
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 
-const DISK_FRAG = /* glsl */ `
+const PLATE_FRAG = /* glsl */ `
   precision highp float;
-  varying vec3 vLocal;      // disk-plane local coords, units of Rs
-  varying vec3 vWorldDir;   // fragment direction from the camera
-  varying vec3 vTangent;    // orbital direction, world space
-  uniform float uTime;
-  uniform float uLevel;     // flare-driven emission multiplier
+  varying vec2 vUv;
+  uniform sampler2D uMap;
   uniform float uFade;
+  uniform float uLevel;
+  uniform float uTime;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float vnoise(vec2 p) {
@@ -297,129 +296,115 @@ const DISK_FRAG = /* glsl */ `
   }
 
   void main() {
-    float r = length(vLocal.xy);          // radius in Rs
-    if (r < 2.7 || r > 14.0) discard;
-    float phi = atan(vLocal.y, vLocal.x);
+    vec3 c = texture2D(uMap, vUv).rgb;
+    vec2 p = vUv - 0.5;
+    float r = length(p) * 2.0;      // 1 at the plate's inscribed circle
+    float lum = dot(c, vec3(0.299, 0.587, 0.114));
 
-    // Keplerian shear: inner material laps the outer, streaks stretch
-    float w = 6.0 / pow(r, 1.5);
-    float streak = 0.5 + 0.5 * vnoise(vec2(phi * 3.0 + uTime * w, r * 2.0));
-    streak *= 0.65 + 0.35 * vnoise(vec2(phi * 9.0 - uTime * w * 1.7, r * 5.0));
+    // opacity: the plasma is opaque where it glows, and the shadow itself
+    // must occlude the starfield behind it - a black hole that stars shine
+    // through is just a texture
+    float shadowMask = 1.0 - smoothstep(0.20, 0.255, r);
+    float edgeFade = 1.0 - smoothstep(0.82, 0.99, r);
+    float a = max(smoothstep(0.010, 0.09, lum), shadowMask) * edgeFade * uFade;
 
-    // temperature falls outward: white-hot rim to deep ember edge
-    float t = clamp((r - 3.0) / 11.0, 0.0, 1.0);
-    vec3 hot = vec3(1.55, 1.38, 1.15);
-    vec3 mid = vec3(1.45, 0.88, 0.42);
-    vec3 cool = vec3(0.80, 0.28, 0.10);
-    vec3 col = t < 0.5 ? mix(hot, mid, t * 2.0) : mix(mid, cool, t * 2.0 - 1.0);
+    // slow shear shimmer so the plate reads as flowing plasma, not a photo
+    float ang = atan(p.y, p.x);
+    float sh = 0.90 + 0.10 * vnoise(vec2(ang * 3.0 + uTime * 0.22, r * 7.0));
 
-    // Doppler boost: the side coming toward the viewer brightens - the
-    // asymmetry every EHT image shows. beta = sqrt(Rs/2r) for a circular
-    // orbit; delta^3 approximates the beaming. The orbital direction is
-    // computed in the ring's local frame and carried to world space by the
-    // mesh's own model matrix, so mesh and math share one orientation
-    float beta = sqrt(0.5 / r);
-    float mu = dot(normalize(vWorldDir), normalize(vTangent));
-    float dopp = 1.0 / max(0.30, 1.0 - beta * mu);
-    float boost = dopp * dopp * dopp;
-    col = mix(col, col.zyx * vec3(0.85, 1.0, 1.4), clamp((dopp - 1.0) * 0.9, -0.3, 0.55));
-
-    float gred = sqrt(max(0.0, 1.0 - 1.0 / r));
-    float radial = pow(3.0 / r, 1.9);
-    float edgeIn = smoothstep(2.7, 3.3, r);
-    float edgeOut = 1.0 - smoothstep(10.0, 14.0, r);
-    float e = radial * streak * boost * gred * edgeIn * edgeOut;
-    gl_FragColor = vec4(col * e * uLevel * uFade * 1.6, 1.0);
+    gl_FragColor = vec4(c * uLevel * sh * edgeFade * uFade, a);
   }
 `;
 
 /**
- * The mid-range Sagittarius A* structure: a Doppler-shaded hot-gas annulus
- * between the ISCO and ~14 Rs plus the black photon-capture silhouette.
- * From tens of AU out, the full geodesic march cannot put meaningful pixels
- * on screen, but the eye still needs "bright ring with a dark heart" - this
- * mesh carries that reading, then hands over to the lensing march (which
- * bends this very geometry on its way in) as the shadow grows past a few
- * dozen pixels. Emission is deliberately brighter than the real, badly
- * underluminous flow - the HUD's approximation note says so.
+ * The mid-range Sagittarius A* structure: a photoreal lensed-disk plate
+ * (generated with Higgsfield after the NASA 2019 visualization / Gargantua
+ * look - the far side of the disk bent over and under the shadow, photon
+ * ring, Doppler-bright approaching side), scaled so its ring spans the
+ * physical √27/2·Rs capture radius, roll-locked to the flow's world axis
+ * so the lensed hat keeps its orientation as the ship orbits, and made
+ * OPAQUE where it glows and where the shadow sits - it occludes the
+ * starfield like a physical object. Far out, the beacon glow carries the
+ * point; up close the geodesic march takes over with true 3D parallax.
+ * A frontal plate for a structure whose real look is viewpoint-dependent
+ * is a stated visualization approximation; a vastly better-reading one
+ * than any mesh at these screen sizes.
  */
 export class AccretionDisk {
   readonly group = new THREE.Group();
-  private diskMat: THREE.ShaderMaterial;
-  private shadowMat: THREE.SpriteMaterial;
-  private shadow: THREE.Sprite;
+  /** Current blend weight, read by the mode to duck the march's emission. */
+  fade = 0;
+  private mat: THREE.ShaderMaterial;
+  private mesh: THREE.Mesh;
+  private roll = 0;
+  private tmpN = new THREE.Vector3();
+  private tmpQ = new THREE.Quaternion();
 
   constructor() {
-    const rsScene = SGRA_RS_LY; // 1 unit = 1 ly; mesh is built in Rs then scaled
-    const geo = new THREE.RingGeometry(2.7, 14, 96, 4);
-    this.diskMat = new THREE.ShaderMaterial({
-      vertexShader: DISK_VERT,
-      fragmentShader: DISK_FRAG,
+    this.mat = new THREE.ShaderMaterial({
+      vertexShader: PLATE_VERT,
+      fragmentShader: PLATE_FRAG,
       uniforms: {
-        uTime: { value: 0 },
+        uMap: { value: null },
+        uFade: { value: 0 },
         uLevel: { value: 1 },
-        uFade: { value: 1 },
+        uTime: { value: 0 },
       },
       transparent: true,
       depthWrite: false,
       depthTest: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
+      blending: THREE.NormalBlending,
     });
-    const disk = new THREE.Mesh(geo, this.diskMat);
-    disk.renderOrder = -2;
-    // orient the ring's +z onto the flow axis
-    disk.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), SGRA_DISK_NORMAL);
-    this.group.add(disk);
-
-    // the photon-capture silhouette: apparent radius √27/2 · Rs. A soft-edged
-    // black billboard, drawn over the ring - at mid range the "far side rises
-    // over the shadow" subtlety is sub-pixel, and the march owns the close-up
-    const c = document.createElement('canvas');
-    c.width = c.height = 128;
-    const ctx = c.getContext('2d')!;
-    const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    g.addColorStop(0, 'rgba(0,0,0,1)');
-    g.addColorStop(0.82, 'rgba(0,0,0,1)');
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 128, 128);
-    const tex = new THREE.CanvasTexture(c);
-    this.shadowMat = new THREE.SpriteMaterial({
-      map: tex,
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-    });
-    this.shadow = new THREE.Sprite(this.shadowMat);
-    // sized in Rs like the ring; the group scale below converts both to ly
-    this.shadow.scale.setScalar(2.598 * 2 * 1.15);
-    this.shadow.renderOrder = -1;
-    this.group.add(this.shadow);
-
-    this.group.scale.setScalar(rsScene);
+    new THREE.TextureLoader().load(
+      `${import.meta.env.BASE_URL}textures/blackhole/gargantua.webp`,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        this.mat.uniforms.uMap.value = tex;
+      },
+    );
+    const w = PLATE_WIDTH_RS * SGRA_RS_LY;
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, w), this.mat);
+    this.mesh.renderOrder = -2;
+    this.mesh.frustumCulled = false;
+    this.group.add(this.mesh);
   }
 
-  /** Fade by distance: invisible beyond ~0.03 ly (sub-pixel), handed to the
-   *  march inside ~10 AU where the real bending takes over. */
-  update(camDistLy: number, time: number, flareLevel: number): void {
+  /**
+   * Fade by distance and billboard toward the camera. Visible once the
+   * plate subtends real pixels (~0.003 ly) and handed to the march inside
+   * ~50 Rs, where parallax and per-pixel bending matter.
+   */
+  update(camDistLy: number, time: number, flareLevel: number, camera: THREE.PerspectiveCamera): void {
     const rs = SGRA_RS_LY;
-    const far = 1 - THREE.MathUtils.smoothstep(camDistLy, 0.012, 0.035);
-    const near = THREE.MathUtils.smoothstep(camDistLy, rs * 18, rs * 60);
-    const fade = far * near;
-    this.group.visible = fade > 0.01;
-    this.diskMat.uniforms.uTime.value = time;
-    this.diskMat.uniforms.uLevel.value = 0.32 + Math.min(flareLevel, 20) * 0.22;
-    this.diskMat.uniforms.uFade.value = fade;
-    this.shadowMat.opacity = fade;
+    const farIn = 1 - THREE.MathUtils.smoothstep(camDistLy, 0.0022, 0.0042);
+    const nearOut = THREE.MathUtils.smoothstep(camDistLy, rs * 50, rs * 95);
+    this.fade = farIn * nearOut;
+    this.group.visible = this.fade > 0.01 && this.mat.uniforms.uMap.value !== null;
+    if (!this.group.visible) return;
+
+    // roll-locked billboard: face the camera, then rotate about the view
+    // axis so the plate's up stays on the flow axis's screen projection
+    this.tmpN.copy(SGRA_DISK_NORMAL).transformDirection(camera.matrixWorldInverse);
+    if (Math.hypot(this.tmpN.x, this.tmpN.y) > 0.05) {
+      this.roll = Math.atan2(-this.tmpN.x, this.tmpN.y);
+    }
+    this.mesh.quaternion
+      .copy(camera.quaternion)
+      .multiply(this.tmpQ.setFromAxisAngle(AXIS_Z, this.roll));
+
+    this.mat.uniforms.uFade.value = this.fade;
+    this.mat.uniforms.uTime.value = time;
+    this.mat.uniforms.uLevel.value = 0.95 + Math.min(flareLevel, 18) * 0.06;
   }
 
   dispose(): void {
-    this.diskMat.dispose();
-    this.shadowMat.map?.dispose();
-    this.shadowMat.dispose();
+    (this.mat.uniforms.uMap.value as THREE.Texture | null)?.dispose();
+    this.mat.dispose();
+    this.mesh.geometry.dispose();
   }
 }
+
+const AXIS_Z = new THREE.Vector3(0, 0, 1);
 
 // ------------------------------------------------------------------ flares --
 
