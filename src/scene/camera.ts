@@ -35,6 +35,9 @@ export class CameraRig {
   private follow: FocusGetter | null = null;
   private prevFollowPos = new THREE.Vector3();
   private prevFollowRadius = 0;
+  /** Distance the smooth wheel zoom is easing toward; null = at rest. */
+  private wheelZoomTarget: number | null = null;
+  private zoomOffset = new THREE.Vector3();
 
   constructor(dom: HTMLElement) {
     this.camera = new THREE.PerspectiveCamera(
@@ -44,6 +47,16 @@ export class CameraRig {
       20000,
     );
     this.camera.position.set(0, 165, 335);
+
+    // Smooth wheel zoom. OrbitControls applies a fixed step per wheel EVENT -
+    // sign only, magnitude ignored - so a mouse notch lands as an instant
+    // jump and a trackpad's event stream zooms in harsh stutters. Instead the
+    // wheel drives a target distance (per-pixel, so mouse and trackpad agree)
+    // and update() eases the camera toward it in log space. Registered BEFORE
+    // OrbitControls is constructed: at the same element and phase, listeners
+    // fire in registration order, so stopImmediatePropagation() below is what
+    // keeps OrbitControls' own stepped handler from double-applying the event.
+    dom.addEventListener('wheel', (e: WheelEvent) => this.onWheel(e), { passive: false });
 
     this.controls = new OrbitControls(this.camera, dom);
     this.controls.enableDamping = true;
@@ -86,6 +99,62 @@ export class CameraRig {
     // not what OrbitControls picks by default for the second finger
     this.controls.touches.ONE = THREE.TOUCH.ROTATE;
     this.controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+  }
+
+  private onWheel(e: WheelEvent): void {
+    // during flights and in spacecraft/galaxy modes the controls are disabled
+    // and someone else owns the wheel - let the event through untouched
+    if (!this.controls.enabled) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    // one unit per pixel, whatever the delta mode reports in
+    const px =
+      e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 100 : e.deltaY;
+    // a single inertial trackpad fling can report a huge delta - cap the
+    // burst so no one event teleports the target across the scene
+    const step = THREE.MathUtils.clamp(px, -420, 420);
+    const current =
+      this.wheelZoomTarget ?? this.camera.position.distanceTo(this.controls.target);
+    // exponential zoom: equal wheel travel = equal RATIO of distance, which
+    // is what makes zooming feel uniform from 0.1 AU out to 1,000
+    this.wheelZoomTarget = THREE.MathUtils.clamp(
+      current * Math.exp(step * 0.00052),
+      this.controls.minDistance,
+      this.controls.maxDistance,
+    );
+  }
+
+  /** Ease the camera toward the wheel's target distance, log-space, at a
+   *  frame-rate-independent rate. Runs after controls.update() so damped
+   *  rotation and the smooth dolly compose instead of fighting. */
+  private updateWheelZoom(dt: number): void {
+    if (this.wheelZoomTarget === null) return;
+    if (!this.controls.enabled) {
+      // a flight or another mode took the camera mid-ease - stand down
+      this.wheelZoomTarget = null;
+      return;
+    }
+    const offset = this.zoomOffset.copy(this.camera.position).sub(this.controls.target);
+    const dist = offset.length();
+    if (dist < 1e-9) {
+      this.wheelZoomTarget = null;
+      return;
+    }
+    // limits can change under us (scale-mode morph retunes maxDistance)
+    const target = THREE.MathUtils.clamp(
+      this.wheelZoomTarget,
+      this.controls.minDistance,
+      this.controls.maxDistance,
+    );
+    // ~0.5 s to settle: fast enough to feel connected to the wheel, slow
+    // enough that even a six-notch burst never moves 5% in one 60 fps frame
+    const k = REDUCED_MOTION ? 1 : 1 - Math.exp(-dt * 8);
+    const next = Math.exp(THREE.MathUtils.lerp(Math.log(dist), Math.log(target), k));
+    this.camera.position
+      .copy(this.controls.target)
+      .addScaledVector(offset.multiplyScalar(1 / dist), next);
+    // settled within a tenth of a percent - snap and go quiet
+    if (Math.abs(Math.log(next / target)) < 1e-3) this.wheelZoomTarget = null;
   }
 
   /** Distance the flight is aiming for, given the focus size right now. */
@@ -135,6 +204,7 @@ export class CameraRig {
       onArrive: opts.onArrive,
     };
     this.follow = null;
+    this.wheelZoomTarget = null;
     this.controls.enabled = false;
     this.controls.autoRotate = false;
   }
@@ -148,6 +218,7 @@ export class CameraRig {
   release(): void {
     this.flight = null;
     this.follow = null;
+    this.wheelZoomTarget = null;
     this.controls.enabled = false;
     this.controls.autoRotate = false;
   }
@@ -156,6 +227,7 @@ export class CameraRig {
   resume(target: THREE.Vector3): void {
     this.flight = null;
     this.follow = null;
+    this.wheelZoomTarget = null;
     this.controls.target.copy(target);
     this.controls.minDistance = 0.01;
     this.controls.enabled = true;
@@ -205,12 +277,15 @@ export class CameraRig {
         const targetOffset = this.controls.target.clone().sub(fc.position).multiplyScalar(ratio);
         this.controls.target.copy(fc.position).add(targetOffset);
         this.controls.minDistance = Math.max(fc.radius * 1.75, 0.003);
+        // an in-flight wheel ease rides the same morph, or it would fight it
+        if (this.wheelZoomTarget !== null) this.wheelZoomTarget *= ratio;
       }
       this.prevFollowPos.copy(fc.position);
       this.prevFollowRadius = fc.radius;
     }
 
     this.controls.update();
+    this.updateWheelZoom(dt);
 
     // dynamic near plane keeps depth precision at every zoom level
     const dist = this.camera.position.distanceTo(this.controls.target);
